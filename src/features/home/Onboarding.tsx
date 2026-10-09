@@ -69,12 +69,12 @@ export function Onboarding() {
                   icon={<Usb size={26} />}
                   color="#3ddc97"
                   title="My keyboard, with a USB cable"
-                  detail="Best. Works in Chrome or Edge. Plug the CT-S1’s USB port into your computer, then press here."
+                  detail="Best. Works in Chrome or Edge. Use the CT-S1’s small micro-USB “USB TO HOST” port and a data cable, then press here."
                   done={connected}
                   doneText={connected ? `Connected: ${devices[0]}` : undefined}
                   onClick={() => void connectMidi()}
                   disabled={midi === 'unsupported'}
-                  note={midi === 'unsupported' ? 'This browser can’t read MIDI. Try Chrome or Edge.' : midi === 'ready' && !connected ? 'Allowed, but no keyboard found yet. Is it plugged in and on?' : midi === 'denied' ? 'MIDI access was blocked.' : undefined}
+                  note={midi === 'unsupported' ? 'This browser can’t read MIDI. Try Chrome or Edge.' : midi === 'ready' && !connected ? 'Allowed, but no keyboard found yet. Use the micro-USB “USB TO HOST” port (not the big USB-A one) and a cable that carries data, not just charge. It connects by itself once the Mac sees it.' : midi === 'denied' ? 'MIDI access was blocked.' : undefined}
                 />
                 <Choice
                   icon={<Mic size={26} />}

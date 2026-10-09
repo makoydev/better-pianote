@@ -117,7 +117,7 @@ export function Home() {
             </span>
             <div className="min-w-0 flex-1">
               <div className="text-lg font-extrabold">Plug in your keyboard</div>
-              <div className="text-ink-soft">Connect your CT-S1 with a USB cable and the app hears every note you play, so lessons and games react to your real keys.</div>
+              <div className="text-ink-soft">Connect your CT-S1’s micro-USB “USB TO HOST” port to your computer and the app hears every note you play, so lessons and games react to your real keys.</div>
             </div>
             <Button variant="secondary" icon={Usb} onClick={() => setConnectOpen(true)}>
               How to connect

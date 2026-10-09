@@ -35,8 +35,9 @@ export function ConnectSheet({ open, onClose }: { open: boolean; onClose: () => 
           </div>
           <ol className="mb-4 space-y-2 pl-1 text-[0.98rem]">
             <li>
-              <b className="text-ink">1.</b> Plug a USB cable from the keyboard's <b className="text-ink">USB port</b> on the back panel into your computer
-              (use the port meant for a computer, not one for a flash drive or adapter).
+              <b className="text-ink">1.</b> Plug a USB cable into the keyboard's <b className="text-ink">USB TO HOST</b> port and your computer. On the CT-S1
+              that's the small <b className="text-ink">micro-USB</b> port on the back. The bigger USB-A port (USB TO DEVICE) is for Casio's Bluetooth adapter
+              and won't talk to a computer.
             </li>
             <li>
               <b className="text-ink">2.</b> Turn the keyboard on. Use <b className="text-ink">Chrome or Edge</b> (Safari and iPhone/iPad browsers can't read MIDI yet).
@@ -45,6 +46,7 @@ export function ConnectSheet({ open, onClose }: { open: boolean; onClose: () => 
               <b className="text-ink">3.</b> Press Connect and allow MIDI access.
             </li>
           </ol>
+          {midi === 'ready' && !connected && <Troubleshoot />}
           {connected ? (
             <div className="flex items-center gap-2 rounded-xl bg-good/12 px-4 py-3 font-extrabold text-good">
               <CheckCircle2 size={22} /> Connected: {devices.join(', ')}. Play a note!
@@ -138,6 +140,29 @@ export function ConnectSheet({ open, onClose }: { open: boolean; onClose: () => 
         </section>
       </div>
     </Modal>
+  )
+}
+
+/** Shown when MIDI is allowed but no keyboard appears. */
+function Troubleshoot() {
+  return (
+    <div className="mb-4 rounded-xl border border-gold/30 bg-gold/8 p-4 text-[0.95rem]">
+      <div className="mb-1.5 font-extrabold text-gold">No keyboard found yet. Check these:</div>
+      <ul className="list-disc space-y-1 pl-5">
+        <li>
+          The cable is in the small <b className="text-ink">micro-USB “USB TO HOST”</b> port, not the bigger USB-A port.
+        </li>
+        <li>
+          The cable carries <b className="text-ink">data</b>. Many micro-USB cables only charge: if nothing changes, try another cable.
+        </li>
+        <li>The keyboard is switched on, and any USB-C adapter is pushed in firmly.</li>
+        <li>
+          On a Mac, open <b className="text-ink">Audio MIDI Setup</b> → Window → Show MIDI Studio. If “CASIO USB-MIDI” isn’t there, the Mac
+          can’t see the keyboard yet (cable or port).
+        </li>
+      </ul>
+      <div className="mt-2 text-sm">It connects by itself as soon as the keyboard shows up. No need to reload.</div>
+    </div>
   )
 }
 

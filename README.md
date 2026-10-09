@@ -35,9 +35,14 @@ Other scripts: `npm test` (Vitest), `npm run build` (type-check + production bui
 
 ## Connect your keyboard
 
-1. Plug a USB cable from the keyboard's USB port (back panel) into your computer and switch the keyboard on.
+1. Plug a USB cable into the keyboard's **USB TO HOST** port and your computer, and switch the keyboard on.
+   On the CT-S1 that's the small **micro-USB** port; the bigger USB-A port (USB TO DEVICE) is for Casio's
+   Bluetooth adapter and won't work with a computer. Use a cable that carries data (many micro-USB cables only charge).
 2. Open the app in **Chrome or Edge** (Safari and iPhone/iPad browsers don't support Web MIDI yet).
 3. Press **Connect keyboard** (top right) and allow MIDI access. It reconnects automatically next time.
+
+If it says no keyboard was found: on a Mac, open Audio MIDI Setup → Window → Show MIDI Studio. If "CASIO USB-MIDI"
+isn't listed there, the Mac can't see the keyboard yet, so check the port and try another cable.
 
 No cable? Use **Listen with the microphone** (works on iPad; one note at a time) or play with the on-screen
 keys / your computer keyboard (`A S D F G H J K` = white keys, `W E T Y U` = black keys, `Z`/`X` = octave).
