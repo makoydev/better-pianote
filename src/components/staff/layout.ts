@@ -14,6 +14,8 @@ export interface StaffNoteSpec {
   finger?: number
   label?: string
   state?: NoteState
+  /** Identifies the note so its highlight can change without laying the music out again. */
+  id?: number
 }
 
 export interface StaffEvent {
@@ -102,6 +104,8 @@ export interface LaidNote {
 export interface LaidEvent {
   key: string | number
   index: number
+  /** When it starts, in beats (set by the score layout). */
+  start?: number
   x: number
   headX: number
   headW: number
@@ -127,8 +131,9 @@ export interface Layout {
   header: Glyph[]
   bars: Line[]
   events: LaidEvent[]
-  beams: { key: string; points: string }[]
-  ties: { key: string; d: string }[]
+  /** x0/x1 (when set) let a renderer skip shapes that are off screen. */
+  beams: { key: string; points: string; x0?: number; x1?: number }[]
+  ties: { key: string; d: string; x0?: number; x1?: number }[]
   contentStart: number
   slots: number
   rhythm: boolean

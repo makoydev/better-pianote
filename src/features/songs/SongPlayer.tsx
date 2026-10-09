@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
-import { Staff } from '../../components/staff/Staff'
-import type { Layout, NoteState } from '../../components/staff/layout'
+import { ScoreStaff } from '../../components/staff/ScoreStaff'
+import type { LaidEvent, NoteState, StaffNoteSpec } from '../../components/staff/layout'
+import { type ScoreLayout, colX } from '../../components/staff/score'
 import { Button, IconButton } from '../../components/ui/Button'
 import { Segmented, Slider, Toggle } from '../../components/ui/controls'
 import { type Song, findSong } from '../../content/songs'
@@ -21,11 +22,11 @@ import { go } from '../../router'
 import { useLive } from '../../state/live'
 import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
-import { BassStaff } from './BassStaff'
 import { type SongResult, SongResults } from './SongResults'
-import { type ChordChange, type TimedNote, buildSteps, buildTimeline, keyboardRange, songStaffItems, withStates } from './timeline'
+import { type ChordChange, type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, songScoreInput } from './timeline'
 
 const TICK = 0.25 // listen-mode scheduling grid: one sixteenth note
+const EPS = 1e-6
 
 export function SongPlayer({ songId }: { songId: string }) {
   const song = useMemo(() => findSong(songId), [songId])
@@ -57,8 +58,6 @@ function useViewportHeight() {
 
 function Player({ song }: { song: Song }) {
   const tl = useMemo(() => buildTimeline(song), [song])
-  const lhNotes = useMemo(() => tl.notes.filter((n) => n.hand === 'lh'), [tl])
-  const base = useMemo(() => songStaffItems(song), [song])
   const firstFullBar = song.pickup ? 1 : 0
 
   const [mode, setMode] = useState<'wait' | 'listen'>('wait')
@@ -80,7 +79,8 @@ function Player({ song }: { song: Song }) {
   const [combo, setCombo] = useState(0)
   const [loops, setLoops] = useState(0)
   const [flash, setFlash] = useState<Record<number, 'good' | 'bad'>>({})
-  const [wrongEvent, setWrongEvent] = useState<number | null>(null)
+  /** The moment of the step where you just played a wrong note (it shakes red). */
+  const [wrongAt, setWrongAt] = useState<number | null>(null)
   const [result, setResult] = useState<SongResult | null>(null)
   const [finished, setFinished] = useState(false)
   const startedAt = useRef<number | null>(null)
@@ -100,8 +100,8 @@ function Player({ song }: { song: Song }) {
 
   // Listen mode
   const [playing, setPlaying] = useState(false)
-  const [listenEvent, setListenEvent] = useState(0)
-  const [listenBeat, setListenBeat] = useState(-1)
+  /** Where the listen-mode playhead is, in beats. */
+  const [listenAt, setListenAt] = useState(0)
   const [sounding, setSounding] = useState<Record<number, 'rh' | 'lh'>>({})
   const clockRef = useRef<Clock | null>(null)
   const bpmRef = useRef(bpm)
@@ -110,7 +110,6 @@ function Player({ song }: { song: Song }) {
   }, [bpm])
 
   const mic = useLive((s) => s.mic)
-  const colorNotes = useSettings((s) => s.colorNotes)
   const staffLabels = useSettings((s) => s.staffLabels)
   const uiSounds = useSettings((s) => s.uiSounds)
   const setSettings = useSettings((s) => s.set)
@@ -119,11 +118,11 @@ function Player({ song }: { song: Song }) {
   const vh = useViewportHeight()
   const [viewRef, view] = useElementSize<HTMLDivElement>()
   const paperRef = useRef<HTMLDivElement>(null)
-  const [layout, setLayout] = useState<Layout | null>(null)
-  const onLayout = useCallback((l: Layout) => setLayout(l), [])
+  const [layout, setLayout] = useState<ScoreLayout | null>(null)
+  const onLayout = useCallback((l: ScoreLayout) => setLayout(l), [])
 
   const step = mode === 'wait' && !finished ? steps[stepIdx] : undefined
-  const cursorEvent = mode === 'wait' ? (steps[stepIdx]?.event ?? tl.rh.length - 1) : listenEvent
+  const cursorTime = mode === 'wait' ? (steps[stepIdx]?.start ?? tl.total) : listenAt
 
   const stopListen = useCallback(() => {
     clockRef.current?.stop()
@@ -138,11 +137,10 @@ function Player({ song }: { song: Song }) {
     run.current = { idx: 0, sat: new Set(), mistakes: 0, combo: 0, best: 0, loops: 0, done: false }
     sync()
     setFlash({})
-    setWrongEvent(null)
+    setWrongAt(null)
     setResult(null)
     setFinished(false)
-    setListenBeat(-1)
-    setListenEvent(loop ? (tl.bars[loopBars[0]]?.firstEvent ?? 0) : 0)
+    setListenAt(loop ? (tl.bars[loopBars[0]]?.start ?? 0) : 0)
     startedAt.current = null
     setStarted(false)
     prevPad.current = null
@@ -236,13 +234,13 @@ function Player({ song }: { song: Song }) {
     r.combo = 0
     sync()
     flashKey(e.midi, 'bad')
-    setWrongEvent(cur.event)
-    window.setTimeout(() => setWrongEvent(null), 420)
+    setWrongAt(cur.start)
+    window.setTimeout(() => setWrongAt(null), 420)
   })
 
   // ---- Listen mode: the app plays it, on the audio clock ----
   const schedule = useMemo(() => {
-    const map = new Map<number, { notes: TimedNote[]; chord?: ChordChange; event?: number }>()
+    const map = new Map<number, { notes: TimedNote[]; chord?: ChordChange; at?: number }>()
     const slot = (t: number) => {
       const k = Math.round(t / TICK)
       let s = map.get(k)
@@ -251,7 +249,7 @@ function Player({ song }: { song: Song }) {
     }
     for (const n of tl.notes) if (!n.cont) slot(n.start).notes.push(n)
     for (const c of tl.chords) slot(c.start).chord = c
-    for (const e of tl.rh) slot(e.start).event = e.index
+    for (const c of tl.cols) slot(c).at = c
     return map
   }, [tl])
 
@@ -276,7 +274,6 @@ function Player({ song }: { song: Song }) {
               clock.stop()
               setPlaying(false)
               setSounding({})
-              setListenBeat(-1)
             })
           return
         }
@@ -297,12 +294,9 @@ function Player({ song }: { song: Song }) {
           )
         }
         if (s.chord && withChords) playNotes(padVoicing(s.chord.chord, !song.lh), { dur: s.chord.dur * spb * 0.95, vel: 0.3, delay })
-        if (s.event !== undefined) {
-          const ev = s.event
-          audio.at(time, () => {
-            setListenEvent(ev)
-            setListenBeat(tl.rh[ev].start)
-          })
+        if (s.at !== undefined) {
+          const at = s.at
+          audio.at(time, () => setListenAt(at))
         }
       },
     })
@@ -329,55 +323,41 @@ function Player({ song }: { song: Song }) {
   })
 
   // ---- Notation ----
-  const items = useMemo(
-    () =>
-      withStates(base.items, base.eventOf, (ev): NoteState | undefined => {
-        if (mode === 'listen') return playing && ev === listenEvent ? 'active' : undefined
-        if (ev === wrongEvent) return 'wrong'
-        if (finished) return 'done'
-        const cur = steps[stepIdx]
-        if (!cur) return undefined
-        if (ev < cur.event) return loop && tl.rh[ev].bar < loopBars[0] ? undefined : 'done'
-        if (ev === cur.event) return cur.notes.some((n) => n.hand === 'rh' && !satisfied.has(n.id)) ? 'active' : 'done'
-        return undefined
-      }),
-    [base, mode, playing, listenEvent, wrongEvent, finished, steps, stepIdx, satisfied, loop, loopBars, tl],
-  )
-
-  const lhState = (n: TimedNote): NoteState => {
-    if (mode === 'listen') return playing && listenBeat >= n.start && listenBeat < n.start + n.dur ? 'active' : 'normal'
+  const scoreInput = useMemo(() => songScoreInput(song, tl, { hands }), [song, tl, hands])
+  const noteById = useMemo(() => new Map(tl.notes.map((n) => [n.id, n])), [tl])
+  const cur = mode === 'wait' && !finished ? steps[stepIdx] : undefined
+  const loopFrom = loop ? (tl.bars[loopBars[0]]?.start ?? 0) : 0
+  const noteState = (spec: StaffNoteSpec): NoteState | undefined => {
+    const n = spec.id === undefined ? undefined : noteById.get(spec.id)
+    if (!n) return undefined
+    if (mode === 'listen') return playing && listenAt >= n.start - EPS && listenAt < n.start + n.dur - EPS ? 'active' : undefined
     if (finished) return 'done'
-    const cur = steps[stepIdx]
-    if (!cur || hands !== 'both') return 'normal'
-    if (cur.notes.some((x) => x.id === n.id)) return satisfied.has(n.id) ? 'done' : 'active'
-    if (n.start < cur.start) return loop && tl.bars[loopBars[0]].start > n.start ? 'normal' : 'done'
-    return 'normal'
+    if (!cur) return undefined
+    if (cur.notes.includes(n)) {
+      if (satisfied.has(n.id)) return 'done'
+      return wrongAt !== null && Math.abs(wrongAt - cur.start) < EPS ? 'wrong' : 'active'
+    }
+    if (n.start < cur.start - EPS) return n.start < loopFrom - EPS ? undefined : 'done'
+    return undefined
   }
-
-  const xAt = useCallback(
-    (beat: number) => {
-      if (!layout) return 0
-      let i = tl.rh.length - 1
-      while (i > 0 && tl.rh[i].start > beat + 1e-6) i--
-      const e = tl.rh[i]
-      const x0 = layout.events[i]?.headX ?? 0
-      const frac = (beat - e.start) / e.dur
-      if (frac < 1e-6) return x0
-      const x1 = layout.events[i + 1]?.headX ?? x0 + (layout.events[i]?.width ?? 0)
-      return x0 + frac * (x1 - x0)
-    },
-    [layout, tl],
-  )
+  const eventState = (e: LaidEvent): NoteState | undefined => {
+    if (mode === 'listen' || e.start === undefined) return undefined
+    if (finished) return 'done'
+    if (!cur) return undefined
+    if (e.start < cur.start - EPS) return e.start < loopFrom - EPS ? undefined : 'done'
+    return undefined
+  }
 
   const showBass = hands === 'both' && !!song.lh
   const sp = Math.round(Math.max(12, Math.min(22, vh / 46)) * (showBass ? 0.8 : 1))
+  const cursorX = layout ? colX(layout, cursorTime) : 0
   const scrollX = useMemo(() => {
     if (!layout || !view.width) return 0
-    const e = layout.events[cursorEvent]
-    if (!e) return 0
     const max = Math.max(0, layout.width + 32 - view.width)
-    return Math.max(0, Math.min(max, e.headX - view.width * 0.33))
-  }, [layout, view.width, cursorEvent])
+    return Math.max(0, Math.min(max, cursorX - view.width * 0.33))
+  }, [layout, view.width, cursorX])
+  // Long pieces only draw what's on screen (plus a screen either side while it scrolls).
+  const clip: [number, number] | undefined = view.width ? [scrollX - view.width, scrollX + 2 * view.width] : undefined
 
   // ---- Keyboard ----
   const range = useMemo(
@@ -399,8 +379,8 @@ function Player({ song }: { song: Song }) {
 
   const barLabel = (i: number) => (song.pickup ? (i === 0 ? 'Pickup' : `${i}`) : `${i + 1}`)
   const fullBars = song.rh.length - firstFullBar
-  const curBar = mode === 'wait' ? (steps[stepIdx]?.bar ?? song.rh.length - 1) : tl.rh[listenEvent]?.bar ?? 0
-  const progress = mode === 'wait' ? (finished ? 1 : stepIdx / Math.max(1, steps.length)) : (listenEvent + 1) / tl.rh.length
+  const curBar = mode === 'wait' ? (steps[stepIdx]?.bar ?? song.rh.length - 1) : barAt(tl, listenAt)
+  const progress = mode === 'wait' ? (finished ? 1 : stepIdx / Math.max(1, steps.length)) : tl.total ? Math.min(1, listenAt / tl.total) : 0
 
   const changeMode = (m: 'wait' | 'listen') => {
     reset()
@@ -505,22 +485,17 @@ function Player({ song }: { song: Song }) {
               animate={{ x: -scrollX }}
               transition={{ type: 'spring', stiffness: 110, damping: 22, mass: 0.9 }}
             >
-              <Staff
-                items={items}
-                keySig={song.keySig}
-                time={song.time}
-                natural
+              <ScoreStaff
+                input={scoreInput}
                 sp={sp}
-                spacing="proportional"
-                cursor={cursorEvent}
-                animate={false}
+                cursorTime={cursorTime}
+                noteState={noteState}
+                eventState={eventState}
+                clip={clip}
                 onLayout={onLayout}
                 reserveBelow={showBass ? 1.2 : 2.5}
-                title={`${song.title}, right hand`}
+                title={showBass ? song.title : `${song.title}, right hand`}
               />
-              {showBass && layout && (
-                <BassStaff layout={layout} notes={lhNotes} keySig={song.keySig} xAt={xAt} stateOf={lhState} colorNotes={colorNotes} labels={staffLabels} />
-              )}
             </motion.div>
             <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-linear-to-r from-paper to-transparent" />
             <div className="pointer-events-none absolute inset-y-0 right-0 w-20 bg-linear-to-l from-paper to-transparent" />

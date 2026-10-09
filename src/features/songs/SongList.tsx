@@ -2,13 +2,13 @@ import { ChevronRight, Hand, Music } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useMemo, useState } from 'react'
 import { Page } from '../../components/layout/Page'
-import { Staff } from '../../components/staff/Staff'
+import { ScoreStaff } from '../../components/staff/ScoreStaff'
 import { Segmented } from '../../components/ui/controls'
 import { Stars } from '../../components/ui/progress'
 import { DIFFICULTY_LABEL, SONGS, type Song, starsForScore } from '../../content/songs'
 import { go } from '../../router'
 import { useProgress } from '../../state/progress'
-import { songStaffItems } from './timeline'
+import { buildTimeline, songScoreInput } from './timeline'
 
 const LEVEL_COLOR: Record<Song['difficulty'], [string, string]> = {
   1: ['#3ee6c8', '#5cc8ff'],
@@ -57,8 +57,12 @@ function SongCard({ song, best, index }: { song: Song; best: number; index: numb
   const [c1, c2] = LEVEL_COLOR[song.difficulty]
   // The first couple of bars as a preview, without fingers or note names.
   const preview = useMemo(() => {
-    const last = Math.min(song.rh.length - 1, (song.pickup ? 1 : 0) + 1)
-    return songStaffItems(song, { fingers: false, bars: [0, last] }).items
+    // Up to two bars (after any pickup), fewer if they're busy, so the notes stay readable on the card.
+    const first = song.pickup ? 1 : 0
+    let last = first
+    let count = song.rh[0].length + (first ? song.rh[1]?.length ?? 0 : 0)
+    while (last + 1 < song.rh.length && last < first + 1 && count + song.rh[last + 1].length <= 12) count += song.rh[++last].length
+    return songScoreInput(song, buildTimeline(song), { hands: 'rh', bars: [0, last], fingers: false })
   }, [song])
   return (
     <motion.button
@@ -92,7 +96,7 @@ function SongCard({ song, best, index }: { song: Song; best: number; index: numb
         <Stars value={starsForScore(best)} size={20} />
       </div>
       <div className="paper pointer-events-none relative mt-4 rounded-2xl px-3 py-1">
-        <Staff items={preview} keySig={song.keySig} time={song.time} spacing="proportional" labels={false} fingers={false} sp={11} minSp={6} animate={false} reserveAbove={1.5} reserveBelow={1.5} title={`Opening of ${song.title}`} />
+        <ScoreStaff input={preview} fit sp={11} minSp={6} labels={false} fingers={false} reserveAbove={1.5} reserveBelow={1.5} title={`Opening of ${song.title}`} />
       </div>
       <div className="relative mt-4 flex flex-wrap items-center gap-2 text-sm font-bold">
         <span className="rounded-xl bg-white/6 px-2.5 py-1 text-ink-soft">{song.keyName}</span>
