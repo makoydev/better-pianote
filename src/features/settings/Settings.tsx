@@ -5,6 +5,7 @@ import { Page } from '../../components/layout/Page'
 import { Button } from '../../components/ui/Button'
 import { Segmented, Slider, Toggle } from '../../components/ui/controls'
 import { audio } from '../../lib/audio/engine'
+import { libraryBackup, restoreLibrary } from '../../state/library'
 import { useProgress } from '../../state/progress'
 import { type KeyLabels, type Naming, type UiScale, useSettings } from '../../state/settings'
 
@@ -22,7 +23,8 @@ export function Settings() {
     void _set
     const p = useProgress.getState()
     const progress = Object.fromEntries(Object.entries(p).filter(([, v]) => typeof v !== 'function'))
-    const blob = new Blob([JSON.stringify({ app: 'tonic', version: 1, exportedAt: new Date().toISOString(), settings, progress }, null, 2)], {
+    const library = libraryBackup()
+    const blob = new Blob([JSON.stringify({ app: 'tonic', version: 2, exportedAt: new Date().toISOString(), settings, progress, library })], {
       type: 'application/json',
     })
     const a = document.createElement('a')
@@ -38,7 +40,14 @@ export function Settings() {
       if (data?.app !== 'tonic' || !data.progress) throw new Error('not a Tonic file')
       useProgress.setState(data.progress)
       if (data.settings) useSettings.setState(data.settings)
-      setImportMsg('Progress imported. Welcome back!')
+      let songs = 0
+      try {
+        songs = data.library ? await restoreLibrary(data.library) : 0
+      } catch {
+        setImportMsg('Progress imported, but this browser wouldn’t store the songs (private browsing?).')
+        return
+      }
+      setImportMsg(songs ? `Progress and ${songs} song${songs === 1 ? '' : 's'} imported. Welcome back!` : 'Progress imported. Welcome back!')
     } catch {
       setImportMsg('That file doesn’t look like a Tonic progress file.')
     }
@@ -148,7 +157,7 @@ export function Settings() {
               ]}
             />
           </Row>
-          <Row label="Move your progress" hint="Progress lives in this browser. Export it to carry it to another computer.">
+          <Row label="Move your progress" hint="Your progress and imported songs live in this browser. Export them to move to another device.">
             <div className="flex gap-2">
               <Button size="sm" variant="secondary" icon={Download} onClick={exportData}>
                 Export

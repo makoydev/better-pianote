@@ -8,12 +8,14 @@ import { audio } from './lib/audio/engine'
 import { installComputerKeys } from './lib/input/keys'
 import { autoStartMic } from './lib/input/mic'
 import { autoConnectMidi } from './lib/input/midi'
+import { loadLibrary } from './state/library'
 
 if (STATIC) MotionGlobalConfig.skipAnimations = true
 
 installComputerKeys()
 void autoConnectMidi()
 void autoStartMic()
+void loadLibrary()
 
 // Browsers only allow sound after a tap or key press. On touch screens (iPad) that "activation" only
 // happens when the finger lifts, so listen for every kind of tap and keep trying until audio runs.

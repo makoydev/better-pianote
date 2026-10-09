@@ -94,6 +94,7 @@ export function ScoreStaff({
           noteState={noteState}
           eventState={eventState}
           clip={clip}
+          maxWidth={fit && cw ? cw : undefined}
         />
       )}
     </div>

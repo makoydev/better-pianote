@@ -1,14 +1,19 @@
-import { ChevronRight, Hand, Music } from 'lucide-react'
-import { motion } from 'motion/react'
-import { useMemo, useState } from 'react'
+import { ChevronRight, FileMusic, Hand, Music, Trash2, Upload } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Page } from '../../components/layout/Page'
 import { ScoreStaff } from '../../components/staff/ScoreStaff'
+import { Button, IconButton } from '../../components/ui/Button'
 import { Segmented } from '../../components/ui/controls'
+import { Modal } from '../../components/ui/Modal'
 import { Stars } from '../../components/ui/progress'
 import { DIFFICULTY_LABEL, SONGS, type Song, starsForScore } from '../../content/songs'
 import { go } from '../../router'
+import { removeEntry, useLibrary } from '../../state/library'
 import { useProgress } from '../../state/progress'
-import { buildTimeline, songScoreInput } from './timeline'
+import { HowToGetFiles, ImportSheet } from './ImportSheet'
+import { startImport } from './importSession'
+import { buildTimeline, previewBars, songScoreInput } from './timeline'
 
 const LEVEL_COLOR: Record<Song['difficulty'], [string, string]> = {
   1: ['#3ee6c8', '#5cc8ff'],
@@ -16,17 +21,82 @@ const LEVEL_COLOR: Record<Song['difficulty'], [string, string]> = {
   3: ['#ff7b6b', '#ff8fc8'],
 }
 
-type Filter = 'all' | 1 | 2 | 3
+type Filter = 'all' | 1 | 2 | 3 | 'mine'
 
 export function SongList() {
   const games = useProgress((s) => s.games)
   const [filter, setFilter] = useState<Filter>('all')
-  const list = SONGS.filter((s) => filter === 'all' || s.difficulty === filter)
+  const entries = useLibrary((s) => s.entries)
+  const libraryError = useLibrary((s) => s.error)
+  const [removing, setRemoving] = useState<Song | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const pickFile = () => fileInput.current?.click()
+
+  const matches = (s: Song) => filter === 'all' || filter === 'mine' || s.difficulty === filter
+  const mine = entries.map((e) => e.song).filter(matches)
+  const builtIn = filter === 'mine' ? [] : SONGS.filter(matches)
+  const best = (s: Song) => games[`song-${s.id}`]?.best ?? 0
+
+  // Drop a file anywhere on the page to import it.
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files')
+    let depth = 0
+    const enter = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      depth++
+      setDragging(true)
+    }
+    const over = (e: DragEvent) => {
+      if (hasFiles(e)) e.preventDefault()
+    }
+    const leave = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      depth = Math.max(0, depth - 1)
+      if (!depth) setDragging(false)
+    }
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      depth = 0
+      setDragging(false)
+      const f = e.dataTransfer?.files[0]
+      if (f) void startImport(f)
+    }
+    window.addEventListener('dragenter', enter)
+    window.addEventListener('dragover', over)
+    window.addEventListener('dragleave', leave)
+    window.addEventListener('drop', drop)
+    return () => {
+      window.removeEventListener('dragenter', enter)
+      window.removeEventListener('dragover', over)
+      window.removeEventListener('dragleave', leave)
+      window.removeEventListener('drop', drop)
+    }
+  }, [])
+
   return (
     <Page
       title="Songs"
       subtitle="Real pieces with the music scrolling past. Practice mode waits for each note; Listen mode plays it for you."
       actions={
+        <Button size="md" icon={Upload} onClick={pickFile}>
+          Import song
+        </Button>
+      }
+    >
+      <input
+        ref={fileInput}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) void startImport(f)
+          e.target.value = ''
+        }}
+      />
+      <div className="-mx-1 mb-6 overflow-x-auto px-1 pb-1">
         <Segmented<Filter>
           size="sm"
           value={filter}
@@ -36,35 +106,128 @@ export function SongList() {
             { value: 1, label: 'Beginner' },
             { value: 2, label: 'Intermediate' },
             { value: 3, label: 'Advanced' },
+            { value: 'mine', label: 'My songs' },
           ]}
         />
-      }
-    >
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {list.map((song, i) => (
-          <SongCard key={song.id} song={song} best={games[`song-${song.id}`]?.best ?? 0} index={i} />
-        ))}
       </div>
+      {libraryError && <p className="mb-5 rounded-2xl bg-coral/10 px-4 py-3 text-sm font-bold text-coral">{libraryError}</p>}
+
+      {(mine.length > 0 || filter === 'mine') && (
+        <Section title="My songs" hint="Imported from your own files. They stay on this device.">
+          {mine.length ? (
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {mine.map((song, i) => (
+                <SongCard key={song.id} song={song} best={best(song)} index={i} onRemove={() => setRemoving(song)} />
+              ))}
+            </div>
+          ) : (
+            <EmptyMine onImport={pickFile} filtered={entries.length > 0} />
+          )}
+        </Section>
+      )}
+
+      {builtIn.length > 0 && (
+        <Section title={entries.length ? 'Song library' : undefined}>
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {builtIn.map((song, i) => (
+              <SongCard key={song.id} song={song} best={best(song)} index={i} />
+            ))}
+          </div>
+        </Section>
+      )}
+
       <p className="mt-10 max-w-3xl text-sm leading-relaxed text-ink-mute">
-        Every piece here is in the public domain. Want to play songs like <i>River Flows in You</i>? Those are still under copyright,
-        but you can learn the chords and progressions behind them in the Learn tab, then play them by ear in Free Play.
+        The built-in pieces are all in the public domain. Have sheet music for something else? Import its MusicXML file with{' '}
+        <b className="text-ink-soft">Import song</b> (or drop the file on this page). It stays on this device.
       </p>
+
+      <ImportSheet onPickAnother={pickFile} />
+      <RemoveSong song={removing} onClose={() => setRemoving(null)} />
+      <AnimatePresence>
+        {dragging && (
+          <motion.div
+            className="pointer-events-none fixed inset-0 z-60 flex items-center justify-center bg-night-950/75 p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="flex flex-col items-center gap-3 rounded-[2rem] border-4 border-dashed border-gold/70 px-12 py-10 text-center">
+              <FileMusic size={48} className="text-gold" />
+              <p className="font-display text-3xl font-bold">Drop to import</p>
+              <p className="text-ink-soft">MusicXML (.mxl, .musicxml or .xml)</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </Page>
   )
 }
 
-function SongCard({ song, best, index }: { song: Song; best: number; index: number }) {
+function Section({ title, hint, children }: { title?: string; hint?: string; children: ReactNode }) {
+  return (
+    <section className="mb-10">
+      {title && (
+        <div className="mb-4">
+          <h2 className="font-display text-2xl font-bold">{title}</h2>
+          {hint && <p className="text-sm text-ink-mute">{hint}</p>}
+        </div>
+      )}
+      {children}
+    </section>
+  )
+}
+
+function EmptyMine({ onImport, filtered }: { onImport: () => void; filtered: boolean }) {
+  return (
+    <div className="glass max-w-2xl space-y-4 rounded-3xl p-6">
+      <p className="text-lg text-ink-soft">
+        {filtered ? 'None of your songs are at this level.' : 'Bring in any piece you have as a MusicXML file, and practise it here with both hands.'}
+      </p>
+      {!filtered && <HowToGetFiles />}
+      <Button icon={Upload} onClick={onImport}>
+        Import song
+      </Button>
+    </div>
+  )
+}
+
+function RemoveSong({ song, onClose }: { song: Song | null; onClose: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const remove = async () => {
+    if (!song) return
+    setBusy(true)
+    try {
+      await removeEntry(song.id)
+    } finally {
+      setBusy(false)
+      onClose()
+    }
+  }
+  return (
+    <Modal open={!!song} onClose={onClose} title="Remove this song?">
+      <p className="text-lg text-ink-soft">
+        <b className="text-ink">{song?.title}</b> will be removed from this device. You can import the file again any time.
+      </p>
+      <div className="mt-6 flex flex-wrap gap-3">
+        <Button variant="danger" icon={Trash2} onClick={() => void remove()} disabled={busy}>
+          Remove
+        </Button>
+        <Button variant="secondary" onClick={onClose}>
+          Keep it
+        </Button>
+      </div>
+    </Modal>
+  )
+}
+
+function SongCard({ song, best, index, onRemove }: { song: Song; best: number; index: number; onRemove?: () => void }) {
   const [c1, c2] = LEVEL_COLOR[song.difficulty]
   // The first couple of bars as a preview, without fingers or note names.
   const preview = useMemo(() => {
-    // Up to two bars (after any pickup), fewer if they're busy, so the notes stay readable on the card.
-    const first = song.pickup ? 1 : 0
-    let last = first
-    let count = song.rh[0].length + (first ? song.rh[1]?.length ?? 0 : 0)
-    while (last + 1 < song.rh.length && last < first + 1 && count + song.rh[last + 1].length <= 12) count += song.rh[++last].length
-    return songScoreInput(song, buildTimeline(song), { hands: 'rh', bars: [0, last], fingers: false })
+    const tl = buildTimeline(song)
+    return songScoreInput(song, tl, { hands: 'rh', bars: previewBars(tl, 'rh', !!song.pickup), fingers: false })
   }, [song])
-  return (
+  const card = (
     <motion.button
       type="button"
       onClick={() => go(`/songs/${song.id}`)}
@@ -73,7 +236,7 @@ function SongCard({ song, best, index }: { song: Song; best: number; index: numb
       transition={{ delay: index * 0.05, type: 'spring', stiffness: 260, damping: 26 }}
       whileHover={{ y: -4 }}
       whileTap={{ scale: 0.98 }}
-      className="glass group relative flex flex-col overflow-hidden rounded-3xl p-5 text-left transition-colors hover:border-white/15"
+      className="glass group relative flex h-full w-full flex-col overflow-hidden rounded-3xl p-5 text-left transition-colors hover:border-white/15"
     >
       <span
         aria-hidden
@@ -90,10 +253,12 @@ function SongCard({ song, best, index }: { song: Song; best: number; index: numb
           </span>
           <h3 className="mt-2.5 font-display text-2xl font-bold leading-tight">{song.title}</h3>
           <p className="mt-0.5 text-sm font-semibold text-ink-mute">
-            {song.composer} · {song.year}
+            {song.composer} · {song.imported ? 'My song' : song.year}
           </p>
         </div>
-        <Stars value={starsForScore(best)} size={20} />
+        <span className={onRemove ? 'mr-12' : ''}>
+          <Stars value={starsForScore(best)} size={20} />
+        </span>
       </div>
       <div className="paper pointer-events-none relative mt-4 rounded-2xl px-3 py-1">
         <ScoreStaff input={preview} fit sp={11} minSp={6} labels={false} fingers={false} reserveAbove={1.5} reserveBelow={1.5} title={`Opening of ${song.title}`} />
@@ -112,7 +277,14 @@ function SongCard({ song, best, index }: { song: Song; best: number; index: numb
           {best > 0 ? `Best ${best}%` : 'Play'} <ChevronRight size={18} strokeWidth={2.6} />
         </span>
       </div>
-      <p className="relative mt-3 line-clamp-2 text-sm leading-relaxed text-ink-mute">{song.about}</p>
+      <p className="relative mt-3 line-clamp-2 text-sm leading-relaxed text-ink-mute [overflow-wrap:anywhere]">{song.about}</p>
     </motion.button>
+  )
+  if (!onRemove) return card
+  return (
+    <div className="relative">
+      {card}
+      <IconButton icon={Trash2} label={`Remove ${song.title}`} size={40} onClick={onRemove} className="absolute right-4 top-4" />
+    </div>
   )
 }

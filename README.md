@@ -24,7 +24,10 @@ with Settings → Export / Import.
 - **Practice**: Note Rush (sight-reading sprint), Chord Trainer, Rhythm Tap, Ear Training, Key Signature Quiz.
 - **Explore**: Chord Explorer, Scale Explorer (with fingerings), Circle of Fifths, Progression Jam (a backing band
   for progressions like vi–IV–I–V), Metronome.
-- **Songs**: public-domain pieces with a play-along "wait mode" and a listen mode.
+- **Songs**: 17 public-domain pieces from easiest to hardest, with a play-along "wait mode" and a listen mode.
+- **Import song**: bring in any piece as a MusicXML file (`.mxl`, `.musicxml` or `.xml`, e.g. from MuseScore's
+  File → Export → MusicXML) and practise it with both hands. Imported songs are stored in the browser (IndexedDB),
+  never uploaded, and travel with the Settings export.
 - XP, levels, daily goal, streaks, stars. Progress is saved in the browser (export/import in Settings).
 
 ## Run it
@@ -80,4 +83,4 @@ React 19 + TypeScript + Vite, Tailwind CSS 4, Motion for animation, Zustand for 
 - Music font: [Bravura](https://github.com/steinbergmedia/bravura) by Steinberg Media Technologies,
   SIL Open Font License 1.1 (see `src/assets/fonts/BRAVURA-OFL.txt`).
 - Fonts: Fraunces and Nunito (SIL OFL), via Fontsource.
-- Song melodies are in the public domain.
+- Built-in song melodies are in the public domain. Imported songs are your own files and stay on your device.

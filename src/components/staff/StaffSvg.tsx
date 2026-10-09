@@ -23,15 +23,18 @@ export interface StaffSvgProps {
   eventState?: (e: LaidEvent) => NoteState | undefined
   /** Only draw what lies within this x range. */
   clip?: [number, number]
+  /** Shrink the whole drawing to at most this width (like a picture) when it's wider. */
+  maxWidth?: number
 }
 
 /** Draws a laid-out staff (from layoutStaff or layoutScore) as SVG. */
-export function StaffSvg({ layout, ink = '#1f1b33', colored, animate = true, cursor, cursorX, title, noteState, eventState, clip }: StaffSvgProps) {
+export function StaffSvg({ layout, ink = '#1f1b33', colored, animate = true, cursor, cursorX, title, noteState, eventState, clip, maxWidth }: StaffSvgProps) {
   const headColor = (state: NoteState, letter: number, override?: string) =>
     STATE_COLOR[state] ?? override ?? (colored ? letterColor(letter, true) : ink)
   const inView = (x0: number, x1: number) => !clip || (x1 >= clip[0] && x0 <= clip[1])
   const events = clip ? layout.events.filter((e) => inView(e.x - 3 * layout.sp, e.x + e.width + 3 * layout.sp)) : layout.events
   const extras = 'extras' in layout ? layout.extras : null
+  const scale = maxWidth && layout.width > maxWidth ? maxWidth / layout.width : 1
   const cursorAt =
     cursorX !== undefined
       ? { x: cursorX, w: WIDTH.black * layout.sp }
@@ -114,8 +117,8 @@ export function StaffSvg({ layout, ink = '#1f1b33', colored, animate = true, cur
 
   return (
     <svg
-      width={layout.width}
-      height={layout.height}
+      width={scale < 1 ? maxWidth : layout.width}
+      height={layout.height * scale}
       viewBox={`0 0 ${layout.width} ${layout.height}`}
       role="img"
       aria-label={title ?? 'Music notation'}

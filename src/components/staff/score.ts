@@ -235,8 +235,9 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
     }
     for (const [b, evs] of perBar) {
       if (!evs.every((e) => e.notes.length === 0 && !e.hidden)) continue
+      // Only a complete bar gets the centred whole rest (a pickup shows its real rest).
       const total = evs.reduce((s, e) => s + eventLength(e), 0)
-      if (Math.abs(total - bars[b].dur) > EPS) continue
+      if (Math.abs(total - bars[b].dur) > EPS || Math.abs(bars[b].dur - barLength(bars[b].time)) > EPS) continue
       const mine = byVoice[vi].filter((x) => x.bar === b)
       mine.forEach((x, i) => (i === 0 ? (x.barRest = true) : (x.silent = true)))
     }

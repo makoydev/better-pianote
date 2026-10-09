@@ -261,6 +261,24 @@ export function songScoreInput(
   }
 }
 
+/** Bars for a preview: up to two after any pickup, fewer when they're busy (max moments to show). */
+export function previewBars(tl: Timeline, hands: 'rh' | 'both', pickup: boolean, max = 12): [number, number] {
+  const moments = (bar: number) => {
+    const set = new Set<number>()
+    for (const v of tl.voices) {
+      if (hands === 'rh' && v.hand === 'lh') continue
+      for (const e of v.events) if (e.bar === bar && !e.ev.hidden) set.add(Math.round(e.start * 1e6))
+    }
+    return set.size
+  }
+  const first = Math.min(pickup ? 1 : 0, tl.bars.length - 1)
+  let last = first
+  let count = 0
+  for (let b = 0; b <= last; b++) count += moments(b)
+  while (last + 1 < tl.bars.length && last < first + 1 && count + moments(last + 1) <= max) count += moments(++last)
+  return [0, last]
+}
+
 /** Keyboard range that fits the notes, at least two octaves, starting on a C. */
 export function keyboardRange(midis: number[]) {
   const lo = Math.min(...midis)

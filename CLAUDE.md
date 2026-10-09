@@ -48,12 +48,24 @@ Claude's local memory doesn't travel between machines, so everything needed live
   the forgiving checks for mic input (a chord's perfect 5th may go unheard). `#/dev/mic` is a test page that feeds
   piano chords silently into the mic analysers; tune `POLY_DEFAULTS` against it and `polyphony.test.ts`.
 - `src/components/piano/`: `Piano` (marks, fingers, labels, toggle mode for building chords, sparks, trails).
-- `src/components/staff/`: `layout.ts` (pure engraving layout) + `Staff.tsx` (SVG with Bravura glyphs). Accidentals
-  follow key signature + bar rules automatically. `hidden` events reserve space; `lines={false}` draws notes only.
+- `src/components/staff/`: two engravers that share one SVG renderer (`StaffSvg.tsx`, Bravura glyphs).
+  - `layout.ts` + `Staff.tsx`: one rhythm per staff, for lessons and exercises. Accidentals follow key signature +
+    bar rules automatically. `hidden` events reserve space; `lines={false}` draws notes only.
+  - `score.ts` + `ScoreStaff.tsx`: real music for the song player. Every voice keeps its own rhythm and notes that
+    start together share a column across both staves; handles extra voices per hand (stems up/down), ties,
+    tuplets, 32nds/64ths, whole-bar rests, key/time changes. Highlights are applied when drawing (`noteState` by
+    note id), and `clip` draws only what's on screen. Covered by `score.test.ts`.
 - `src/components/MusicText.tsx`: renders ♯ ♭ with Bravura's chord-symbol glyphs (the text fonts lack them).
   Always use it (or `SvgMusicText`) for note/chord names.
 - `src/content/`: lessons as data (`types.ts` documents the schema and RichText markup). `content.test.ts`
-  validates every lesson (note names, targets reachable on the shown keyboard, quiz answers).
+  validates every lesson (note names, targets reachable on the shown keyboard, quiz answers). Built-in songs are in
+  `content/songs/` (compact text format, listed from easiest to hardest; `songs.test.ts` checks every bar).
+- Song import: `src/lib/musicxml/` turns MusicXML (.musicxml/.xml/.mxl) into the `Song` model (voices, ties,
+  tuplets, repeats written out, chord symbols, key/time changes). `features/songs/importSession.ts` + `ImportSheet`
+  are the UI; `src/state/library.ts` stores imported songs in IndexedDB (`src/lib/idb.ts`) together with the
+  original file, and re-reads them when `IMPORTER_VERSION` goes up. Settings export/import includes them.
+- `features/songs/timeline.ts`: a song in time (all voices, ties merged, practice steps, columns) and
+  `songScoreInput` (what the score engraver needs).
 - `src/features/`: screens. Routes are in `src/App.tsx` (hash router in `src/router.ts`).
 - `src/state/`: Zustand stores. `settings` and `progress` persist to localStorage; `live` is runtime only.
 
@@ -61,7 +73,8 @@ Claude's local memory doesn't travel between machines, so everything needed live
 
 - Accuracy matters more than anything: double-check every note, chord spelling, key and fact in lesson text.
   Only state song facts that are certain (e.g. River Flows in You uses vi–IV–I–V in A major).
-- Only public-domain melodies in Songs. No copyrighted melodies.
+- Only public-domain melodies in the built-in Songs. No copyrighted melodies. (Imported songs are the owner's own
+  files and stay on their device; never add those to the repo.)
 - Big touch targets (≥ 44px, usually 56px+), `MusicText` for accidentals, `Piano`/`Staff` for visuals,
   `audio.ui(...)` feedback sounds only when `settings.uiSounds`.
 - Keep play screens fitting the viewport (keyboard fully visible): measure remaining height with `useElementSize`.

@@ -20,6 +20,7 @@ import { letterColor } from '../../lib/colors'
 import { type Chord, bassFor, noteName, parseNote, voiceLead } from '../../lib/theory'
 import { go } from '../../router'
 import { useLive } from '../../state/live'
+import { useLibrary } from '../../state/library'
 import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import { type SongResult, SongResults } from './SongResults'
@@ -29,7 +30,17 @@ const TICK = 0.25 // listen-mode scheduling grid: one sixteenth note
 const EPS = 1e-6
 
 export function SongPlayer({ songId }: { songId: string }) {
-  const song = useMemo(() => findSong(songId), [songId])
+  const builtIn = useMemo(() => findSong(songId), [songId])
+  const mine = useLibrary((s) => s.entries.find((e) => e.id === songId)?.song ?? null)
+  const libraryReady = useLibrary((s) => s.ready)
+  const song = builtIn ?? mine
+  if (!song && !libraryReady) {
+    return (
+      <div className="min-h-dvh">
+        <TopBar back="/songs" title="Loading…" />
+      </div>
+    )
+  }
   if (!song) {
     return (
       <div className="min-h-dvh">
@@ -61,7 +72,10 @@ function Player({ song }: { song: Song }) {
   const firstFullBar = song.pickup ? 1 : 0
 
   const [mode, setMode] = useState<'wait' | 'listen'>('wait')
-  const [hands, setHands] = useState<'rh' | 'both'>('rh')
+  // Your own imports open with both hands (that's why you imported them); built-in songs start with the melody.
+  const [hands, setHands] = useState<'rh' | 'both'>(() =>
+    song.lh && (song.imported || !tl.notes.some((n) => n.hand === 'rh')) ? 'both' : 'rh',
+  )
   const [loop, setLoop] = useState(false)
   const [loopBars, setLoopBars] = useState<[number, number]>([firstFullBar, Math.min(song.rh.length - 1, firstFullBar + 3)])
   const [backing, setBacking] = useState(true)
@@ -447,10 +461,12 @@ function Player({ song }: { song: Song }) {
               </label>
             </>
           )}
-          <label className="flex items-center gap-2.5 rounded-2xl border border-white/8 bg-night-850 px-3 py-2">
-            <Toggle checked={backing && !(mode === 'wait' && mic === 'on')} onChange={setBacking} label="Backing chords" />
-            <span className="text-sm font-extrabold text-ink-soft">Chords</span>
-          </label>
+          {tl.chords.length > 0 && (
+            <label className="flex items-center gap-2.5 rounded-2xl border border-white/8 bg-night-850 px-3 py-2">
+              <Toggle checked={backing && !(mode === 'wait' && mic === 'on')} onChange={setBacking} label="Backing chords" />
+              <span className="text-sm font-extrabold text-ink-soft">Chords</span>
+            </label>
+          )}
           <div className="flex items-center gap-2.5 rounded-2xl border border-white/8 bg-night-850 px-3 py-2">
             <Toggle checked={loop} onChange={changeLoop} label="Loop some bars" />
             <Repeat size={18} className={loop ? 'text-gold' : 'text-ink-mute'} />
