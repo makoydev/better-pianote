@@ -1,0 +1,196 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/nunito';
+@import '@fontsource-variable/fraunces/full.css';
+
+@font-face {
+  font-family: 'Bravura';
+  src: url('./assets/fonts/Bravura.woff2') format('woff2');
+  font-display: block;
+}
+
+@theme {
+  --font-sans: 'Nunito Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces Variable', ui-serif, Georgia, serif;
+  --font-music: 'Bravura';
+
+  --color-night-950: #070617;
+  --color-night-900: #0d0c24;
+  --color-night-850: #12112e;
+  --color-night-800: #191838;
+  --color-night-750: #201f45;
+  --color-night-700: #282752;
+  --color-night-600: #36356a;
+  --color-night-500: #4b4a8a;
+
+  --color-ink: #f7f3ea;
+  --color-ink-soft: #cdc9e6;
+  --color-ink-mute: #938fbb;
+
+  --color-gold: #ffc857;
+  --color-gold-deep: #f0a43a;
+  --color-coral: #ff7b6b;
+  --color-violet: #9b8cff;
+  --color-teal: #3ee6c8;
+  --color-sky: #5cc8ff;
+  --color-pink: #ff8fc8;
+  --color-good: #3ddc97;
+  --color-bad: #ff5c7a;
+
+  --color-paper: #fbf7ee;
+  --color-paper-2: #f2eadb;
+  --color-paper-ink: #1f1b33;
+
+  --animate-pulse-ring: pulse-ring 1.6s ease-out infinite;
+  --animate-shake: shake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  --animate-float: float 7s ease-in-out infinite;
+  --animate-flicker: flicker 2.4s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.8s linear infinite;
+  --animate-wiggle: wiggle 1.2s ease-in-out infinite;
+
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(0.85);
+      opacity: 0.9;
+    }
+    100% {
+      transform: scale(1.7);
+      opacity: 0;
+    }
+  }
+  @keyframes shake {
+    10%,
+    90% {
+      transform: translateX(-2px);
+    }
+    20%,
+    80% {
+      transform: translateX(4px);
+    }
+    30%,
+    50%,
+    70% {
+      transform: translateX(-7px);
+    }
+    40%,
+    60% {
+      transform: translateX(7px);
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(2%, -3%, 0) scale(1.06);
+    }
+  }
+  @keyframes flicker {
+    0%,
+    100% {
+      transform: scale(1) rotate(-2deg);
+    }
+    50% {
+      transform: scale(1.12) rotate(3deg);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: -200% 0;
+    }
+    to {
+      background-position: 200% 0;
+    }
+  }
+  @keyframes wiggle {
+    0%,
+    100% {
+      transform: rotate(-4deg);
+    }
+    50% {
+      transform: rotate(4deg);
+    }
+  }
+}
+
+@layer base {
+  html {
+    font-size: 100%;
+    background: var(--color-night-900);
+    color: var(--color-ink);
+    color-scheme: dark;
+  }
+  html[data-scale='large'] {
+    font-size: 112.5%;
+  }
+  html[data-scale='xl'] {
+    font-size: 125%;
+  }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+    background: var(--color-night-900);
+  }
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:not(:disabled),
+  [role='button'] {
+    cursor: pointer;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--color-violet) 45%, transparent);
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-gold);
+    outline-offset: 3px;
+  }
+}
+
+@utility font-display {
+  font-family: var(--font-display);
+  font-variation-settings:
+    'SOFT' 100,
+    'WONK' 1;
+}
+
+/* No backdrop blur: it stops the piano keys painting in Chrome and costs battery. */
+@utility glass {
+  background: color-mix(in oklab, var(--color-night-800) 88%, transparent);
+  border: 1px solid rgb(255 255 255 / 0.07);
+}
+
+@utility paper {
+  background: var(--color-paper);
+  color: var(--color-paper-ink);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.6) inset,
+    0 18px 40px -18px rgb(0 0 0 / 0.55);
+}
+
+@utility text-gradient {
+  background: linear-gradient(100deg, var(--color-gold), var(--color-coral) 55%, var(--color-pink));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

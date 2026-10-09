@@ -35,12 +35,18 @@ Other scripts: `npm test` (Vitest), `npm run build` (type-check + production bui
 
 ## Connect your keyboard
 
-1. Plug a USB cable from the keyboard's USB port (back panel) into your computer and switch the keyboard on.
+1. Plug a USB cable into the keyboard's **USB TO HOST** port and your computer, and switch the keyboard on.
+   On the CT-S1 that's the small **micro-USB** port; the bigger USB-A port (USB TO DEVICE) is for Casio's
+   Bluetooth adapter and won't work with a computer. Use a cable that carries data (many micro-USB cables only charge).
 2. Open the app in **Chrome or Edge** (Safari and iPhone/iPad browsers don't support Web MIDI yet).
 3. Press **Connect keyboard** (top right) and allow MIDI access. It reconnects automatically next time.
 
-No cable? Use **Listen with the microphone** (works on iPad; one note at a time) or play with the on-screen
-keys / your computer keyboard (`A S D F G H J K` = white keys, `W E T Y U` = black keys, `Z`/`X` = octave).
+If it says no keyboard was found: on a Mac, open Audio MIDI Setup → Window → Show MIDI Studio. If "CASIO USB-MIDI"
+isn't listed there, the Mac can't see the keyboard yet, so check the port and try another cable.
+
+No cable? Use **Start listening** to play through the microphone: it hears your keyboard's speakers, single
+notes in games and lessons and whole chords in Free Play and chord exercises (works on iPad too). Or play with the
+on-screen keys / your computer keyboard (`A S D F G H J K` = white keys, `W E T Y U` = black keys, `Z`/`X` = octave).
 
 Handy at the piano: in lessons, **tap the sustain pedal to continue**.
 
@@ -52,7 +58,7 @@ React 19 + TypeScript + Vite, Tailwind CSS 4, Motion for animation, Zustand for 
   keys, roman numerals, voice leading), fully unit-tested.
 - `src/lib/audio`: Web Audio piano sampler with reverb, metronome clicks, look-ahead clock.
 - `src/lib/input`: one note-event bus fed by Web MIDI, on-screen keys, computer keys and the mic
-  (McLeod pitch detection).
+  (McLeod pitch detection for single notes; multi-pitch detection for chords, tuned on real piano recordings).
 - `src/components/staff`: SVG music engraving (clefs, key/time signatures, accidentals, beams, ties, ledger lines)
   using the Bravura SMuFL font.
 - `src/components/piano`: the interactive keyboard, sparks and light trails.
