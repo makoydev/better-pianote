@@ -22,6 +22,22 @@ const SAMPLES: [string, number][] = (() => {
   return out
 })()
 
+type AudioSessionType = 'auto' | 'playback' | 'play-and-record'
+
+/**
+ * Safari (iPad/iPhone) can silence web audio in silent mode. Declaring the page a music player
+ * ("playback") keeps the piano audible; the mic needs "play-and-record" while it's listening.
+ */
+export function setAudioSession(type: AudioSessionType, onlyIfUnset = false) {
+  const nav = navigator as Navigator & { audioSession?: { type: AudioSessionType } }
+  try {
+    if (!nav.audioSession || (onlyIfUnset && nav.audioSession.type !== 'auto')) return
+    nav.audioSession.type = type
+  } catch {
+    // Not supported here; nothing to do.
+  }
+}
+
 const velocityGain = (v: number) => 0.06 + 0.94 * Math.pow(Math.min(1, Math.max(0, v)), 1.6)
 
 export type SampleStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -46,6 +62,8 @@ class AudioEngine {
   /** Create or resume the AudioContext. Call from a user gesture the first time (browsers require it). */
   unlock(): AudioContext {
     if (!this.ctx) {
+      // Don't override the mic's "play-and-record" if it got there first.
+      setAudioSession('playback', true)
       const ctx = new AudioContext({ latencyHint: 'interactive' })
       this.ctx = ctx
       this.build(ctx)

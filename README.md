@@ -7,6 +7,12 @@ keys and progressions**. It listens to your keyboard over USB-MIDI, so lessons a
 Big text and buttons, a dark "stage" theme, rainbow-coloured notes (optional), sparks and light trails when you play,
 and a real sampled grand piano.
 
+**Use it now: https://makoydev.github.io/better-pianote/**
+
+On an iPad, open that link in Safari, then Share → **Add to Home Screen** for a full-screen app. iPad browsers
+can't read MIDI, so play through the **microphone** (or the on-screen keys). Progress is saved per device; move it
+with Settings → Export / Import.
+
 ## What's inside
 
 - **Learn**: a path of 7 units with interactive lessons. Explanations with sound, "play this on your keyboard"
@@ -32,6 +38,9 @@ npm run dev        # http://localhost:5392
 
 Other scripts: `npm test` (Vitest), `npm run build` (type-check + production build into `dist/`),
 `npm run lint` (oxlint), `npm run preview`.
+
+`npm run deploy` builds the app and publishes it to the `gh-pages` branch, which GitHub Pages serves at the link
+above (it updates a minute or two later).
 
 ## Connect your keyboard
 

@@ -23,6 +23,16 @@ Claude's local memory doesn't travel between machines, so everything needed live
    - `#/dev` is a notation gallery, `#/dev/widgets` previews lesson widgets.
 4. Commit per feature with short imperative messages, only after `npm test` and `npx tsc -b` pass.
 
+## Deploying
+
+- `npm run deploy` (`scripts/deploy.sh`) builds and force-pushes `dist/` to the `gh-pages` branch; GitHub Pages
+  serves it at https://makoydev.github.io/better-pianote/ (the owner uses it on an iPad). The repo is public because
+  the free plan only serves Pages from public repos.
+- Git over HTTPS: the macOS keychain holds a different GitHub account, so push with the gh CLI's login:
+  `git -c credential.helper= -c "credential.helper=!gh auth git-credential" push` (the deploy script does this).
+- Don't switch branches while `npm run dev` is running: Vite can restart without its config and serve unstyled
+  pages. If that happens, restart the dev server.
+
 ## Map of the code
 
 - `src/lib/theory/`: notes/spelling, intervals, chords (`detectChord` names held notes incl. inversions),

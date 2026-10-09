@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useLive } from '../../state/live'
 import { useSettings } from '../../state/settings'
-import { audio } from '../audio/engine'
+import { audio, setAudioSession } from '../audio/engine'
 import { noteOff, noteOn } from './bus'
 import { estimatePitches } from './polyphony'
 
@@ -53,11 +53,13 @@ export async function startMic(): Promise<boolean> {
     return false
   }
   useLive.setState({ mic: 'starting' })
+  setAudioSession('play-and-record')
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
     })
   } catch {
+    setAudioSession('playback')
     useLive.setState({ mic: 'denied' })
     return false
   }
@@ -86,6 +88,7 @@ export function stopMic() {
   big = null
   release()
   releaseChord()
+  setAudioSession('playback')
   useLive.setState({ mic: 'off', micLevel: 0 })
   useSettings.getState().set({ micAuto: false })
 }
