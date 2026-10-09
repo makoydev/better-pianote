@@ -6,12 +6,14 @@ import './index.css'
 import { App } from './App'
 import { audio } from './lib/audio/engine'
 import { installComputerKeys } from './lib/input/keys'
+import { autoStartMic } from './lib/input/mic'
 import { autoConnectMidi } from './lib/input/midi'
 
 if (STATIC) MotionGlobalConfig.skipAnimations = true
 
 installComputerKeys()
 void autoConnectMidi()
+void autoStartMic()
 
 // Browsers only allow sound after a tap or key press, so unlock audio on the first one.
 const unlock = () => {

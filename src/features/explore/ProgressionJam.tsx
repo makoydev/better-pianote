@@ -16,6 +16,7 @@ import { spellVoicing } from './chordTools'
 import { hat, kick, snare } from './drums'
 import { PALETTE, PRESETS, type PatternId, drumHits, nashville, patternHits, romanLabel } from './jam'
 import { OctavePicker } from './OctavePicker'
+import { useMicChords } from '../../lib/input/mic'
 
 const TONICS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
 const tonicPc = (name: string) => TONICS.indexOf(name)
@@ -445,6 +446,8 @@ export function ProgressionJam() {
 
 /** Tells you if what you're holding fits the current chord. */
 function PlayAlong({ pcs }: { pcs: number[] }) {
+  // Through the mic, listen for whole chords to check what you play along.
+  useMicChords()
   const held = useLive((s) => s.held)
   const heldPcs = new Set(heldMidis(held).map((m) => mod(m, 12)))
   if (!heldPcs.size || !pcs.length) return null

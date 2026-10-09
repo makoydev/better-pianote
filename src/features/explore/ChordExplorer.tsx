@@ -28,6 +28,7 @@ import { heldMidis, useLive } from '../../state/live'
 import { CHORD_GROUPS, GUITAR_SHAPES, PC_NAMES, chordFormula, lhFingers, lhVoicing, rhFingers, rhVoicing, spellVoicing } from './chordTools'
 import { GuitarDiagram } from './GuitarDiagram'
 import { OctavePicker } from './OctavePicker'
+import { useMicChords } from '../../lib/input/mic'
 
 const INV_LABELS = ['Root', '1st', '2nd', '3rd']
 
@@ -349,6 +350,8 @@ function LiveName({
   onExplore: (d: Choice) => void
   onClear: () => void
 }) {
+  // Through the mic, listen for whole chords while naming what you play.
+  useMicChords()
   const held = useLive((s) => s.held)
   const notes = useMemo(() => [...new Set([...heldMidis(held), ...picked])].sort((a, b) => a - b), [held, picked])
   const det = notes.length >= 2 ? detectChord(notes) : null

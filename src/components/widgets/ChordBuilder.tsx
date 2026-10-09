@@ -25,6 +25,7 @@ import { type Marks, Piano } from '../piano/Piano'
 import { Staff } from '../staff/Staff'
 import { Button } from '../ui/Button'
 import { Segmented } from '../ui/controls'
+import { useMicChords } from '../../lib/input/mic'
 
 /** Choose a root and a chord quality and see/hear the chord, or hold a chord on your keyboard to name it. */
 
@@ -47,6 +48,8 @@ const ALIASES: Record<string, string> = { major: 'maj', minor: 'min', diminished
 const RH_FINGERS: Record<number, number[]> = { 0: [1, 3, 5], 1: [1, 2, 5], 2: [1, 3, 5] }
 
 export function ChordBuilder({ root = 'C', quality = 'maj' }: { root?: string; quality?: string }) {
+  // Through the mic, listen for whole chords.
+  useMicChords()
   const [rootPc, setRootPc] = useState(() => pcOf(safeRoot(root)))
   const [typeId, setTypeId] = useState(() => {
     const id = ALIASES[quality] ?? quality

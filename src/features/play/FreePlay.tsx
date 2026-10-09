@@ -10,7 +10,8 @@ import { Modal } from '../../components/ui/Modal'
 import { useElementSize } from '../../hooks/useElementSize'
 import { playChord } from '../../lib/audio/play'
 import { noteColor } from '../../lib/colors'
-import { recentNotes } from '../../lib/input/bus'
+import { useMicChords } from '../../lib/input/mic'
+import { nameHeardChord } from '../../lib/input/micMatch'
 import {
   ALL_MAJOR_KEYS,
   ALL_MINOR_KEYS,
@@ -54,15 +55,17 @@ export function FreePlay() {
   const nextId = useRef(1)
 
   // With the mic only one note is heard at a time, so chords are notes played close together.
-  const midis = useMemo(() => {
-    const h = heldMidis(held)
-    return mic === 'on' ? [...new Set([...h, ...recentNotes(1400)])].sort((a, b) => a - b) : h
-  }, [held, mic])
+  // The mic hears whole chords here (not just single notes).
+  useMicChords()
+  const midis = useMemo(() => heldMidis(held), [held])
 
   const guessed = useMemo(() => guessKey(history.slice(-8).map((h) => h.chord)), [history])
   const key: Key | null = keyChoice === 'none' ? null : keyChoice === 'auto' ? guessed : parseKey(keyChoice)
   const prefer = key ? (keyFifths(key) < 0 ? 'flat' : keyFifths(key) > 0 ? 'sharp' : undefined) : undefined
-  const det = midis.length >= 2 ? detectChord(midis, prefer) : null
+  // Through the mic a chord's 5th often goes unheard, so a root plus its 3rd is read as the full chord.
+  const named = mic === 'on' ? nameHeardChord(midis, prefer) : null
+  const det = mic === 'on' ? (named?.det ?? null) : midis.length >= 2 ? detectChord(midis, prefer) : null
+  const fifthGuessed = named?.fifthGuessed ?? false
 
   // Once a chord has been held steadily for a moment, add it to the history (and the collection).
   const stableSymbol = det && det.chord.type.ivs.length >= 3 ? det.symbol : null
@@ -90,7 +93,7 @@ export function FreePlay() {
   let sub = ''
   if (det) {
     headline = det.symbol
-    sub = `${det.name}${det.inversion > 0 ? ` · ${INVERSION_NAMES[det.inversion]}` : ''}${det.no5 ? ' · no 5th' : ''}`
+    sub = `${det.name}${det.inversion > 0 ? ` · ${INVERSION_NAMES[det.inversion]}` : ''}${det.no5 ? ' · no 5th' : ''}${fifthGuessed ? ' · 5th not heard' : ''}`
   } else if (spelled.length === 1) {
     headline = noteName(spelled[0])
     sub = 'Add more notes to make a chord'

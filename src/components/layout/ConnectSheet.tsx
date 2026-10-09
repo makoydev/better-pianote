@@ -101,7 +101,7 @@ export function ConnectSheet({ open, onClose }: { open: boolean; onClose: () => 
             </span>
             <div>
               <h3 className="text-lg font-extrabold text-ink">No cable? Use the microphone</h3>
-              <p className="text-sm">Works on iPad too. It hears one note at a time, so play chords one note after another.</p>
+              <p className="text-sm">Works on iPad too. It hears single notes in games and lessons, and whole chords in Free Play and chord exercises. Turn the keyboard up a little and keep the room quiet.</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-4">

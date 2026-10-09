@@ -10,6 +10,8 @@ import { Paper } from '../../components/ui/Card'
 import { playNotes } from '../../lib/audio/play'
 import { burst } from '../../lib/fx'
 import { type NoteEvent, heldNow, useNoteEvents } from '../../lib/input/bus'
+import { useMicChords } from '../../lib/input/mic'
+import { micHearsChord } from '../../lib/input/micMatch'
 import { type Chord, fromMidi, midiOf, mod, noteName, pcOf, pitchName, voicedChord } from '../../lib/theory'
 import { useLive } from '../../state/live'
 import { TRAINER_LEVELS, chordLabel, chordRecipe, inversionIndex, matchChord, pickRound } from './logic/chords'
@@ -132,6 +134,7 @@ type Status = 'waiting' | 'partial' | 'wrong' | 'bass' | 'correct' | 'skipped'
 function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) => void }) {
   const label = chordLabel(chord)
   const mic = useLive((s) => s.mic)
+  useMicChords()
   const [selected, setSelected] = useState<number[]>([])
   const [status, setStatus] = useState<Status>('waiting')
   const [progress, setProgress] = useState(0)
@@ -145,7 +148,6 @@ function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) =
   const lastMistake = useRef(0)
   // Keys still held from the previous chord don't count until they're released.
   const stale = useRef(new Set(heldNow()))
-  const micNotes = useRef<{ midi: number; time: number }[]>([])
   const selectedRef = useRef<number[]>([])
 
   useEffect(() => {
@@ -171,15 +173,9 @@ function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) =
 
   const evaluate = (trigger: number | null, source: NoteEvent['source'] | 'toggle') => {
     if (finished.current) return
-    let notes: number[]
-    if (source === 'mic') {
-      const now = performance.now()
-      micNotes.current = micNotes.current.filter((n) => now - n.time < 2500)
-      notes = micNotes.current.map((n) => n.midi)
-    } else {
-      notes = [...new Set([...heldNow().filter((m) => !stale.current.has(m)), ...selectedRef.current])]
-    }
-    const st = matchChord(notes, chord)
+    const notes = [...new Set([...heldNow().filter((m) => !stale.current.has(m)), ...selectedRef.current])]
+    // Through the mic a missing 5th is forgiven (see micHearsChord).
+    const st = source === 'mic' && micHearsChord(notes, chord) ? 'correct' : matchChord(notes, chord)
     setProgress(new Set(notes.map((m) => mod(m, 12)).filter((p) => targetPcs.has(p))).size)
     if (st === 'correct') {
       setStatus('correct')
@@ -189,7 +185,8 @@ function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) =
       complete(false)
       return
     }
-    if (st === 'wrong' && trigger !== null && !targetPcs.has(mod(trigger, 12))) {
+    // A stray overtone heard by the mic isn't the player's mistake.
+    if (st === 'wrong' && source !== 'mic' && trigger !== null && !targetPcs.has(mod(trigger, 12))) {
       const now = performance.now()
       if (now - lastMistake.current > 700) {
         setMistakes((x) => x + 1)
@@ -202,7 +199,6 @@ function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) =
         delete next[trigger]
         return next
       }), 650)
-      if (source === 'mic') micNotes.current = []
     }
     setStatus(st === 'empty' ? 'waiting' : st)
     setFeedbackId((x) => x + 1)
@@ -214,7 +210,6 @@ function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) =
       stale.current.delete(e.midi)
       return
     }
-    if (e.source === 'mic') micNotes.current.push({ midi: e.midi, time: e.time })
     evaluate(e.midi, e.source)
   })
 
@@ -273,7 +268,7 @@ function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) =
       default:
         return {
           tone: 'neutral' as const,
-          text: mic === 'on' ? 'Mic on: play the notes one after another.' : 'Hold the notes together, or tap them on screen.',
+          text: mic === 'on' ? 'Mic on: play the chord and let it ring.' : 'Hold the notes together, or tap them on screen.',
         }
     }
   })()

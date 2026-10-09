@@ -80,7 +80,7 @@ export function Onboarding() {
                   icon={<Mic size={26} />}
                   color="#9b8cff"
                   title="Listen through the microphone"
-                  detail="Great for iPad. Hears one note at a time."
+                  detail="No cable needed, works on iPad too. Hears notes and chords from your keyboard's speakers."
                   done={mic === 'on'}
                   doneText="Listening!"
                   onClick={() => void startMic()}

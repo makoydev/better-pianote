@@ -13,6 +13,7 @@ import { useSettings } from './state/settings'
 // Screens load on demand so the app starts quickly.
 const Gallery = lazy(() => import('./features/dev/Gallery').then((m) => ({ default: m.Gallery })))
 const WidgetsGallery = lazy(() => import('./features/dev/WidgetsGallery').then((m) => ({ default: m.WidgetsGallery })))
+const MicLab = lazy(() => import('./features/dev/MicLab').then((m) => ({ default: m.MicLab })))
 const ChordExplorer = lazy(() => import('./features/explore/ChordExplorer').then((m) => ({ default: m.ChordExplorer })))
 const CircleOfFifths = lazy(() => import('./features/explore/CircleOfFifths').then((m) => ({ default: m.CircleOfFifths })))
 const ExploreHub = lazy(() => import('./features/explore/ExploreHub').then((m) => ({ default: m.ExploreHub })))
@@ -62,6 +63,7 @@ const ROUTES: Route[] = [
   { pattern: '/settings', page: Settings, tab: 'settings' },
   { pattern: '/dev', page: Gallery, tab: 'home', focus: true },
   { pattern: '/dev/widgets', page: WidgetsGallery, tab: 'home', focus: true },
+  { pattern: '/dev/mic', page: MicLab, tab: 'home', focus: true },
 ]
 
 function resolve(path: string) {

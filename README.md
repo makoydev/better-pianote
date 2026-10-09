@@ -44,8 +44,9 @@ Other scripts: `npm test` (Vitest), `npm run build` (type-check + production bui
 If it says no keyboard was found: on a Mac, open Audio MIDI Setup → Window → Show MIDI Studio. If "CASIO USB-MIDI"
 isn't listed there, the Mac can't see the keyboard yet, so check the port and try another cable.
 
-No cable? Use **Listen with the microphone** (works on iPad; one note at a time) or play with the on-screen
-keys / your computer keyboard (`A S D F G H J K` = white keys, `W E T Y U` = black keys, `Z`/`X` = octave).
+No cable? Use **Start listening** to play through the microphone: it hears your keyboard's speakers, single
+notes in games and lessons and whole chords in Free Play and chord exercises (works on iPad too). Or play with the
+on-screen keys / your computer keyboard (`A S D F G H J K` = white keys, `W E T Y U` = black keys, `Z`/`X` = octave).
 
 Handy at the piano: in lessons, **tap the sustain pedal to continue**.
 
@@ -57,7 +58,7 @@ React 19 + TypeScript + Vite, Tailwind CSS 4, Motion for animation, Zustand for 
   keys, roman numerals, voice leading), fully unit-tested.
 - `src/lib/audio`: Web Audio piano sampler with reverb, metronome clicks, look-ahead clock.
 - `src/lib/input`: one note-event bus fed by Web MIDI, on-screen keys, computer keys and the mic
-  (McLeod pitch detection).
+  (McLeod pitch detection for single notes; multi-pitch detection for chords, tuned on real piano recordings).
 - `src/components/staff`: SVG music engraving (clefs, key/time signatures, accidentals, beams, ties, ledger lines)
   using the Bravura SMuFL font.
 - `src/components/piano`: the interactive keyboard, sparks and light trails.

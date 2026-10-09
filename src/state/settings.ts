@@ -18,6 +18,8 @@ export interface Settings {
   uiSounds: boolean
   /** Reconnect to MIDI automatically on launch (set after the first successful connect). */
   midiAuto: boolean
+  /** Turn the microphone back on at launch (set while it's in use). */
+  micAuto: boolean
   /** Play the app's piano for notes from a MIDI keyboard too (off: your keyboard makes its own sound). */
   midiThru: boolean
   /** Send demo playback to the MIDI keyboard so it plays through its own speakers. */
@@ -42,6 +44,7 @@ export const useSettings = create<Settings>()(
       reverb: true,
       uiSounds: true,
       midiAuto: false,
+      micAuto: false,
       midiThru: false,
       demoToKeyboard: false,
       computerKeys: true,

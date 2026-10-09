@@ -11,13 +11,15 @@ import type { KeyboardVisual, PlayStep, Target } from '../../../content/types'
 import { audio } from '../../../lib/audio/engine'
 import { playNotes, playSequence } from '../../../lib/audio/play'
 import { burst } from '../../../lib/fx'
-import { heldNow, recentNotes, useNoteEvents } from '../../../lib/input/bus'
+import { heldNow, useNoteEvents } from '../../../lib/input/bus'
+import { useMicChords } from '../../../lib/input/mic'
+import { micHearsNotes } from '../../../lib/input/micMatch'
 import { isBlackKey, mod } from '../../../lib/theory'
 import { useLive } from '../../../state/live'
 import { useSettings } from '../../../state/settings'
 import { chordMatches, feedNote, inChord, initialMatch, targetMidis } from '../match'
 import { StaffView } from '../VisualBlock'
-import { keyboardHeight, pianoProps } from '../visual'
+import { keyboardHeight, noteMidi, pianoProps } from '../visual'
 
 /** As tall as the space allows (leaving room for sparks and the middle-C label), within sensible limits. */
 function pianoHeight(area: number, from: number, to: number) {
@@ -69,6 +71,8 @@ export function PlayStepView({
   const p = pianoProps(k)
   const targets = useMemo(() => targetMidis(t), [t])
   const showHint = !solved && (wrong >= 2 || hintAsked)
+  // Through the mic, chord steps listen for whole chords.
+  useMicChords(t.type === 'chord')
 
   const flashKey = (m: number, kind: 'good' | 'bad') => {
     setFlash((f) => ({ ...f, [m]: kind }))
@@ -102,9 +106,15 @@ export function PlayStepView({
   useNoteEvents((e) => {
     if (solved || e.type !== 'on') return
     if (t.type === 'chord') {
+      if (e.source === 'mic') {
+        // The mic can miss a chord's 5th or hear a stray overtone, so be forgiving and don't count mistakes.
+        if (inChord({ ...t, anyOctave: true }, e.midi)) flashKey(e.midi, 'good')
+        if (micHearsNotes([...heldNow(), ...selected], targets, t.bass ? noteMidi(t.bass) : undefined)) succeed()
+        return
+      }
       if (!inChord(t, e.midi)) mistake(e.midi)
       else flashKey(e.midi, 'good')
-      checkChord([...selected, ...(e.source === 'mic' ? recentNotes(2500) : [])])
+      checkChord(selected)
       return
     }
     const r = feedNote(t, state, e.midi)
@@ -219,7 +229,7 @@ export function PlayStepView({
         </AnimatePresence>
         {!solved && (
           <div className="flex flex-wrap items-center justify-center gap-2 text-sm font-semibold text-ink-mute">
-            {onScreenChord && (mic === 'on' ? 'Play the notes one after another.' : 'Hold the notes together, or tap each key on screen.')}
+            {onScreenChord && (mic === 'on' ? 'Play the chord and let it ring.' : 'Hold the notes together, or tap each key on screen.')}
             {onScreenChord && selected.length > 0 && (
               <Button size="sm" variant="ghost" icon={Eraser} onClick={() => setSelected([])}>
                 Clear

@@ -33,7 +33,10 @@ Claude's local memory doesn't travel between machines, so everything needed live
   `play.ts` (demo playback that respects "play demos through my keyboard").
 - `src/lib/input/`: `bus.ts` is the single note-event stream (`useNoteEvents`, `heldNow`, `recentNotes`);
   sources: `midi.ts` (Web MIDI, sustain pedal CC64), `keys.ts` (computer keys; `pauseComputerKeys()` to borrow
-  keys), `mic.ts` (McLeod pitch detection, monophonic).
+  keys), `mic.ts` (microphone). The mic has two modes: single notes (McLeod pitch method) by default, and chords
+  (`polyphony.ts`, harmonic summation with cancellation) while a screen calls `useMicChords()`. `micMatch.ts` holds
+  the forgiving checks for mic input (a chord's perfect 5th may go unheard). `#/dev/mic` is a test page that feeds
+  piano chords silently into the mic analysers; tune `POLY_DEFAULTS` against it and `polyphony.test.ts`.
 - `src/components/piano/`: `Piano` (marks, fingers, labels, toggle mode for building chords, sparks, trails).
 - `src/components/staff/`: `layout.ts` (pure engraving layout) + `Staff.tsx` (SVG with Bravura glyphs). Accidentals
   follow key signature + bar rules automatically. `hidden` events reserve space; `lines={false}` draws notes only.

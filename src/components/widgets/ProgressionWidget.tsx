@@ -22,6 +22,7 @@ import { MusicText } from '../MusicText'
 import { type Marks, Piano } from '../piano/Piano'
 import { Button, IconButton } from '../ui/Button'
 import { Segmented } from '../ui/controls'
+import { useMicChords } from '../../lib/input/mic'
 
 /** Plays a chord progression in a key, lighting up each chord; transpose it and play along. */
 
@@ -72,6 +73,8 @@ export function ProgressionWidget({
   bpm?: number
   pattern?: Pattern
 }) {
+  // Through the mic, listen for whole chords.
+  useMicChords()
   const [keyStr, setKeyStr] = useState(startKey)
   const [pattern, setPattern] = useState<Pattern>(startPattern)
   const [bpm, setBpm] = useState(startBpm)
