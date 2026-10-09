@@ -18,7 +18,7 @@ interface Cell {
   starts?: number[]
 }
 
-const BEATS: Record<Duration, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25 }
+const BEATS: Record<Duration, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25, '32': 0.125, '64': 0.0625 }
 const noteLen = (d: Duration, dots: number) => BEATS[d] * (dots ? 1.5 : 1)
 const cellLen = (c: Cell) => c.notes.reduce((s, [d, dots]) => s + noteLen(d, dots), 0)
 

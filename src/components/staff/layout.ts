@@ -3,7 +3,7 @@ import { ENGRAVING, GLYPH, WIDTH, accidentalGlyph, timeSigDigit } from './glyphs
 
 /** Pure layout for a staff: turns notes into positioned glyphs, lines and text (all in px). */
 
-export type Duration = 'w' | 'h' | 'q' | '8' | '16'
+export type Duration = 'w' | 'h' | 'q' | '8' | '16' | '32' | '64'
 export type NoteState = 'normal' | 'active' | 'correct' | 'wrong' | 'ghost' | 'done'
 export type StaffId = 'treble' | 'bass'
 export type ClefKind = 'treble' | 'bass' | 'grand' | 'rhythm'
@@ -134,7 +134,44 @@ export interface Layout {
   rhythm: boolean
 }
 
-const BEATS: Record<Duration, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25 }
+const BEATS: Record<Duration, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25, '32': 0.125, '64': 0.0625 }
+
+/** Beams (or flags) on each duration. */
+export const BEAM_LEVELS: Record<Duration, number> = { w: 0, h: 0, q: 0, '8': 1, '16': 2, '32': 3, '64': 4 }
+/** Extra stem length (staff spaces) so the flags and beams of short notes fit. */
+export const STEM_EXTRA: Record<Duration, number> = { w: 0, h: 0, q: 0, '8': 0, '16': 0.6, '32': 1.3, '64': 2.0 }
+export const REST_GLYPH: Record<Duration, string> = {
+  w: GLYPH.restWhole,
+  h: GLYPH.restHalf,
+  q: GLYPH.restQuarter,
+  '8': GLYPH.rest8,
+  '16': GLYPH.rest16,
+  '32': GLYPH.rest32,
+  '64': GLYPH.rest64,
+}
+export const REST_WIDTH: Record<Duration, number> = {
+  w: WIDTH.restWhole,
+  h: WIDTH.restHalf,
+  q: WIDTH.restQuarter,
+  '8': WIDTH.rest8,
+  '16': WIDTH.rest16,
+  '32': WIDTH.rest32,
+  '64': WIDTH.rest64,
+}
+const FLAGS: Partial<Record<Duration, [string, string]>> = {
+  '8': [GLYPH.flag8Up, GLYPH.flag8Down],
+  '16': [GLYPH.flag16Up, GLYPH.flag16Down],
+  '32': [GLYPH.flag32Up, GLYPH.flag32Down],
+  '64': [GLYPH.flag64Up, GLYPH.flag64Down],
+}
+/** The flag on an unbeamed note's stem, if it has one. */
+export const flagGlyph = (dur: Duration, up: boolean) => FLAGS[dur]?.[up ? 0 : 1] ?? null
+/**
+ * How far (staff spaces) a flag's origin sits back from the stem end, towards the notehead: the 32nd
+ * and 64th flags reach past their origin, and the stem should end where the flag does.
+ */
+export const flagOffset = (dur: Duration, up: boolean) =>
+  dur === '32' ? (up ? 0.596 : 0.688) : dur === '64' ? (up ? 1.388 : 1.504) : 0
 
 function spec(n: string | Note | StaffNoteSpec): StaffNoteSpec & { n: Note } {
   if (typeof n === 'string') return { note: n, n: parseNote(n) }
@@ -240,7 +277,7 @@ export function layoutStaff(items: StaffItem[], o: LayoutOptions): Layout {
       return
     }
     const dur = item.dur ?? 'q'
-    const beats = BEATS[dur] * (item.dots ? 1.5 : 1)
+    const beats = BEATS[dur] * (2 - 0.5 ** (item.dots ?? 0))
     const specs = (item.notes ?? []).map(spec)
     const notes: PreNote[] = specs.map((s) => {
       const staff: StaffId =
@@ -289,7 +326,7 @@ export function layoutStaff(items: StaffItem[], o: LayoutOptions): Layout {
     const rest = notes.length === 0
     const headW = (dur === 'w' ? WIDTH.whole : WIDTH.black) * sp
     const leftExt = (dispLeft ? headW - stemT : 0) + (accCols ? accCols * 1.12 * sp + 0.25 * sp : 0)
-    const restW = { w: WIDTH.restWhole, h: WIDTH.restHalf, q: WIDTH.restQuarter, '8': WIDTH.rest8, '16': WIDTH.rest16 }[dur] * sp
+    const restW = REST_WIDTH[dur] * sp
     const rightExt = rest ? restW : headW + (dispRight ? headW - stemT : 0) + (item.dots ? 0.6 * sp : 0)
     const longestText = Math.max(
       item.text ? o.measure(item.text, labelSize, false) : 0,
@@ -303,7 +340,7 @@ export function layoutStaff(items: StaffItem[], o: LayoutOptions): Layout {
       o.extraPerSlot
     // Beam groups: eighths/sixteenths inside the same beat.
     let beamGroup: number | null = null
-    if (o.time && !rest && (dur === '8' || dur === '16') && item.beam !== false) {
+    if (o.time && !rest && BEAM_LEVELS[dur] > 0 && item.beam !== false) {
       const key = `${Math.floor(pos / groupLen + 1e-6)}`
       if (key !== lastGroupKey) beamGroupId++
       lastGroupKey = key
@@ -362,7 +399,7 @@ export function layoutStaff(items: StaffItem[], o: LayoutOptions): Layout {
     }
     if (p.rest) {
       const s = p.restStaff
-      const restCh = { w: GLYPH.restWhole, h: GLYPH.restHalf, q: GLYPH.restQuarter, '8': GLYPH.rest8, '16': GLYPH.rest16 }[p.dur]
+      const restCh = REST_GLYPH[p.dur]
       const ry = p.dur === 'w' ? yOf(s, rhythm ? 4 : 6) : yOf(s, 4)
       le.glyphs.push({ x: headX, y: ry, ch: restCh, size: fontSize })
       if (ev.dots) le.dots.push({ x: headX + 1.5 * sp, y: yOf(s, 5), r: 0.2 * sp })
@@ -406,7 +443,7 @@ export function layoutStaff(items: StaffItem[], o: LayoutOptions): Layout {
         const maxP = g[g.length - 1].p
         const sx = dir === 'up' ? headX + headW - stemT / 2 : headX + stemT / 2
         const yHead = dir === 'up' ? yOf(s, minP) - 0.168 * sp : yOf(s, maxP) + 0.168 * sp
-        const extra = p.dur === '16' ? 0.6 * sp : 0
+        const extra = STEM_EXTRA[p.dur] * sp
         let yEnd = dir === 'up' ? yOf(s, maxP) - 3.5 * sp - extra : yOf(s, minP) + 3.5 * sp + extra
         // Notes far outside the staff get stems that reach the middle line.
         if (!rhythm) yEnd = dir === 'up' ? Math.min(yEnd, yOf(s, 4)) : Math.max(yEnd, yOf(s, 4))
@@ -414,11 +451,10 @@ export function layoutStaff(items: StaffItem[], o: LayoutOptions): Layout {
         stemInfo.set(le, { staff: s, dir, x: sx, yHead, yFar, minEnd: yEnd, dur: p.dur, group: p.beamGroup })
         if (p.beamGroup === null) {
           le.lines.push({ x1: sx, x2: sx, y1: yHead, y2: yEnd, w: stemT })
-          if (p.dur === '8' || p.dur === '16') {
-            const up = dir === 'up'
-            const ch = p.dur === '8' ? (up ? GLYPH.flag8Up : GLYPH.flag8Down) : up ? GLYPH.flag16Up : GLYPH.flag16Down
-            le.glyphs.push({ x: sx - stemT / 2, y: up ? yEnd - 0.04 * sp : yEnd + 0.132 * sp, ch, size: fontSize })
-          }
+          const up = dir === 'up'
+          const ch = flagGlyph(p.dur, up)
+          const back = flagOffset(p.dur, up) * sp
+          if (ch) le.glyphs.push({ x: sx - stemT / 2, y: up ? yEnd - 0.04 * sp + back : yEnd + 0.132 * sp - back, ch, size: fontSize })
         }
       }
     }
@@ -451,7 +487,7 @@ export function layoutStaff(items: StaffItem[], o: LayoutOptions): Layout {
     let slope = x1 > x0 ? (natural[natural.length - 1] - natural[0]) / (x1 - x0) : 0
     slope = Math.max(-0.2, Math.min(0.2, slope))
     let b = natural[0]
-    const minLen = 2.6 * sp + (infos.some((i) => i.dur === '16') ? 0.6 * sp : 0)
+    const minLen = 2.6 * sp + Math.max(...infos.map((i) => STEM_EXTRA[i.dur])) * sp
     const lineAt = (xx: number) => b + slope * (xx - x0)
     if (dir === 'up') {
       // Beam must sit above every stem's natural end and leave a minimum stem length.
@@ -479,19 +515,20 @@ export function layoutStaff(items: StaffItem[], o: LayoutOptions): Layout {
       return `${xa},${ya} ${xb},${yb} ${xb},${yb + sgn * th} ${xa},${ya + sgn * th}`
     }
     beams.push({ key: `b${gid}`, points: poly(x0 - stemT / 2, x1 + stemT / 2, 0) })
-    // Second beam for sixteenths (with short stubs when a 16th sits next to an 8th).
-    const off = th + ENGRAVING.beamGap * sp
-    infos.forEach((info, i) => {
-      if (info.dur !== '16') return
-      const next = infos[i + 1]
-      const prev = infos[i - 1]
-      if (next?.dur === '16') beams.push({ key: `b${gid}-${i}`, points: poly(xs[i] - stemT / 2, xs[i + 1] + stemT / 2, off) })
-      else if (prev?.dur !== '16') {
-        const stub = 1.1 * sp
-        const [xa, xb] = next ? [xs[i], xs[i] + stub] : [xs[i] - stub, xs[i]]
-        beams.push({ key: `b${gid}-${i}s`, points: poly(xa, xb, off) })
-      }
-    })
+    // Extra beams for sixteenths and shorter (with short stubs next to longer notes).
+    const levels = infos.map((info) => BEAM_LEVELS[info.dur])
+    for (let lv = 2; lv <= Math.max(...levels); lv++) {
+      const off = (lv - 1) * (th + ENGRAVING.beamGap * sp)
+      levels.forEach((l, i) => {
+        if (l < lv) return
+        if ((levels[i + 1] ?? 0) >= lv) beams.push({ key: `b${gid}-${lv}-${i}`, points: poly(xs[i] - stemT / 2, xs[i + 1] + stemT / 2, off) })
+        else if ((levels[i - 1] ?? 0) < lv) {
+          const stub = 1.1 * sp
+          const [xa, xb] = i < levels.length - 1 ? [xs[i], xs[i] + stub] : [xs[i] - stub, xs[i]]
+          beams.push({ key: `b${gid}-${lv}-${i}s`, points: poly(xa, xb, off) })
+        }
+      })
+    }
   }
 
   // ---- Ties ----

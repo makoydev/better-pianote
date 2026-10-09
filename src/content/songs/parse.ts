@@ -2,9 +2,11 @@ import type { Duration } from '../../components/staff/layout'
 import type { Song, SongEvent, SongSource } from './types'
 
 /** Length of each duration in quarter notes. */
-export const BEATS: Record<Duration, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25 }
+export const BEATS: Record<Duration, number> = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25, '32': 0.125, '64': 0.0625 }
 
-export const eventBeats = (e: Pick<SongEvent, 'dur' | 'dots'>) => BEATS[e.dur] * (e.dots ? 1.5 : 1)
+/** How long an event lasts in quarter notes: dots add half, then a quarter (double dot); tuplets squeeze. */
+export const eventBeats = (e: Pick<SongEvent, 'dur' | 'dots' | 'tuplet'>) =>
+  BEATS[e.dur] * (2 - 0.5 ** e.dots) * (e.tuplet ? e.tuplet.normal / e.tuplet.actual : 1)
 
 /** Length of one full bar in quarter notes (4/4 → 4, 3/4 → 3, 3/8 → 1.5). */
 export const barBeats = (time: [number, number]) => (time[0] * 4) / time[1]

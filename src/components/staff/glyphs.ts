@@ -12,6 +12,10 @@ export const GLYPH = {
   flag8Down: '',
   flag16Up: '',
   flag16Down: '',
+  flag32Up: '\uE244',
+  flag32Down: '\uE245',
+  flag64Up: '\uE246',
+  flag64Down: '\uE247',
   flat: '',
   natural: '',
   sharp: '',
@@ -22,11 +26,15 @@ export const GLYPH = {
   restQuarter: '',
   rest8: '',
   rest16: '',
+  rest32: '\uE4E8',
+  rest64: '\uE4E9',
   ped: '',
   pedUp: '',
 } as const
 
 export const timeSigDigit = (d: number) => String.fromCharCode(0xe080 + d)
+/** Small digits for tuplet numbers (the 3 over a triplet). */
+export const tupletDigit = (d: number) => String.fromCharCode(0xe880 + d)
 
 export const WIDTH = {
   gClef: 2.684,
@@ -45,6 +53,8 @@ export const WIDTH = {
   restQuarter: 1.08,
   rest8: 0.988,
   rest16: 1.28,
+  rest32: 1.452,
+  rest64: 1.696,
 } as const
 
 /** Bravura engraving defaults (staff spaces). */

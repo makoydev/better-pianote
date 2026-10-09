@@ -2,7 +2,7 @@ import { parseSong } from './parse'
 import { SONG_SOURCES } from './songs'
 import type { Song } from './types'
 
-export type { Song, SongEvent, SongSource } from './types'
+export type { Song, SongChange, SongEvent, SongSource, SongVoice } from './types'
 export { BEATS, barBeats, eventBeats, parseBars, parseSong } from './parse'
 
 export const SONGS: Song[] = SONG_SOURCES.map(parseSong)
