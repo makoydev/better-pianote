@@ -99,6 +99,49 @@ describe('melodies spot-check', () => {
     expect(s.rh.length).toBe(16)
   })
 
+  it('Canon in D has Pachelbel’s ground bass in the left hand, twice', () => {
+    const s = findSong('canon-in-d')!
+    const bass = s.lh!.slice(0, 8).map(names).join(' ')
+    expect(bass).toBe('D3 A2 B2 F#2 G2 D2 G2 A2 '.repeat(2).trim())
+    expect(names(s.rh[0])).toBe('F#5 E5')
+  })
+
+  it('Happy Birthday jumps an octave on the third line', () => {
+    const s = findSong('happy-birthday')!
+    expect(names(s.rh[0])).toBe('G4 G4')
+    expect(names(s.rh[1])).toBe('A4 G4 C5')
+    expect(names(s.rh[5])).toBe('G5 E5 C5')
+  })
+
+  it('Greensleeves uses G♯ as the leading note', () => {
+    const s = findSong('greensleeves')!
+    expect(names(s.rh[0])).toBe('A4')
+    expect(names(s.rh[3])).toBe('C5 A4 A4 G#4 A4')
+  })
+
+  it('Mountain King slides down by half steps, then repeats an octave higher', () => {
+    const s = findSong('mountain-king')!
+    expect(names(s.rh[2])).toBe('D#4 B3 D#4')
+    expect(names(s.rh[3])).toBe('D4 Bb3 D4')
+    const midis = (bars: SongEvent[][]) => bars.flat().map((e) => midiOf(parseNote(e.notes[0])))
+    expect(midis(s.rh.slice(8, 16))).toEqual(midis(s.rh.slice(0, 8)).map((m) => m + 12))
+  })
+
+  it('Prelude in C plays each chord as the same 8-note figure, twice per bar', () => {
+    const s = findSong('prelude-in-c')!
+    expect(names(s.rh[0])).toBe('C4 E4 G4 C5 E5 G4 C5 E5 '.repeat(2).trim())
+    for (const bar of s.rh.slice(0, 8)) {
+      const n = bar.map((e) => e.notes[0])
+      expect(n).toHaveLength(16)
+      expect(n.slice(5, 8)).toEqual(n.slice(2, 5))
+      expect(n.slice(8)).toEqual(n.slice(0, 8))
+    }
+  })
+
+  it('songs are listed from easiest to hardest', () => {
+    SONGS.slice(1).forEach((s, i) => expect(s.difficulty, s.title).toBeGreaterThanOrEqual(SONGS[i].difficulty))
+  })
+
   it('every song has a unique id', () => {
     expect(new Set(SONGS.map((s) => s.id)).size).toBe(SONGS.length)
   })
