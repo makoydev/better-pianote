@@ -1,4 +1,4 @@
-import { Ear, Flame, Hand, ListMusic, Minus, Pause, Play, Plus, Repeat, RotateCcw, Type, X } from 'lucide-react'
+import { Ear, Flame, Hand, ListMusic, Minus, Pause, Play, Plus, Repeat, RotateCcw, SkipBack, Type, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
@@ -24,9 +24,10 @@ import { useLibrary } from '../../state/library'
 import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import { type SongResult, SongResults } from './SongResults'
-import { type ChordChange, type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, songScoreInput } from './timeline'
+import { type Cue, type Playhead, advance, buildCues, firstCueAt, ringingAt } from './listen'
+import { type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, songScoreInput } from './timeline'
 
-const TICK = 0.25 // listen-mode scheduling grid: one sixteenth note
+const TICK = 0.25 // listen mode wakes up every sixteenth note (and plays what's due inside it at exact times)
 const EPS = 1e-6
 
 export function SongPlayer({ songId }: { songId: string }) {
@@ -118,6 +119,8 @@ function Player({ song }: { song: Song }) {
   const [listenAt, setListenAt] = useState(0)
   const [sounding, setSounding] = useState<Record<number, 'rh' | 'lh'>>({})
   const clockRef = useRef<Clock | null>(null)
+  /** Pending playhead/key-light updates, cancelled on pause. */
+  const timers = useRef<number[]>([])
   const bpmRef = useRef(bpm)
   useEffect(() => {
     bpmRef.current = bpm
@@ -141,10 +144,12 @@ function Player({ song }: { song: Song }) {
   const stopListen = useCallback(() => {
     clockRef.current?.stop()
     clockRef.current = null
+    for (const id of timers.current) window.clearTimeout(id)
+    timers.current = []
     setPlaying(false)
     setSounding({})
   }, [])
-  useEffect(() => () => clockRef.current?.stop(), [])
+  useEffect(() => stopListen, [stopListen])
 
   const reset = () => {
     stopListen()
@@ -253,73 +258,85 @@ function Player({ song }: { song: Song }) {
   })
 
   // ---- Listen mode: the app plays it, on the audio clock ----
-  const schedule = useMemo(() => {
-    const map = new Map<number, { notes: TimedNote[]; chord?: ChordChange; at?: number }>()
-    const slot = (t: number) => {
-      const k = Math.round(t / TICK)
-      let s = map.get(k)
-      if (!s) map.set(k, (s = { notes: [] }))
-      return s
-    }
-    for (const n of tl.notes) if (!n.cont) slot(n.start).notes.push(n)
-    for (const c of tl.chords) slot(c.start).chord = c
-    for (const c of tl.cols) slot(c).at = c
-    return map
-  }, [tl])
+  const cues = useMemo(() => buildCues(tl), [tl])
 
-  const startListen = () => {
+  /** The part that plays: the whole song, or the looped bars. */
+  const listenRange = (): [number, number] => {
+    if (!loop) return [0, tl.total]
+    const a = tl.bars[loopBars[0]]
+    const b = tl.bars[loopBars[1]]
+    return [a?.start ?? 0, b ? b.start + b.dur : tl.total]
+  }
+
+  /** Play from `from`, or carry on from the playhead (back to the start if it's outside the part that plays). */
+  const startListen = (from?: number) => {
     stopListen()
-    const from = loop ? tl.bars[loopBars[0]] : tl.bars[0]
-    const last = loop ? tl.bars[loopBars[1]] : tl.bars[tl.bars.length - 1]
-    const fromTick = Math.round(from.start / TICK)
-    const toTick = Math.round((last.start + last.dur) / TICK)
-    const span = Math.max(1, toTick - fromTick)
+    const [lo, hi] = listenRange()
+    let pos = from ?? listenAt
+    if (pos < lo - EPS || pos >= hi - EPS) pos = lo
+    const head: Playhead = { pos, next: firstCueAt(cues, pos) }
     const looping = loop
     const withChords = backing
     prevPad.current = null
+    let first = true
+    let ended = false
+    const later = (when: number, fn: () => void) => timers.current.push(audio.at(when, fn))
+    const delayTo = (when: number) => Math.max(0, when - audio.now - 0.03)
+    const sound = (n: TimedNote, when: number, beats: number, spb: number) => {
+      const dur = Math.max(0.12, beats * spb * 0.96)
+      playNotes([n.midi], { dur, vel: n.hand === 'rh' ? 0.82 : 0.55, delay: delayTo(when) })
+      later(when, () => setSounding((x) => ({ ...x, [n.midi]: n.hand })))
+      later(when + dur, () =>
+        setSounding((x) => {
+          const y = { ...x }
+          delete y[n.midi]
+          return y
+        }),
+      )
+    }
+    const play = (c: Cue, when: number, spb: number) => {
+      for (const n of c.notes) sound(n, when, n.dur, spb)
+      if (c.chord && withChords) playNotes(padVoicing(c.chord.chord, !song.lh), { dur: c.chord.dur * spb * 0.95, vel: 0.3, delay: delayTo(when) })
+      if (c.col) later(when, () => setListenAt(c.t))
+    }
     const clock = new Clock({
       interval: () => (60 / bpmRef.current) * TICK,
-      onTick: (i, time) => {
-        let k = fromTick + i
-        if (looping) k = fromTick + (i % span)
-        else if (k >= toTick) {
-          if (k === toTick)
-            audio.at(time + 0.5, () => {
-              clock.stop()
-              setPlaying(false)
-              setSounding({})
-            })
-          return
-        }
-        const s = schedule.get(k)
-        if (!s) return
+      onTick: (_i, time) => {
+        if (ended) return
         const spb = 60 / bpmRef.current
-        const delay = Math.max(0, time - audio.now - 0.03)
-        for (const n of s.notes) {
-          const dur = Math.max(0.12, n.dur * spb * 0.96)
-          playNotes([n.midi], { dur, vel: n.hand === 'rh' ? 0.82 : 0.55, delay })
-          audio.at(time, () => setSounding((x) => ({ ...x, [n.midi]: n.hand })))
-          audio.at(time + dur, () =>
-            setSounding((x) => {
-              const y = { ...x }
-              delete y[n.midi]
-              return y
-            }),
-          )
+        if (first) {
+          first = false
+          // Starting in the middle: bring in what's still ringing there (a held bass note, the chord).
+          for (const n of ringingAt(tl, pos)) sound(n, time, n.start + n.dur - pos, spb)
+          const ch = tl.chords.find((c) => c.start < pos - EPS && c.start + c.dur > pos + EPS)
+          if (ch && withChords) playNotes(padVoicing(ch.chord, !song.lh), { dur: (ch.start + ch.dur - pos) * spb * 0.95, vel: 0.3, delay: delayTo(time) })
         }
-        if (s.chord && withChords) playNotes(padVoicing(s.chord.chord, !song.lh), { dur: s.chord.dur * spb * 0.95, vel: 0.3, delay })
-        if (s.at !== undefined) {
-          const at = s.at
-          audio.at(time, () => setListenAt(at))
+        const { due, end } = advance(cues, head, TICK, lo, hi, looping)
+        for (const d of due) play(d.cue, time + d.offset * spb, spb)
+        if (end !== undefined) {
+          // The end: stop, and rewind so Play starts from the top next time.
+          ended = true
+          later(time + end * spb + 0.5, () => {
+            clock.stop()
+            clockRef.current = null
+            timers.current = []
+            setPlaying(false)
+            setSounding({})
+            setListenAt(lo)
+          })
         }
       },
     })
     clockRef.current = clock
+    setListenAt(pos)
     clock.start(0.2)
     setPlaying(true)
   }
 
   const toggleListen = () => (playing ? stopListen() : startListen())
+  const listenFromStart = () => startListen(listenRange()[0])
+  /** Paused somewhere after the start, so Play carries on from there. */
+  const pausedMidway = mode === 'listen' && !playing && listenAt > listenRange()[0] + EPS
 
   // Space plays/pauses in Listen mode; R restarts.
   useEffect(() => {
@@ -431,7 +448,7 @@ function Player({ song }: { song: Song }) {
 
       <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-2.5 px-3 pb-3 pt-3 sm:px-5">
         {/* Controls */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
           <Segmented
             value={mode}
             onChange={changeMode}
@@ -452,10 +469,19 @@ function Player({ song }: { song: Song }) {
           )}
           {mode === 'listen' && (
             <>
-              <Button size="md" icon={playing ? Pause : Play} onClick={toggleListen} variant={playing ? 'secondary' : 'primary'}>
-                {playing ? 'Pause' : 'Play'}
-              </Button>
-              <label className="flex w-52 items-center gap-3 rounded-2xl border border-white/8 bg-night-850 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <IconButton icon={SkipBack} label="Restart: play from the beginning" onClick={listenFromStart} />
+                <Button
+                  size="md"
+                  icon={playing ? Pause : Play}
+                  onClick={toggleListen}
+                  variant={playing ? 'secondary' : 'primary'}
+                  className="min-w-34"
+                >
+                  {playing ? 'Pause' : pausedMidway ? 'Resume' : 'Play'}
+                </Button>
+              </div>
+              <label className="flex w-44 items-center gap-3 rounded-2xl border border-white/8 bg-night-850 px-3 py-2">
                 <span className="w-16 shrink-0 text-sm font-extrabold text-ink-soft">♩ = {bpm}</span>
                 <Slider value={bpm} min={40} max={160} onChange={setBpm} label="Tempo" />
               </label>
@@ -553,7 +579,11 @@ function Player({ song }: { song: Song }) {
             </motion.div>
           ) : mode === 'listen' ? (
             <span className="text-base font-semibold text-ink-soft">
-              {playing ? 'Watch the notes light up and follow along.' : 'Press Play (or Space) to hear it at your tempo.'}
+              {playing
+                ? 'Watch the notes light up and follow along.'
+                : pausedMidway
+                  ? 'Paused. Resume (or Space) carries on from here; ⏮ plays it from the beginning.'
+                  : 'Press Play (or Space) to hear it at your tempo.'}
             </span>
           ) : null}
           {mode === 'wait' && mic === 'on' && <span className="text-sm text-sky">Mic: play one note at a time.</span>}
