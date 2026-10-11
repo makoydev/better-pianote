@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import { App } from './App'
 import { audio } from './lib/audio/engine'
+import { installClickBlur } from './lib/focus'
 import { installComputerKeys } from './lib/input/keys'
 import { autoStartMic } from './lib/input/mic'
 import { autoConnectMidi } from './lib/input/midi'
@@ -13,6 +14,7 @@ import { loadLibrary } from './state/library'
 if (STATIC) MotionGlobalConfig.skipAnimations = true
 
 installComputerKeys()
+installClickBlur()
 void autoConnectMidi()
 void autoStartMic()
 void loadLibrary()

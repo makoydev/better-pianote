@@ -1,5 +1,6 @@
 import { audio } from '../../../lib/audio/engine'
 import { burst, celebrate } from '../../../lib/fx'
+import { getPref, setPref } from '../../../state/prefs'
 import { useProgress } from '../../../state/progress'
 import { useSettings } from '../../../state/settings'
 
@@ -36,20 +37,11 @@ export function starsFor(ratio: number, three = 0.9, two = 0.65): number {
   return ratio >= three ? 3 : ratio >= two ? 2 : ratio > 0 ? 1 : 0
 }
 
-/** Remember the last level/mode picked on this device (best effort). */
+/** Remember the last level/mode picked (kept in the prefs store, so Export carries it). */
 export function remember<T extends string>(key: string, fallback: T, allowed: readonly T[]): T {
-  try {
-    const v = localStorage.getItem(`tonic-${key}`)
-    return v && (allowed as readonly string[]).includes(v) ? (v as T) : fallback
-  } catch {
-    return fallback
-  }
+  return getPref(key, fallback, allowed)
 }
 
 export function store(key: string, value: string) {
-  try {
-    localStorage.setItem(`tonic-${key}`, value)
-  } catch {
-    /* storage unavailable: fine */
-  }
+  setPref(key, value)
 }

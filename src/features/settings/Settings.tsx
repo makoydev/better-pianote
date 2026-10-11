@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button'
 import { Segmented, Slider, Toggle } from '../../components/ui/controls'
 import { audio } from '../../lib/audio/engine'
 import { libraryBackup, restoreLibrary } from '../../state/library'
+import { usePrefs } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 import { type KeyLabels, type Naming, type UiScale, useSettings } from '../../state/settings'
 
@@ -24,7 +25,8 @@ export function Settings() {
     const p = useProgress.getState()
     const progress = Object.fromEntries(Object.entries(p).filter(([, v]) => typeof v !== 'function'))
     const library = libraryBackup()
-    const blob = new Blob([JSON.stringify({ app: 'tonic', version: 2, exportedAt: new Date().toISOString(), settings, progress, library })], {
+    const prefs = usePrefs.getState().values
+    const blob = new Blob([JSON.stringify({ app: 'tonic', version: 2, exportedAt: new Date().toISOString(), settings, progress, prefs, library })], {
       type: 'application/json',
     })
     const a = document.createElement('a')
@@ -40,6 +42,7 @@ export function Settings() {
       if (data?.app !== 'tonic' || !data.progress) throw new Error('not a Tonic file')
       useProgress.setState(data.progress)
       if (data.settings) useSettings.setState(data.settings)
+      if (data.prefs && typeof data.prefs === 'object') usePrefs.setState({ values: data.prefs })
       let songs = 0
       try {
         songs = data.library ? await restoreLibrary(data.library) : 0
