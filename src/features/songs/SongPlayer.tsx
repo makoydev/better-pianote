@@ -28,7 +28,7 @@ import { useSettings } from '../../state/settings'
 import { type SongResult, SongResults } from './SongResults'
 import { TempoPresets, TempoStepper } from './TempoControl'
 import { type CountIn, type Cue, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
-import { type Run, carryOn, newRun, stepAt, stepsInBars } from './practice'
+import { type Run, carryOn, endPass, newRun, stepAt, stepsInBars, tally } from './practice'
 import { type Hands, accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
 import { clampTempo, loopSpeedUp } from './tempo'
 import { type Step, type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, songScoreInput } from './timeline'
@@ -118,6 +118,8 @@ function Player({ song }: { song: Song }) {
   const [started, setStarted] = useState(false)
   const lastCorrectAt = useRef(0)
   const prevPad = useRef<number[] | null>(null)
+  /** XP earned this visit from clean loop passes (capped). */
+  const loopXp = useRef(0)
   const run = useRef<Run>(newRun(hands))
   const sync = () => {
     const r = run.current
@@ -257,8 +259,12 @@ function Player({ song }: { song: Song }) {
       return
     }
     if (loop) {
-      r.idx = 0
-      r.loops++
+      // Looping never reaches the results, so a clean pass earns a little XP (and counts for the day's goal).
+      const xp = endPass(r, loopXp.current)
+      if (xp) {
+        loopXp.current += xp
+        useProgress.getState().addXp(xp)
+      }
       burst(paperRef.current, { count: 30 })
       return
     }
@@ -278,7 +284,7 @@ function Player({ song }: { song: Song }) {
   const skip = () => {
     const r = run.current
     if (mode !== 'wait' || r.done || !steps[r.idx]) return
-    r.mistakes++
+    tally(r, 'slip')
     r.combo = 0
     nextStep()
     sync()
@@ -300,7 +306,7 @@ function Player({ song }: { song: Song }) {
       }
       flashKey(e.midi, 'good')
       r.sat.add(hit.id)
-      r.notes++
+      tally(r, 'note')
       if (r.sat.size >= cur.notes.length) completeStep(cur)
       sync()
       return
@@ -309,7 +315,7 @@ function Player({ song }: { song: Song }) {
     if (cur.notes.some((n) => r.sat.has(n.id) && same(n.midi, e.midi))) return
     // The mic can hear overtones of the note you just played; give it a moment.
     if (e.source === 'mic' && performance.now() - lastCorrectAt.current < 450) return
-    r.mistakes++
+    tally(r, 'slip')
     r.combo = 0
     sync()
     flashKey(e.midi, 'bad')

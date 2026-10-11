@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type Song, parseBars } from '../../content/songs'
-import { carryOn, newRun, stepAt, stepsInBars } from './practice'
+import { LOOP_XP, LOOP_XP_MAX, carryOn, endPass, newRun, stepAt, stepsInBars, tally } from './practice'
 import { buildSteps, buildTimeline } from './timeline'
 
 const song = (rh: string, lh: string): Song => ({
@@ -53,5 +53,36 @@ describe('practice runs', () => {
     expect(carryOn(playing, 4, 'both').whole).toBe(false)
     // The run keeps its notes and slips.
     expect(carryOn({ ...playing, mistakes: 2, ms: 900 }, 2, 'rh')).toMatchObject({ idx: 2, notes: 4, mistakes: 2, ms: 900 })
+  })
+
+  it('gives a little XP for each clean pass round a loop, up to a cap per visit', () => {
+    const r = newRun('rh')
+    tally(r, 'note')
+    tally(r, 'note')
+    expect(endPass(r, 0)).toBe(LOOP_XP)
+    expect(r).toMatchObject({ idx: 0, loops: 1, notes: 2, pass: { notes: 0, mistakes: 0, whole: true } })
+    // A wrong note or a skip on the way round: nothing for that pass.
+    tally(r, 'note')
+    tally(r, 'slip')
+    expect(endPass(r, LOOP_XP)).toBe(0)
+    expect(r.mistakes).toBe(1)
+    // At most LOOP_XP_MAX in all.
+    tally(r, 'note')
+    expect(endPass(r, LOOP_XP_MAX - 1)).toBe(1)
+    tally(r, 'note')
+    expect(endPass(r, LOOP_XP_MAX)).toBe(0)
+  })
+
+  it('only pays for a pass played all the way round', () => {
+    // Joined part-way round (e.g. from where Listen stopped): that pass doesn't count, the next one does.
+    const r = carryOn(newRun('rh'), 3, 'rh')
+    tally(r, 'note')
+    expect(endPass(r, 0)).toBe(0)
+    tally(r, 'note')
+    expect(endPass(r, 0)).toBe(LOOP_XP)
+    // Jumping ahead during a pass spoils it too.
+    tally(r, 'note')
+    const jumped = carryOn({ ...r, idx: 1 }, 2, 'rh')
+    expect(endPass(jumped, 0)).toBe(0)
   })
 })
