@@ -9,6 +9,7 @@ import { playNotes } from '../../lib/audio/play'
 import { burst } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
 import { fromMidi, pitchName } from '../../lib/theory'
+import { usePref } from '../../state/prefs'
 import {
   ECHO_LEVELS,
   type EarMode,
@@ -30,7 +31,7 @@ import {
   samePitchClass,
 } from './logic/ear'
 import { FeedbackLine, GameMain, Hud, type Miss, MissList, ResultsCard, SetupCard } from './shared/GameParts'
-import { type FinishResult, finishGame, remember, sfx, starsFor, store } from './shared/finish'
+import { type FinishResult, finishGame, remember, sfx, starsFor } from './shared/finish'
 
 const ROUND = 10
 
@@ -43,6 +44,12 @@ const MODES: { id: EarMode; title: string; blurb: string; icon: typeof Ear; from
 function levelsFor(mode: EarMode) {
   const list = mode === 'quality' ? QUALITY_LEVELS : mode === 'interval' ? INTERVAL_LEVELS : ECHO_LEVELS
   return list.map((l) => ({ id: `${mode}-${l.id}`, name: l.name, description: l.description }))
+}
+
+/** A mode's level until you pick one: the one you last played there (from before levels were kept per mode), or its first. */
+function firstLevel(mode: EarMode): string {
+  const ids = levelsFor(mode).map((l) => l.id)
+  return remember('ear-level', ids[0], ids)
 }
 
 /** What a question reports when it's answered (the game adds the question itself). */
@@ -88,10 +95,10 @@ function toMiss(o: EarOutcome): Miss {
 
 export function EarTraining() {
   const [phase, setPhase] = useState<'setup' | 'play' | 'done'>('setup')
-  const [mode, setMode] = useState<EarMode>(() => remember('ear-mode', 'quality', ['quality', 'interval', 'echo'] as const))
-  const allLevelIds = (['quality', 'interval', 'echo'] as EarMode[]).flatMap((m) => levelsFor(m).map((l) => l.id))
-  const [levelId, setLevelId] = useState(() => remember('ear-level', levelsFor(mode)[0].id, allLevelIds))
+  const [mode, setMode] = usePref<EarMode>('ear-mode', 'quality', ['quality', 'interval', 'echo'])
   const levels = levelsFor(mode)
+  // Each mode remembers its own level, so switching modes doesn't reset it.
+  const [levelId, setLevelId] = usePref(`ear-level:${mode}`, firstLevel(mode), levels.map((l) => l.id))
   const level = levels.find((l) => l.id === levelId) ?? levels[0]
   const [question, setQuestion] = useState<EarQuestion | null>(null)
   // Which question we're on (changes on "next", so answering doesn't remount the question).
@@ -111,14 +118,7 @@ export function EarTraining() {
     return makeEcho(ECHO_LEVELS.find((l) => l.id === lid) ?? ECHO_LEVELS[0])
   }
 
-  const chooseMode = (m: EarMode) => {
-    setMode(m)
-    setLevelId(levelsFor(m)[0].id)
-  }
-
   const start = () => {
-    store('ear-mode', mode)
-    store('ear-level', level.id)
     tally.current = { outcomes: [], score: 0, streak: 0, best: 0 }
     setQuestion(makeQuestion(null))
     setQIndex(0)
@@ -183,7 +183,7 @@ export function EarTraining() {
                     key={m.id}
                     type="button"
                     whileTap={{ scale: 0.97 }}
-                    onClick={() => chooseMode(m.id)}
+                    onClick={() => setMode(m.id)}
                     aria-pressed={active}
                     className={`flex flex-col items-start gap-2 rounded-3xl border p-5 text-left transition-colors ${
                       active ? 'border-gold/70 bg-gold/12' : 'border-white/8 bg-night-800/80 hover:border-white/20'

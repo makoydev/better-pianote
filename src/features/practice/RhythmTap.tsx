@@ -10,6 +10,7 @@ import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { useNoteEvents } from '../../lib/input/bus'
 import { pauseComputerKeys } from '../../lib/input/keys'
+import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 import {
   type Grade,
@@ -60,19 +61,16 @@ export function RhythmTap() {
   const [phase, setPhase] = useState<'setup' | 'play' | 'done'>('setup')
   const [levelId, setLevelId] = useState(() => remember('rhythm-level', 'l1', LEVEL_IDS))
   const level = RHYTHM_LEVELS.find((l) => l.id === levelId) ?? RHYTHM_LEVELS[0]
-  const [bpm, setBpm] = useState(level.bpm)
-  const [clickOn, setClickOn] = useState(true)
+  // Tempo and click are remembered. Until you pick a tempo yourself (0 = never), each level uses its own.
+  const [savedBpm, setBpm] = usePref('rhythm:bpm', 0)
+  const bpm = savedBpm ? Math.min(120, Math.max(50, savedBpm)) : level.bpm
+  const [clickOn, setClickOn] = usePref('rhythm:click', true)
   const [patterns, setPatterns] = useState<RNote[][]>([])
   const [done, setDone] = useState<PatternResult[]>([])
   const [finish, setFinish] = useState<FinishResult | null>(null)
 
   // The computer keyboard belongs to tapping here (Space), not to playing notes.
   useEffect(() => pauseComputerKeys(), [])
-
-  const pickLevel = (id: string) => {
-    setLevelId(id)
-    setBpm(RHYTHM_LEVELS.find((l) => l.id === id)?.bpm ?? 80)
-  }
 
   const start = () => {
     store('rhythm-level', level.id)
@@ -120,7 +118,7 @@ export function RhythmTap() {
             gameId="rhythm"
             levels={RHYTHM_LEVELS}
             level={level.id}
-            onLevel={pickLevel}
+            onLevel={setLevelId}
             onStart={start}
           >
             <TempoControls levelId={level.id} bpm={bpm} setBpm={setBpm} clickOn={clickOn} setClickOn={setClickOn} />

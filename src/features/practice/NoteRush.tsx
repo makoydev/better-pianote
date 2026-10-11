@@ -18,6 +18,7 @@ import { useNoteEvents } from '../../lib/input/bus'
 import { pauseComputerKeys } from '../../lib/input/keys'
 import { LETTERS, mod } from '../../lib/theory'
 import { go } from '../../router'
+import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import {
@@ -64,7 +65,16 @@ const SP = 20
 
 export function NoteRush() {
   const [phase, setPhase] = useState<Phase>('setup')
-  const [config, setConfig] = useState<Config>({ clef: 'treble', level: 1, mode: 'play' })
+  // Clef, level and how you answer are remembered between visits.
+  const [clef, setClef] = usePref<RushClef>('note-rush:clef', 'treble', ['treble', 'bass', 'grand'])
+  const [level, setLevel] = usePref<RushLevel>('note-rush:level', 1, [1, 2, 3, 4, 5])
+  const [mode, setMode] = usePref<Mode>('note-rush:mode', 'play', ['play', 'name'])
+  const config: Config = { clef, level, mode }
+  const setConfig = (c: Config) => {
+    setClef(c.clef)
+    setLevel(c.level)
+    setMode(c.mode)
+  }
   const [result, setResult] = useState<Result | null>(null)
   const [runId, setRunId] = useState(0)
 
