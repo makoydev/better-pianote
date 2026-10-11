@@ -209,7 +209,7 @@ export function buildSteps(tl: Timeline, hands: 'rh' | 'both'): Step[] {
 }
 
 /** Key and time signature in force in each bar. */
-function signatures(song: Song, bars: number) {
+export function signatures(song: Song, bars: number) {
   let key = song.keySig
   let time = song.time
   const changes = [...(song.changes ?? [])].sort((a, b) => a.bar - b.bar)

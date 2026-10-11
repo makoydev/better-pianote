@@ -1,6 +1,6 @@
 import { Ear, Flame, Hand, ListMusic, Minus, Pause, Play, Plus, Repeat, RotateCcw, SkipBack, SkipForward, Type, Volume2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
@@ -8,7 +8,7 @@ import { ScoreStaff } from '../../components/staff/ScoreStaff'
 import type { LaidEvent, NoteState, StaffNoteSpec } from '../../components/staff/layout'
 import { type ScoreLayout, colX } from '../../components/staff/score'
 import { Button, IconButton } from '../../components/ui/Button'
-import { Segmented, Slider, Toggle } from '../../components/ui/controls'
+import { Segmented, Toggle } from '../../components/ui/controls'
 import { type Song, findSong } from '../../content/songs'
 import { useElementSize } from '../../hooks/useElementSize'
 import { Clock } from '../../lib/audio/clock'
@@ -22,12 +22,15 @@ import { type Chord, bassFor, noteName, parseNote, voiceLead } from '../../lib/t
 import { go } from '../../router'
 import { useLive } from '../../state/live'
 import { useLibrary } from '../../state/library'
+import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import { type SongResult, SongResults } from './SongResults'
-import { type Cue, type Playhead, advance, buildCues, firstCueAt, ringingAt } from './listen'
+import { TempoPresets, TempoStepper } from './TempoControl'
+import { type CountIn, type Cue, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
 import { type Run, carryOn, newRun, stepAt, stepsInBars } from './practice'
 import { type Hands, accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
+import { clampTempo, loopSpeedUp } from './tempo'
 import { type Step, type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, songScoreInput } from './timeline'
 
 const TICK = 0.25 // listen mode wakes up every sixteenth note (and plays what's due inside it at exact times)
@@ -81,7 +84,12 @@ function Player({ song }: { song: Song }) {
   const [loop, setLoop] = useState(false)
   const [loopBars, setLoopBars] = useState<[number, number]>([firstFullBar, Math.min(song.rh.length - 1, firstFullBar + 3)])
   const [backing, setBacking] = useState(true)
-  const [bpm, setBpm] = useState(song.bpm)
+  // The tempo is remembered per song; the count-in, metronome and speed-up for every song.
+  const [savedBpm, setBpm] = usePref(`song:${song.id}:bpm`, song.bpm)
+  const bpm = clampTempo(savedBpm, song.bpm)
+  const [countInOn, setCountInOn] = usePref('songs:count-in', true)
+  const [metronome, setMetronome] = usePref('songs:metronome', false)
+  const [speedUp, setSpeedUp] = usePref('songs:speed-up', false)
 
   /** The part that plays: the whole song, or the looped bars. */
   const rangeOf = (on: boolean, bars: [number, number]): [number, number] => {
@@ -125,6 +133,8 @@ function Player({ song }: { song: Song }) {
   /** Where the listen-mode playhead is, in beats. */
   const [listenAt, setListenAt] = useState(0)
   const [sounding, setSounding] = useState<Record<number, 'rh' | 'lh'>>({})
+  /** The count-in beat on screen (k makes each click a new number, even when it repeats). */
+  const [counting, setCounting] = useState<{ beat: number; k: number } | null>(null)
   const clockRef = useRef<Clock | null>(null)
   /** Pending playhead/key-light updates, cancelled on pause. */
   const timers = useRef<number[]>([])
@@ -132,6 +142,11 @@ function Player({ song }: { song: Song }) {
   useEffect(() => {
     bpmRef.current = bpm
   }, [bpm])
+  /** Read on every tick, so these apply while it plays. */
+  const live = useRef({ metronome, speedUp })
+  useEffect(() => {
+    live.current = { metronome, speedUp }
+  })
 
   const mic = useLive((s) => s.mic)
   const staffLabels = useSettings((s) => s.staffLabels)
@@ -155,6 +170,7 @@ function Player({ song }: { song: Song }) {
     timers.current = []
     setPlaying(false)
     setSounding({})
+    setCounting(null)
   }, [])
   useEffect(() => stopPlayback, [stopPlayback])
 
@@ -302,13 +318,14 @@ function Player({ song }: { song: Song }) {
   })
 
   // ---- Playback on the audio clock: Listen mode, and "Hear this bar" in Practice ----
-  const cues = useMemo(() => buildCues(tl), [tl])
+  const cues = useMemo(() => buildCues(tl, beatClicks(song, tl)), [song, tl])
 
   /**
-   * Play [lo, hi) from `from`. Listen plays everything and moves the playhead; a bar heard in Practice plays only
-   * the hands you're practising.
+   * Play [lo, hi) from `from`. Listen plays everything, moves the playhead and can count in, click along and speed
+   * up each loop; a bar heard in Practice plays only the hands you're practising.
    */
-  const startPlayback = ({ from, lo, hi, looping, bar }: { from: number; lo: number; hi: number; looping: boolean; bar: boolean }) => {
+  const startPlayback = (opts: { from: number; lo: number; hi: number; looping: boolean; bar: boolean; count?: CountIn }) => {
+    const { from, lo, hi, looping, bar, count } = opts
     stopPlayback()
     const head: Playhead = { pos: from, next: firstCueAt(cues, from) }
     const heard = (n: TimedNote) => !bar || hands === 'both' || n.hand === 'rh'
@@ -316,9 +333,14 @@ function Player({ song }: { song: Song }) {
     prevPad.current = null
     let first = true
     let ended = false
+    /** Count-in: beats still to click before the music, and the next click. */
+    let lead = count?.beats ?? 0
+    let nextClick = 0
+    /** Seconds per beat, fixed for each tick so a tempo change lands cleanly on the next one. */
+    let spb = 60 / bpmRef.current
     const later = (when: number, fn: () => void) => timers.current.push(audio.at(when, fn))
     const delayTo = (when: number) => Math.max(0, when - audio.now - 0.03)
-    const sound = (n: TimedNote, when: number, beats: number, spb: number) => {
+    const sound = (n: TimedNote, when: number, beats: number) => {
       const dur = Math.max(0.12, beats * spb * 0.96)
       playNotes([n.midi], { dur, vel: n.hand === 'rh' ? 0.82 : 0.55, delay: delayTo(when) })
       later(when, () => setSounding((x) => ({ ...x, [n.midi]: n.hand })))
@@ -330,32 +352,56 @@ function Player({ song }: { song: Song }) {
         }),
       )
     }
-    const pad = (c: Chord, when: number, beats: number, spb: number) =>
+    const pad = (c: Chord, when: number, beats: number) =>
       playNotes(padVoicing(c, !song.lh), { dur: beats * spb * 0.95, vel: 0.3, delay: delayTo(when) })
     // Nothing rings on past the part that plays (a tie into the next bar, the end of the loop).
-    const play = (c: Cue, when: number, spb: number) => {
-      for (const n of c.notes) if (heard(n)) sound(n, when, Math.min(n.dur, hi - c.t), spb)
-      if (c.chord && withChords) pad(c.chord.chord, when, Math.min(c.chord.dur, hi - c.t), spb)
+    const play = (c: Cue, when: number) => {
+      for (const n of c.notes) if (heard(n)) sound(n, when, Math.min(n.dur, hi - c.t))
+      if (c.chord && withChords) pad(c.chord.chord, when, Math.min(c.chord.dur, hi - c.t))
+      if (c.click && !bar && live.current.metronome) audio.click(c.click === 'bar', when)
       if (c.col && !bar) later(when, () => setListenAt(c.t))
     }
     const clock = new Clock({
-      interval: () => (60 / bpmRef.current) * TICK,
+      interval: () => spb * TICK,
       onTick: (_i, time) => {
         if (ended) return
-        const spb = 60 / bpmRef.current
+        spb = 60 / bpmRef.current
+        // The count-in takes the first ticks; the music starts where it ends (`off` beats into this tick).
+        let off = 0
+        if (count && lead > EPS) {
+          const done = count.beats - lead
+          off = Math.min(TICK, lead)
+          for (; nextClick < count.clicks.length && count.clicks[nextClick].at < done + off - EPS; nextClick++) {
+            const c = count.clicks[nextClick]
+            const when = time + (c.at - done) * spb
+            const k = nextClick
+            audio.click(c.beat === 1, when)
+            later(when, () => setCounting({ beat: c.beat, k }))
+          }
+          lead -= off
+          if (lead > EPS) return
+          later(time + off * spb, () => setCounting(null))
+        }
+        const start = time + off * spb
         if (first) {
           first = false
           // Starting in the middle: bring in what's still ringing there (a held bass note, the chord).
-          for (const n of ringingAt(tl, from)) if (heard(n)) sound(n, time, Math.min(n.start + n.dur, hi) - from, spb)
+          for (const n of ringingAt(tl, from)) if (heard(n)) sound(n, start, Math.min(n.start + n.dur, hi) - from)
           const ch = tl.chords.find((c) => c.start < from - EPS && c.start + c.dur > from + EPS)
-          if (ch && withChords) pad(ch.chord, time, Math.min(ch.start + ch.dur, hi) - from, spb)
+          if (ch && withChords) pad(ch.chord, start, Math.min(ch.start + ch.dur, hi) - from)
         }
-        const { due, end } = advance(cues, head, TICK, lo, hi, looping)
-        for (const d of due) play(d.cue, time + d.offset * spb, spb)
+        const { due, end, wraps } = advance(cues, head, TICK - off, lo, hi, looping)
+        for (const d of due) play(d.cue, start + d.offset * spb)
+        // Speed up each loop: 5 % faster from the tick after each pass, up to the song's tempo (and remembered).
+        const faster = wraps.length && !bar && live.current.speedUp ? loopSpeedUp(bpmRef.current, song.bpm) : bpmRef.current
+        if (faster !== bpmRef.current) {
+          bpmRef.current = faster
+          setBpm(faster)
+        }
         if (end !== undefined) {
           // The end: stop, and (in Listen) rewind so Play starts from the top next time.
           ended = true
-          later(time + end * spb + 0.5, () => {
+          later(start + end * spb + 0.5, () => {
             clock.stop()
             clockRef.current = null
             timers.current = []
@@ -377,7 +423,7 @@ function Player({ song }: { song: Song }) {
     const [lo, hi] = listenRange()
     let pos = from ?? listenAt
     if (pos < lo - EPS || pos >= hi - EPS) pos = lo
-    startPlayback({ from: pos, lo, hi, looping: loop, bar: false })
+    startPlayback({ from: pos, lo, hi, looping: loop, bar: false, count: countInOn ? countIn(song, tl, pos) : undefined })
   }
 
   const toggleListen = () => (playing ? stopPlayback() : startListen())
@@ -531,7 +577,7 @@ function Player({ song }: { song: Song }) {
       </TopBar>
 
       <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-2.5 px-3 pb-3 pt-3 sm:px-5">
-        {/* Controls */}
+        {/* Controls: how you practise, then playing and tempo */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
           <Segmented
             value={mode}
@@ -551,40 +597,10 @@ function Player({ song }: { song: Song }) {
               ]}
             />
           )}
-          {mode === 'wait' && (
-            <div className="flex items-center gap-2">
-              <Button size="lg" variant="secondary" icon={Volume2} onClick={hearBar} disabled={!step} title="Hear this bar at your tempo (Space)">
-                Hear this bar
-              </Button>
-              <Button size="lg" variant="secondary" icon={SkipForward} onClick={skip} disabled={!step} title="Skip this note (counts as a wrong note)">
-                Skip
-              </Button>
-            </div>
-          )}
-          {mode === 'listen' && (
-            <>
-              <div className="flex items-center gap-2">
-                <IconButton icon={SkipBack} size={56} label="Restart: play from the beginning" onClick={listenFromStart} />
-                <Button
-                  icon={playing ? Pause : Play}
-                  onClick={toggleListen}
-                  variant={playing ? 'secondary' : 'primary'}
-                  className="min-w-38"
-                >
-                  {playing ? 'Pause' : pausedMidway ? 'Resume' : 'Play'}
-                </Button>
-              </div>
-              <label className="flex w-44 items-center gap-3 rounded-2xl border border-white/8 bg-night-850 px-3 py-2">
-                <span className="w-16 shrink-0 text-sm font-extrabold text-ink-soft">♩ = {bpm}</span>
-                <Slider value={bpm} min={40} max={160} onChange={setBpm} label="Tempo" />
-              </label>
-            </>
-          )}
           {tl.chords.length > 0 && (
-            <label className="flex items-center gap-2.5 rounded-2xl border border-white/8 bg-night-850 px-3 py-2">
-              <Toggle checked={backing && !(mode === 'wait' && mic === 'on')} onChange={setBacking} label="Backing chords" />
-              <span className="text-sm font-extrabold text-ink-soft">Chords</span>
-            </label>
+            <TogglePill checked={backing && !(mode === 'wait' && mic === 'on')} onChange={setBacking} label="Backing chords">
+              Chords
+            </TogglePill>
           )}
           <div className="flex items-center gap-2.5 rounded-2xl border border-white/8 bg-night-850 px-3 py-2">
             <Toggle checked={loop} onChange={changeLoop} label="Loop some bars" />
@@ -609,6 +625,42 @@ function Player({ song }: { song: Song }) {
               <span className="text-sm font-extrabold text-ink-soft">Loop</span>
             )}
           </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
+          {mode === 'wait' ? (
+            <div className="flex items-center gap-2">
+              <Button size="lg" variant="secondary" icon={Volume2} onClick={hearBar} disabled={!step} title="Hear this bar at your tempo (Space)">
+                Hear this bar
+              </Button>
+              <Button size="lg" variant="secondary" icon={SkipForward} onClick={skip} disabled={!step} title="Skip this note (counts as a wrong note)">
+                Skip
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <IconButton icon={SkipBack} size={56} label="Restart: play from the beginning" onClick={listenFromStart} />
+              <Button icon={playing ? Pause : Play} onClick={toggleListen} variant={playing ? 'secondary' : 'primary'} className="min-w-38">
+                {playing ? 'Pause' : pausedMidway ? 'Resume' : 'Play'}
+              </Button>
+            </div>
+          )}
+          <TempoStepper bpm={bpm} songBpm={song.bpm} onChange={setBpm} />
+          {mode === 'listen' && (
+            <>
+              <TempoPresets bpm={bpm} songBpm={song.bpm} onChange={setBpm} />
+              <TogglePill checked={countInOn} onChange={setCountInOn} label="Count-in: a bar of clicks before the music starts">
+                Count-in
+              </TogglePill>
+              <TogglePill checked={metronome} onChange={setMetronome} label="Metronome: clicks while it plays">
+                Metronome
+              </TogglePill>
+              {loop && (
+                <TogglePill checked={speedUp} onChange={setSpeedUp} label="Speed up each loop: 5% faster each time round, up to the song's tempo">
+                  Speed up each loop
+                </TogglePill>
+              )}
+            </>
+          )}
         </div>
 
         {/* The music tape */}
@@ -643,6 +695,20 @@ function Player({ song }: { song: Song }) {
               />
             </div>
           </div>
+          {/* The count-in, big over the music */}
+          {counting && (
+            <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-3xl bg-night-900/55">
+              <motion.span
+                key={counting.k}
+                initial={{ scale: 1.6, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 26 }}
+                className="font-display text-8xl font-bold text-gold"
+              >
+                {counting.beat}
+              </motion.span>
+            </div>
+          )}
         </div>
 
         {/* What to play next, and how it's going */}
@@ -722,6 +788,16 @@ function Player({ song }: { song: Song }) {
         onSongs={() => go('/songs')}
       />
     </div>
+  )
+}
+
+/** A switch and its name in one pill (tapping the name flips it too). */
+function TogglePill({ checked, onChange, label, children }: { checked: boolean; onChange: (v: boolean) => void; label: string; children: ReactNode }) {
+  return (
+    <label className="flex items-center gap-2.5 rounded-2xl border border-white/8 bg-night-850 px-3 py-2" title={label}>
+      <Toggle checked={checked} onChange={onChange} label={label} />
+      <span className="text-sm font-extrabold text-ink-soft">{children}</span>
+    </label>
   )
 }
 
