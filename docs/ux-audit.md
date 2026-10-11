@@ -11,16 +11,18 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 
 ## Bugs (broken today)
 
-- [ ] **1. Finishing a lesson keeps awarding XP.** After a lesson that ends on a "play" step (10 of 38), the complete
+- [x] **1. Finishing a lesson keeps awarding XP.** After a lesson that ends on a "play" step (10 of 38), the complete
   screen re-runs `finish()` every ~1.5 s: +5 XP, confetti and the chime on loop. Reproduced (55 → 85 XP in 10 s).
   The play-step auto-advance effect has no `finished` guard. *Where:* `features/learn/LessonPlayer.tsx`. `S`
+  *Done:* `finish()` runs once per run (ref guard) and the auto-advance effect stops once the lesson is finished (`LessonPlayer.tsx`). Checked in the browser: XP rose once and stayed put.
 - [x] **2. The right quiz answer is almost always option 1.** 79 of 87 quizzes have `answer: 0` and options are
   never shuffled, so pressing 1 passes nearly everything. *Where:* `features/learn/steps/QuizStepView.tsx`,
   `content/units/*`. `S`
   *Done:* options are shuffled per visit (`learn/quizOrder.ts`); two-option and `ordered` questions keep their order, number options show smallest first. A test checks the answer is no longer usually first. Number keys skip ⌘/repeat.
-- [ ] **3. Enter skips lesson steps.** After clicking Continue (Chrome keeps focus on it), one Enter advances twice
+- [x] **3. Enter skips lesson steps.** After clicking Continue (Chrome keeps focus on it), one Enter advances twice
   (reproduced 2/9 → 4/9). Arrow keys inside widgets (tempo slider, circle of fifths) also move the lesson; held
   Enter auto-repeats; ⌘←/→ fires too. *Where:* `LessonPlayer.tsx` keydown handler. `S`
+  *Done:* the lesson key handler ignores repeats, ⌘/Ctrl/Alt, text fields, sliders, radio groups and keys a widget already handled, and leaves Enter to a focused button; Chrome's focus-after-click is dropped app-wide (`lib/focus.ts`). Checked: Continue click then Enter moves one step.
 - [ ] **4. Note Rush gives the answer away by colour.** Staff notes are rainbow-coloured by letter and the name
   buttons use the same palette. Reproduced. *Where:* `features/practice/NoteRush.tsx` (NoteTape, name buttons). `S`
 - [ ] **5. Blank screen after a deploy.** No error boundary; a tab or the iPad app that loads a lazy screen whose old
@@ -32,6 +34,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **7. One held wrong note counts as many mistakes (mic).** The "wrong" buzz sets `busyUntil`, the mic drops the
   sounding note, then re-detects the still-ringing note as new → another mistake and buzz every ~0.6 s. Lessons,
   Note Rush, Echo. *Where:* `lib/input/mic.ts`, `lib/audio/engine.ts`, `PlayStepView.tsx`. iPad check. `S–M`
+  *Partly done:* in lessons only: no "wrong" buzz for mic input and the same wrong note within 1.5 s counts once. The mic itself still re-detects a ringing note after any app sound.
 - [ ] **8. The app's own clicks and backing band deafen the mic.** Each click/backing note mutes the mic: Rhythm Tap
   and the lesson metronome grade on-beat notes late; Jam and progression play-along never hear you. Ignore the
   app's own pitches instead of going fully deaf; headphones mode. *Where:* `mic.ts`, `engine.ts`, `drums.ts`,
@@ -39,11 +42,13 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **9. Mic and sound don't recover after the iPad locks or the app goes to the background.** The pill says
   "Listening" but nothing is heard until Stop + Start. Resume the audio context on `visibilitychange`, watch
   `track.onended`, keep a resume-on-tap listener. *Where:* `mic.ts`, `engine.ts`, `main.tsx`. iPad check. `M`
-- [ ] **10. The sustain pedal skips lesson steps while you play.** Any pedal press is Continue, including widget steps
+- [x] **10. The sustain pedal skips lesson steps while you play.** Any pedal press is Continue, including widget steps
   and the pedal lesson (u7-l4). Count only a deliberate tap (no keys held, nothing played just before).
   *Where:* `LessonPlayer.tsx`. `S`
-- [ ] **11. Going Back to a solved play step bounces you forward** after 1.5 s, so a step can't be redone.
+  *Done:* only a deliberate tap continues: pressed and released within 0.6 s with no keys held and nothing played just before. The pedal lesson (u7-l4) turns pedal-continue off (`pedalContinue: false`), and its "C major, then F" step is `free` so C major isn't a slip.
+- [x] **11. Going Back to a solved play step bounces you forward** after 1.5 s, so a step can't be redone.
   *Where:* `LessonPlayer.tsx` auto-advance, `PlayStepView.tsx`. `S`
+  *Done:* only a freshly solved step auto-advances; revisiting shows the solved state with a "Play it again" button. Checked in the browser.
 - [x] **12. The red wrong-note flash is hidden while the key is held** (the pressed colour wins), so mic users almost
   never see it. *Where:* `components/piano/Piano.tsx`. `S`
   *Done:* good/bad marks now win over the pressed colour and carry a ✓/✕ (`components/piano/Piano.tsx`).
@@ -95,10 +100,12 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 ## Learn
 
 - [ ] **28. Resume a lesson where you left off** (leaving or an iPad reload restarts at step 1). `S–M`
-- [ ] **29. Say what went wrong:** "That's D", "Right notes – now put E at the bottom", "wrong octave"; keep the progress
+- [x] **29. Say what went wrong:** "That's D", "Right notes – now put E at the bottom", "wrong octave"; keep the progress
   dots visible when the hint appears. *Where:* `PlayStepView.tsx`, `learn/match.ts`. `S`
-- [ ] **30. Fairer stars:** one slip per attempt (a wrong chord counts 3 today), re-hearing "Show me" is free, list the
+  *Done:* a feedback line names what you played ("That's D.", "right note, wrong octave") and, for chords, what's left ("2 of 3 notes… keep going.", "Now put E at the bottom.", "play exactly the keys written"); a wrong-octave chord note isn't a slip; the dots stay visible with the hint (`learn/feedback.ts`, `match.ts`, tests).
+- [x] **30. Fairer stars:** one slip per attempt (a wrong chord counts 3 today), re-hearing "Show me" is free, list the
   slips on the complete screen. *Where:* `LessonPlayer.tsx`, `PlayStepView.tsx`. `S`
+  *Done:* one slip per attempt (700 ms window), the first "Show me" costs a slip and replays are free, and the complete screen lists the steps you slipped on.
 - [ ] **31. Rhythm lessons that check rhythm.** "Show me" plays even notes today; play the written durations, add a
   count-in and grade timing (reuse Rhythm Tap's `scoreTaps`). `M–L`
 - [ ] **32. Answer note and chord quizzes by playing them** (19 quizzes fit). `M`

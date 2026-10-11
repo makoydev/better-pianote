@@ -286,6 +286,8 @@ It works for Ode to Joy, and it works for River Flows in You.`,
       subtitle: 'Smooth, ringing sound',
       minutes: 5,
       icon: 'disc',
+      // You'll be trying the pedal here, so tapping it shouldn't skip ahead.
+      pedalContinue: false,
       steps: [
         {
           kind: 'explain',
@@ -333,6 +335,8 @@ It's “up–down” exactly as the new chord sounds. The old chord is cleared, 
           body: 'No pedal yet? Just play the chords and hold each one for its full length.',
           target: { type: 'chord', notes: ['F3', 'A3', 'C4'], anyOctave: true },
           keyboard: { from: 'C3', to: 'C5', labels: 'all' },
+          // C major comes first, so its notes aren't slips.
+          free: true,
         },
         {
           kind: 'explain',

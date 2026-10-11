@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Target } from '../../content/types'
 import { midi } from '../../lib/theory'
-import { chordMatches, feedNote, initialMatch } from './match'
+import { chordMessage, playedName, wrongNoteMessage } from './feedback'
+import { chordFound, chordMatches, chordStatus, feedNote, initialMatch } from './match'
 
 function run(t: Target, notes: string[]) {
   let s = initialMatch()
@@ -60,5 +61,35 @@ describe('lesson targets', () => {
     const t: Target = { type: 'chord', notes: ['E4', 'G4', 'C5'], bass: 'E', anyOctave: true }
     expect(chordMatches(t, [64, 67, 72])).toBe(true)
     expect(chordMatches(t, [60, 64, 67])).toBe(false)
+  })
+})
+
+describe('feedback while playing', () => {
+  it('chord status: partial, wrong, bass, voicing, correct', () => {
+    const inv: Target = { type: 'chord', notes: ['E4', 'G4', 'C5'], bass: 'E', anyOctave: true }
+    expect(chordStatus(inv, [])).toBe('empty')
+    expect(chordStatus(inv, [64, 67])).toBe('partial')
+    expect(chordStatus(inv, [64, 66])).toBe('wrong')
+    expect(chordStatus(inv, [60, 64, 67])).toBe('bass')
+    expect(chordStatus(inv, [64, 67, 72])).toBe('correct')
+    const exact: Target = { type: 'chord', notes: ['C4', 'E4', 'G4'] }
+    expect(chordStatus(exact, [48, 52, 55])).toBe('voicing')
+    expect(chordFound(exact, [48, 52])).toBe(2)
+  })
+
+  it('names what you played, spelled like the target', () => {
+    const t: Target = { type: 'note', notes: ['F#4'] }
+    expect(wrongNoteMessage(t, midi('D4'), 'letters')).toBe("That's D4.")
+    expect(wrongNoteMessage(t, midi('F#3'), 'letters')).toBe("That's F♯3: right note, wrong octave.")
+    expect(wrongNoteMessage({ type: 'note', notes: ['Gb4'], anyOctave: true }, midi('A4'), 'letters')).toBe("That's A.")
+    expect(playedName({ type: 'note', notes: ['Gb4'] }, midi('F#2'), { octave: true, naming: 'letters' })).toBe('G♭2')
+    expect(playedName({ type: 'note', notes: ['C4'] }, midi('D4'), { octave: false, naming: 'solfege' })).toBe('Re')
+  })
+
+  it('chord messages say what is left to fix', () => {
+    const inv: Target = { type: 'chord', notes: ['E4', 'G4', 'C5'], bass: 'E', anyOctave: true }
+    expect(chordMessage(inv, 'partial', [64, 67], 'letters')).toBe('2 of 3 notes… keep going.')
+    expect(chordMessage(inv, 'bass', [60, 64, 67], 'letters')).toBe('Right notes! Now put E at the bottom.')
+    expect(wrongNoteMessage(inv, midi('F4'), 'letters')).toBe("That's F: it's not in this chord.")
   })
 })

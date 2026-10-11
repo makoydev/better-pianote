@@ -1,8 +1,9 @@
-import { CheckCircle2, Eraser, HelpCircle } from 'lucide-react'
+import { CheckCircle2, Eraser, HelpCircle, RotateCcw } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useElementSize } from '../../../hooks/useElementSize'
 import { useViewportHeight } from '../../../hooks/useViewport'
+import { MusicText } from '../../../components/MusicText'
 import { type Marks, Piano } from '../../../components/piano/Piano'
 import type { StaffItem } from '../../../components/staff/Staff'
 import { Button } from '../../../components/ui/Button'
@@ -11,13 +12,14 @@ import type { KeyboardVisual, PlayStep, Target } from '../../../content/types'
 import { audio } from '../../../lib/audio/engine'
 import { playNotes, playSequence } from '../../../lib/audio/play'
 import { burst } from '../../../lib/fx'
-import { heldNow, useNoteEvents } from '../../../lib/input/bus'
+import { type NoteSource, heldNow, useNoteEvents } from '../../../lib/input/bus'
 import { useMicChords } from '../../../lib/input/mic'
 import { micHearsNotes } from '../../../lib/input/micMatch'
 import { isBlackKey, mod } from '../../../lib/theory'
 import { useLive } from '../../../state/live'
 import { useSettings } from '../../../state/settings'
-import { chordMatches, feedNote, inChord, initialMatch, targetMidis } from '../match'
+import { chordMessage, wrongNoteMessage } from '../feedback'
+import { chordMatches, chordStatus, feedNote, inChord, initialMatch, targetMidis, wrongOctave } from '../match'
 import { StaffView } from '../VisualBlock'
 import { keyboardHeight, noteMidi, pianoProps } from '../visual'
 
@@ -46,14 +48,19 @@ export function PlayStepView({
   solved,
   onSolved,
   onMistake,
+  onRetry,
 }: {
   step: PlayStep
   solved: boolean
   onSolved: () => void
-  onMistake: () => void
+  /** Count slips (for the stars). */
+  onMistake: (n: number) => void
+  /** Offered when you come back to a step you already solved. */
+  onRetry?: () => void
 }) {
   const t = step.target
   const uiSounds = useSettings((s) => s.uiSounds)
+  const naming = useSettings((s) => s.naming)
   const mic = useLive((s) => s.mic)
   const [state, setState] = useState(initialMatch)
   const [flash, setFlash] = useState<Record<number, 'good' | 'bad'>>({})
@@ -61,6 +68,11 @@ export function PlayStepView({
   const [hintAsked, setHintAsked] = useState(false)
   const [selected, setSelected] = useState<number[]>([])
   const [praise] = useState(() => PRAISE[Math.floor(Math.random() * PRAISE.length)])
+  // What you just played, or what's left to fix ("That's D.", "2 of 3 notes… keep going.").
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const feedbackTimer = useRef(0)
+  const lastSlipAt = useRef(-Infinity)
+  const lastWrong = useRef<{ midi: number; at: number } | null>(null)
   const kbRef = useRef<HTMLDivElement>(null)
   const [areaRef, { height: areaH }] = useElementSize<HTMLDivElement>()
   // On short screens the staff shrinks so the keyboard always stays fully visible.
@@ -87,20 +99,44 @@ export function PlayStepView({
       kind === 'good' ? 450 : 700,
     )
   }
-  const mistake = (m: number) => {
+  const say = (text: string | null) => {
+    setFeedback(text)
+    window.clearTimeout(feedbackTimer.current)
+    if (text) feedbackTimer.current = window.setTimeout(() => setFeedback(null), 2600)
+  }
+  useEffect(() => () => window.clearTimeout(feedbackTimer.current), [])
+
+  const mistake = (m: number, source: NoteSource) => {
+    // Free-practice steps ask you to play other things first, so wrong notes don't count there.
+    if (step.free) return
+    const now = performance.now()
+    // The mic keeps hearing a wrong note while it rings: one wrong note is one slip.
+    if (source === 'mic' && lastWrong.current?.midi === m && now - lastWrong.current.at < 1500) return
+    lastWrong.current = { midi: m, at: now }
     flashKey(m, 'bad')
+    say(wrongNoteMessage(t, m, naming))
+    // One slip per attempt: a wrong chord (several keys at once) counts once.
+    if (now - lastSlipAt.current < 700) return
+    lastSlipAt.current = now
     setWrong((w) => w + 1)
-    onMistake()
-    if (uiSounds) audio.ui('wrong')
+    onMistake(1)
+    // No buzz for the mic: the app's own sound makes it deaf for a moment while your note still rings.
+    if (uiSounds && source !== 'mic') audio.ui('wrong')
   }
   const succeed = () => {
+    say(null)
     onSolved()
     if (uiSounds) audio.ui('correct')
     burst(kbRef.current, { count: 50 })
   }
 
+  /** After each chord note: done, or say what's still missing (wrong notes are flagged separately). */
   const checkChord = (extra: number[]) => {
-    if (chordMatches(t, [...extra, ...heldNow()])) succeed()
+    const notes = [...extra, ...heldNow()]
+    if (chordMatches(t, notes)) return succeed()
+    if (step.free) return
+    const msg = chordMessage(t, chordStatus(t, notes), notes, naming)
+    if (msg) say(msg)
   }
 
   useNoteEvents((e) => {
@@ -112,15 +148,20 @@ export function PlayStepView({
         if (micHearsNotes([...heldNow(), ...selected], targets, t.bass ? noteMidi(t.bass) : undefined)) succeed()
         return
       }
-      if (!inChord(t, e.midi)) mistake(e.midi)
-      else flashKey(e.midi, 'good')
+      if (inChord(t, e.midi)) flashKey(e.midi, 'good')
+      // The right note an octave off isn't a slip: the feedback line says so.
+      else if (wrongOctave(t, e.midi)) return say(wrongNoteMessage(t, e.midi, naming))
+      else return mistake(e.midi, e.source)
       checkChord(selected)
       return
     }
     const r = feedNote(t, state, e.midi)
     setState(r.state)
-    if (r.verdict === 'good') flashKey(e.midi, 'good')
-    if (r.verdict === 'bad') mistake(e.midi)
+    if (r.verdict === 'good') {
+      flashKey(e.midi, 'good')
+      say(null)
+    }
+    if (r.verdict === 'bad') mistake(e.midi, e.source)
     if (r.state.done) succeed()
   })
 
@@ -129,7 +170,7 @@ export function PlayStepView({
     const on = !selected.includes(m)
     const next = on ? [...selected, m] : selected.filter((x) => x !== m)
     setSelected(next)
-    if (on && !inChord(t, m)) mistake(m)
+    if (on && !inChord(t, m) && !wrongOctave(t, m)) return mistake(m, 'screen')
     checkChord(next)
   }
 
@@ -180,8 +221,9 @@ export function PlayStepView({
   const onScreenChord = t.type === 'chord'
 
   const showMe = () => {
+    // Asking for help costs one slip; hearing it again is free.
+    if (!hintAsked) onMistake(1)
     setHintAsked(true)
-    onMistake()
     if (t.type === 'chord') playNotes(targets, { dur: 1.6, strum: 0.04 })
     else if (t.type === 'note') playNotes([targets[0]])
     else playSequence(targets, { gap: 0.45 })
@@ -215,18 +257,30 @@ export function PlayStepView({
             <motion.div key="hint" initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="rounded-2xl bg-gold/12 px-5 py-3 text-center text-lg font-bold text-gold">
               <RichText text={step.hint} />
             </motion.div>
-          ) : hasProgress ? (
-            <motion.div key="dots" className="flex flex-wrap justify-center gap-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              {targets.map((_, i) => (
-                <motion.span
-                  key={i}
-                  animate={{ scale: i < count ? [1, 1.4, 1] : 1 }}
-                  className={`size-4 rounded-full ${i < count ? 'bg-good shadow-[0_0_12px_#3ddc97]' : 'bg-white/15'}`}
-                />
-              ))}
-            </motion.div>
           ) : null}
         </AnimatePresence>
+        {/* The progress dots stay visible when a hint appears. */}
+        {!solved && hasProgress && (
+          <div className="flex flex-wrap justify-center gap-2">
+            {targets.map((_, i) => (
+              <motion.span
+                key={i}
+                animate={{ scale: i < count ? [1, 1.4, 1] : 1 }}
+                className={`size-4 rounded-full ${i < count ? 'bg-good shadow-[0_0_12px_#3ddc97]' : 'bg-white/15'}`}
+              />
+            ))}
+          </div>
+        )}
+        {!solved && (
+          <p aria-live="polite" className="min-h-7 text-center text-lg font-bold text-ink-soft">
+            {feedback && <MusicText text={feedback} />}
+          </p>
+        )}
+        {solved && onRetry && (
+          <Button size="md" variant="ghost" icon={RotateCcw} onClick={onRetry}>
+            Play it again
+          </Button>
+        )}
         {!solved && (
           <div className="flex flex-wrap items-center justify-center gap-2 text-sm font-semibold text-ink-mute">
             {onScreenChord && (mic === 'on' ? 'Play the chord and let it ring.' : 'Hold the notes together, or tap each key on screen.')}

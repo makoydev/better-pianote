@@ -69,3 +69,27 @@ export function chordMatches(t: Target, notes: number[]): boolean {
 export function inChord(t: Target, midi: number): boolean {
   return targetMidis(t).some((x) => same(midi, x, !!t.anyOctave))
 }
+
+/** The right note name in the wrong octave (when the step wants the written octave). */
+export function wrongOctave(t: Target, midi: number): boolean {
+  return !t.anyOctave && targetMidis(t).some((x) => mod(x, 12) === mod(midi, 12) && x !== midi)
+}
+
+export type ChordStatus = 'empty' | 'partial' | 'wrong' | 'bass' | 'voicing' | 'correct'
+
+/** How close the notes held so far are to a chord target, for the feedback line. */
+export function chordStatus(t: Target, notes: number[]): ChordStatus {
+  if (t.type !== 'chord' || notes.length === 0) return 'empty'
+  const want = new Set(targetMidis(t).map((m) => mod(m, 12)))
+  const have = new Set(notes.map((m) => mod(m, 12)))
+  if ([...have].some((p) => !want.has(p))) return 'wrong'
+  if (have.size < want.size) return 'partial'
+  if (t.bass && mod(Math.min(...notes), 12) !== mod(midiOf(parseNote(t.bass)), 12)) return 'bass'
+  return chordMatches(t, notes) ? 'correct' : 'voicing'
+}
+
+/** How many of the chord's note names are among the notes held. */
+export function chordFound(t: Target, notes: number[]): number {
+  const have = new Set(notes.map((m) => mod(m, 12)))
+  return new Set(targetMidis(t).map((m) => mod(m, 12)).filter((p) => have.has(p))).size
+}
