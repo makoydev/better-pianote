@@ -1,12 +1,11 @@
-import { Download, Keyboard, Monitor, Music, RotateCcw, Upload, User, Volume2 } from 'lucide-react'
+import { Download, Keyboard, Monitor, Music, RotateCcw, Sparkles, Upload, User, Volume2 } from 'lucide-react'
 import { type ReactNode, useRef, useState } from 'react'
 import { ConnectionPill } from '../../components/layout/ConnectionPill'
 import { Page } from '../../components/layout/Page'
 import { Button } from '../../components/ui/Button'
 import { Segmented, Slider, Toggle } from '../../components/ui/controls'
 import { audio } from '../../lib/audio/engine'
-import { libraryBackup, restoreLibrary } from '../../state/library'
-import { usePrefs } from '../../state/prefs'
+import { exportBackup, importBackup } from '../../lib/backup'
 import { useProgress } from '../../state/progress'
 import { type KeyLabels, type Naming, type UiScale, useSettings } from '../../state/settings'
 
@@ -18,43 +17,6 @@ export function Settings() {
   const [confirmReset, setConfirmReset] = useState(false)
   const [importMsg, setImportMsg] = useState<string | null>(null)
   const file = useRef<HTMLInputElement>(null)
-
-  const exportData = () => {
-    const { set: _set, ...settings } = useSettings.getState()
-    void _set
-    const p = useProgress.getState()
-    const progress = Object.fromEntries(Object.entries(p).filter(([, v]) => typeof v !== 'function'))
-    const library = libraryBackup()
-    const prefs = usePrefs.getState().values
-    const blob = new Blob([JSON.stringify({ app: 'tonic', version: 2, exportedAt: new Date().toISOString(), settings, progress, prefs, library })], {
-      type: 'application/json',
-    })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `tonic-progress-${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(a.href)
-  }
-
-  const importData = async (f: File) => {
-    try {
-      const data = JSON.parse(await f.text())
-      if (data?.app !== 'tonic' || !data.progress) throw new Error('not a Tonic file')
-      useProgress.setState(data.progress)
-      if (data.settings) useSettings.setState(data.settings)
-      if (data.prefs && typeof data.prefs === 'object') usePrefs.setState({ values: data.prefs })
-      let songs = 0
-      try {
-        songs = data.library ? await restoreLibrary(data.library) : 0
-      } catch {
-        setImportMsg('Progress imported, but this browser wouldn’t store the songs (private browsing?).')
-        return
-      }
-      setImportMsg(songs ? `Progress and ${songs} song${songs === 1 ? '' : 's'} imported. Welcome back!` : 'Progress imported. Welcome back!')
-    } catch {
-      setImportMsg('That file doesn’t look like a Tonic progress file.')
-    }
-  }
 
   return (
     <Page title="Settings" subtitle="Make it yours. Everything saves automatically on this device.">
@@ -104,6 +66,9 @@ export function Settings() {
                 { value: 'none', label: 'None' },
               ]}
             />
+          </Row>
+          <Row label="Keep the screen on while practising" hint="Lessons, games, songs and tools. Your hands are on the keys, not the screen.">
+            <Toggle checked={s.keepAwake} onChange={(v) => set({ keepAwake: v })} label="Keep the screen on while practising" />
           </Row>
           <Row label="Note names under the staff" hint="Training wheels for reading. Turn off when you're ready.">
             <Toggle checked={s.staffLabels} onChange={(v) => set({ staffLabels: v })} label="Note names under the staff" />
@@ -162,7 +127,7 @@ export function Settings() {
           </Row>
           <Row label="Move your progress" hint="Your progress and imported songs live in this browser. Export them to move to another device.">
             <div className="flex gap-2">
-              <Button size="sm" variant="secondary" icon={Download} onClick={exportData}>
+              <Button size="sm" variant="secondary" icon={Download} onClick={exportBackup}>
                 Export
               </Button>
               <Button size="sm" variant="secondary" icon={Upload} onClick={() => file.current?.click()}>
@@ -175,13 +140,18 @@ export function Settings() {
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0]
-                  if (f) void importData(f)
+                  if (f) void importBackup(f).then((r) => setImportMsg(r.message))
                   e.target.value = ''
                 }}
               />
             </div>
           </Row>
           {importMsg && <p className="text-sm font-bold text-teal">{importMsg}</p>}
+          <Row label="Welcome tour" hint="See the first-launch steps again (connecting your keyboard, where to start).">
+            <Button size="sm" variant="secondary" icon={Sparkles} onClick={() => set({ onboarded: false })}>
+              Show welcome again
+            </Button>
+          </Row>
           <Row label="Start over" hint="Clears lessons, XP, streaks and scores.">
             <Button
               size="sm"

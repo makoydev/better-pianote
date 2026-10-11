@@ -25,9 +25,10 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   *Done:* the lesson key handler ignores repeats, ⌘/Ctrl/Alt, text fields, sliders, radio groups and keys a widget already handled, and leaves Enter to a focused button; Chrome's focus-after-click is dropped app-wide (`lib/focus.ts`). Checked: Continue click then Enter moves one step.
 - [ ] **4. Note Rush gives the answer away by colour.** Staff notes are rainbow-coloured by letter and the name
   buttons use the same palette. Reproduced. *Where:* `features/practice/NoteRush.tsx` (NoteTape, name buttons). `S`
-- [ ] **5. Blank screen after a deploy.** No error boundary; a tab or the iPad app that loads a lazy screen whose old
+- [x] **5. Blank screen after a deploy.** No error boundary; a tab or the iPad app that loads a lazy screen whose old
   hashed chunk is gone (deploy replaces `gh-pages`) unmounts the whole app. Add a "Tonic was updated – Reload"
   fallback and handle `vite:preloadError`. *Where:* `App.tsx`, `scripts/deploy.sh`. `S`
+  *Done:* an error boundary around every screen shows "Tonic was updated – Reload" (or "Something went wrong") with Reload and Home, and a `vite:preloadError` handler reloads once by itself (`ErrorBoundary.tsx`, `main.tsx`).
 - [x] **6. Mic and USB both on → doubled notes.** `main.tsx` auto-starts both; the mic hears the CT-S1 speakers and
   sends a late second note (in Note Rush it answers the next note wrong). The pill only shows the USB device.
   *Where:* `main.tsx`, `lib/input/bus.ts`, `components/layout/ConnectionPill.tsx`. `S`
@@ -77,8 +78,9 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 
 ## Across the whole app
 
-- [ ] **19. Keep the screen awake while practising** (Wake Lock on full-screen pages, re-acquired on
+- [x] **19. Keep the screen awake while practising** (Wake Lock on full-screen pages, re-acquired on
   `visibilitychange`). On iPad a sleeping screen also kills the mic. *Where:* new hook, `App.tsx`. `S`
+  *Done:* `useWakeLock` holds a screen wake lock on full-screen pages and takes it again when the page becomes visible; Settings → Display has "Keep the screen on while practising" (on by default).
 - [ ] **20. Hands-free controls everywhere.** One scheme (pedal tap, Enter, Space) for Start, Next, Play again and Hear
   it again in games, songs, tools and the lesson complete screen. A shortcut sheet (`?`), and a spare key (top C7)
   as Continue for mic users without a pedal. `M`
@@ -184,15 +186,19 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 
 - [ ] **67. Safer Export/Import:** iPad share sheet, preview with merge or replace (Import overwrites everything today),
   undo, last-backup reminder. iPad check. `M`
-- [ ] **68. Onboarding:** "Coming from another device? Import" and "Show welcome again" in Settings. `S`
+- [x] **68. Onboarding:** "Coming from another device? Import" and "Show welcome again" in Settings. `S`
+  *Done:* onboarding's first step has "Coming from another device? Import your progress", and Settings → You has "Show welcome again". Export/import now live in `lib/backup.ts` (shared by both).
 - [x] **69. Connect sheet:** a live test strip (last note heard, source, pedal), keyboard connected/disconnected
   messages, quick volume. `S`
   *Done:* a "Test it" strip at the top of the connect sheet (last note heard and its source, pedal down, app volume, piano-sound status with Try again), plus toasts when the keyboard is plugged in or out (`ConnectSheet.tsx`, `midi.ts`, `Toaster.tsx`). Checked: "Heard E4 from your computer keys".
-- [ ] **70. Faster, steadier start:** fetch the piano samples early with a loading/failed state and retry, a static
+- [x] **70. Faster, steadier start:** fetch the piano samples early with a loading/failed state and retry, a static
   loader while the app boots, `apple-mobile-web-app-title`. *Where:* `engine.ts`, `index.html`, `main.tsx`. `S`
-- [ ] **71. iPad polish:** padding under the status bar, no double-tap zoom on buttons, keyboards scroll to the lit
+  *Done:* piano samples start downloading 0.8 s after launch (decoded once a tap unlocks audio), missing ones are retried when the device comes back online or from the connect sheet, `index.html` shows a spinner while the app boots, and the home-screen title is "Tonic". Not done: subsetting the music font.
+- [x] **71. iPad polish:** padding under the status bar, no double-tap zoom on buttons, keyboards scroll to the lit
   keys, labels under the sidebar icons in portrait. iPad check. `S`
+  *Done:* safe-area padding on pages and the sidebar plus a dark strip behind the status bar, `touch-action: manipulation` and no long-press callout on buttons, wide keyboards scroll to the lit keys, labels under the sidebar icons on the iPad-portrait icon rail. Checked at 900 px; still worth a look on the iPad itself.
 - [ ] **72. Accessibility and touch sweep:** controls under 44 px, ✓/✗ alongside red/green, focus in dialogs,
   screen-reader announcements, Do-Re-Mi naming everywhere. `S–M`
-- [ ] **73. Performance:** with the mic on, hidden connect sheets re-render 25 times a second; pause the animated
+- [x] **73. Performance:** with the mic on, hidden connect sheets re-render 25 times a second; pause the animated
   background on full-screen pages. `S`
+  *Done:* the connect sheet's live parts only exist while it's open (no more hidden re-renders 25×/s), and the background lights hold still on full-screen pages (`Aurora calm`).

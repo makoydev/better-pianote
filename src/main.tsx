@@ -4,7 +4,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import { App } from './App'
-import { audio } from './lib/audio/engine'
+import { audio, prefetchSamples } from './lib/audio/engine'
 import { installClickBlur } from './lib/focus'
 import { installComputerKeys } from './lib/input/keys'
 import { autoStartMic } from './lib/input/mic'
@@ -28,6 +28,20 @@ const unlock = () => {
 }
 UNLOCK_EVENTS.forEach((e) => window.addEventListener(e, unlock, { capture: true, passive: true }))
 
+// After an update an open tab can ask for files that are gone (screens load on demand): reload once to get
+// the new version. If that already happened a moment ago, the error screen offers Reload instead.
+window.addEventListener('vite:preloadError', (e) => {
+  try {
+    const last = Number(sessionStorage.getItem('tonic-reloaded') ?? 0)
+    if (Date.now() - last < 15_000) return
+    sessionStorage.setItem('tonic-reloaded', String(Date.now()))
+  } catch {
+    return
+  }
+  e.preventDefault()
+  window.location.reload()
+})
+
 // Wait (briefly) for the music font so notes never flash as empty boxes.
 await Promise.race([document.fonts.load('40px Bravura', ''), new Promise((r) => setTimeout(r, 1500))])
 
@@ -36,3 +50,6 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+
+// Download the piano once the first screen is up, so it's ready before your first note.
+window.setTimeout(prefetchSamples, 800)

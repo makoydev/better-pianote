@@ -1,8 +1,10 @@
-import { ArrowRight, CheckCircle2, Guitar, Keyboard, Mic, Piano, Sparkles, Usb } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Guitar, Keyboard, Mic, Piano, Sparkles, Upload, Usb } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { LogoMark } from '../../components/layout/Logo'
 import { Button } from '../../components/ui/Button'
+import { importBackup } from '../../lib/backup'
+import { toast } from '../../lib/fx'
 import { connectMidi } from '../../lib/input/midi'
 import { startMic } from '../../lib/input/mic'
 import { go } from '../../router'
@@ -18,10 +20,19 @@ export function Onboarding() {
   const devices = useLive((s) => s.midiDevices)
   const mic = useLive((s) => s.mic)
   const connected = midi === 'ready' && devices.length > 0
+  const file = useRef<HTMLInputElement>(null)
+  const [importError, setImportError] = useState<string | null>(null)
 
   const finish = (path: string) => {
     set({ onboarded: true })
     go(path)
+  }
+  // Already using Tonic on another device (e.g. the Mac): bring that progress here and skip the tour.
+  const importFile = async (f: File) => {
+    const r = await importBackup(f)
+    if (!r.ok) return setImportError(r.message)
+    toast({ kind: 'info', title: r.message })
+    finish('/')
   }
 
   return (
@@ -58,6 +69,23 @@ export function Onboarding() {
               <Button size="xl" iconRight={ArrowRight} className="mt-7" onClick={() => setStep(1)}>
                 Let’s go
               </Button>
+              <div className="mt-4">
+                <Button variant="ghost" size="md" icon={Upload} onClick={() => file.current?.click()}>
+                  Coming from another device? Import your progress
+                </Button>
+                <input
+                  ref={file}
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) void importFile(f)
+                    e.target.value = ''
+                  }}
+                />
+                {importError && <p className="mt-2 text-sm font-bold text-bad">{importError}</p>}
+              </div>
             </motion.div>
           )}
           {step === 1 && (

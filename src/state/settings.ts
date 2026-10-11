@@ -27,6 +27,8 @@ export interface Settings {
   computerKeys: boolean
   /** Require the exact octave in games (off: any C counts as C). */
   strictOctave: boolean
+  /** Keep the screen on while a lesson, game, song or tool is open. */
+  keepAwake: boolean
   name: string
   onboarded: boolean
   set: (patch: Partial<Omit<Settings, 'set'>>) => void
@@ -49,6 +51,7 @@ export const useSettings = create<Settings>()(
       demoToKeyboard: false,
       computerKeys: true,
       strictOctave: false,
+      keepAwake: true,
       name: '',
       onboarded: false,
       set: (patch) => set(patch),
