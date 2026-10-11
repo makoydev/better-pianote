@@ -41,18 +41,28 @@ describe('practice runs', () => {
     expect(stepsInBars(both, null)).toBe(both)
   })
 
-  it('counts a run as a best only when it is played from the start, in order, with the same hands', () => {
-    // Starting part-way (e.g. from where Listen stopped).
-    expect(carryOn(newRun('rh'), 3, 'rh').whole).toBe(false)
-    const playing = { ...newRun('rh'), idx: 4, notes: 4 }
-    // Back to the same step after listening, or back over steps already played: still whole.
-    expect(carryOn(playing, 4, 'rh').whole).toBe(true)
-    expect(carryOn(playing, 2, 'rh').whole).toBe(true)
-    // Jumping ahead, or switching hands mid-way: not any more.
-    expect(carryOn(playing, 5, 'rh').whole).toBe(false)
-    expect(carryOn(playing, 4, 'both').whole).toBe(false)
-    // The run keeps its notes and slips.
-    expect(carryOn({ ...playing, mistakes: 2, ms: 900 }, 2, 'rh')).toMatchObject({ idx: 2, notes: 4, mistakes: 2, ms: 900 })
+  it('counts a run as a best only when it is played straight through, with the same hands', () => {
+    // Starting part-way (e.g. from where Listen stopped): a fresh run that can't be a best.
+    expect(carryOn(newRun('rh'), 3, 'rh', false)).toMatchObject({ idx: 3, whole: false, notes: 0 })
+    const playing = { ...newRun('rh'), idx: 4, notes: 6, sat: new Set([7]) }
+    // Back on the same step after listening: nothing changes, not even a half-played chord.
+    expect(carryOn(playing, 4, 'rh', false)).toBe(playing)
+    // Jumping ahead, going back (the notes played again would count twice) or switching hands: not a best any more,
+    // but the run carries on with its notes, slips and time.
+    for (const moved of [carryOn(playing, 5, 'rh', false), carryOn(playing, 2, 'rh', false), carryOn(playing, 4, 'both', false)]) {
+      expect(moved).toMatchObject({ whole: false, notes: 6 })
+      expect(moved.sat.size).toBe(0)
+    }
+    expect(carryOn({ ...playing, mistakes: 2, ms: 900 }, 2, 'rh', false)).toMatchObject({ idx: 2, notes: 6, mistakes: 2, ms: 900 })
+    // Back at the top of the song, or after finishing: a fresh run.
+    expect(carryOn(playing, 0, 'rh', false)).toMatchObject({ idx: 0, whole: true, notes: 0 })
+    expect(carryOn({ ...playing, done: true }, 4, 'rh', false)).toMatchObject({ idx: 4, whole: false, notes: 0 })
+  })
+
+  it('keeps a looping run going when Listen brings you back to the first bar of the loop', () => {
+    const looping = { ...newRun('rh'), idx: 3, notes: 9, loops: 2, pass: { notes: 3, mistakes: 0, whole: true } }
+    // A new pass starts there, and the loop count stays.
+    expect(carryOn(looping, 0, 'rh', true)).toMatchObject({ idx: 0, notes: 9, loops: 2, pass: { notes: 0, mistakes: 0, whole: true } })
   })
 
   it('gives a little XP for each clean pass round a loop, up to a cap per visit', () => {
@@ -75,14 +85,14 @@ describe('practice runs', () => {
 
   it('only pays for a pass played all the way round', () => {
     // Joined part-way round (e.g. from where Listen stopped): that pass doesn't count, the next one does.
-    const r = carryOn(newRun('rh'), 3, 'rh')
+    const r = carryOn(newRun('rh'), 3, 'rh', true)
     tally(r, 'note')
     expect(endPass(r, 0)).toBe(0)
     tally(r, 'note')
     expect(endPass(r, 0)).toBe(LOOP_XP)
     // Jumping ahead during a pass spoils it too.
     tally(r, 'note')
-    const jumped = carryOn({ ...r, idx: 1 }, 2, 'rh')
+    const jumped = carryOn({ ...r, idx: 1 }, 2, 'rh', true)
     expect(endPass(jumped, 0)).toBe(0)
   })
 })

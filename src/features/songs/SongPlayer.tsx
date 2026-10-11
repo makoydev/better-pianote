@@ -134,6 +134,12 @@ function Player({ song }: { song: Song }) {
   const [playing, setPlaying] = useState(false)
   /** Where the listen-mode playhead is, in beats. */
   const [listenAt, setListenAt] = useState(0)
+  /**
+   * Where Practice was when you switched to Listen, and whether Listen then played to the end (rewinding itself).
+   * Back in Practice you carry on from where Listen paused, or from where you were if it just played to the end.
+   */
+  const practiceAt = useRef(0)
+  const listenEnded = useRef(false)
   const [sounding, setSounding] = useState<Record<number, 'rh' | 'lh'>>({})
   /** The count-in beat on screen (k makes each click a new number, even when it repeats). */
   const [counting, setCounting] = useState<{ beat: number; k: number } | null>(null)
@@ -176,9 +182,9 @@ function Player({ song }: { song: Song }) {
   }, [])
   useEffect(() => stopPlayback, [stopPlayback])
 
-  /** A fresh practice run from the first step. */
-  const resetRun = (h = hands) => {
-    run.current = newRun(h)
+  /** A fresh practice run (from the first step, unless given one that starts elsewhere). */
+  const resetRun = (fresh = newRun(hands)) => {
+    run.current = fresh
     sync()
     setFlash({})
     setWrongAt(null)
@@ -189,21 +195,28 @@ function Player({ song }: { song: Song }) {
     prevPad.current = null
   }
 
+  /** The practice clock runs from your first note (or skip). */
+  const startClock = () => {
+    if (startedAt.current !== null) return
+    startedAt.current = performance.now()
+    setStarted(true)
+  }
+
   /** Start again: a fresh run, and Listen back to the start (of the loop, when looping). */
   const reset = (from = listenRange()[0]) => {
     stopPlayback()
     resetRun()
+    listenEnded.current = false
     setListenAt(from)
   }
 
-  /**
-   * Carry on from step i after switching modes or hands. Back on the first step it's a fresh run; a run that
-   * jumps ahead (or starts part-way) or changes hands no longer counts as a best.
-   */
+  /** Carry on from step i after switching modes or hands (see carryOn for what counts as the same run). */
   const moveTo = (i: number, h: Hands) => {
-    if (i === 0 || run.current.done) resetRun(h)
-    if (i === 0) return
-    run.current = carryOn(run.current, i, h)
+    const next = carryOn(run.current, i, h, loop)
+    if (next === run.current) return
+    // Nothing played in it yet: a fresh run, so the last one's results and clock go too.
+    if (!next.notes && !next.mistakes) return resetRun(next)
+    run.current = next
     sync()
     setFlash({})
     setWrongAt(null)
@@ -284,6 +297,7 @@ function Player({ song }: { song: Song }) {
   const skip = () => {
     const r = run.current
     if (mode !== 'wait' || r.done || !steps[r.idx]) return
+    startClock()
     tally(r, 'slip')
     r.combo = 0
     nextStep()
@@ -300,10 +314,7 @@ function Player({ song }: { song: Song }) {
     const hit = cur.notes.find((n) => !r.sat.has(n.id) && same(n.midi, e.midi))
     if (hit) {
       lastCorrectAt.current = performance.now()
-      if (startedAt.current === null) {
-        startedAt.current = performance.now()
-        setStarted(true)
-      }
+      startClock()
       flashKey(e.midi, 'good')
       r.sat.add(hit.id)
       tally(r, 'note')
@@ -415,13 +426,18 @@ function Player({ song }: { song: Song }) {
             timers.current = []
             setPlaying(false)
             setSounding({})
-            if (!bar) setListenAt(lo)
+            if (bar) return
+            setListenAt(lo)
+            listenEnded.current = true
           })
         }
       },
     })
     clockRef.current = clock
-    if (!bar) setListenAt(from)
+    if (!bar) {
+      setListenAt(from)
+      listenEnded.current = false
+    }
     clock.start(0.2)
     setPlaying(true)
   }
@@ -448,8 +464,15 @@ function Player({ song }: { song: Song }) {
     startPlayback({ from: b.start, lo: b.start, hi: b.start + b.dur, looping: false, bar: true })
   }
 
-  /** Start again (R): Listen goes back to the beginning (still playing if it was); Practice starts a fresh run. */
-  const restart = () => (mode === 'listen' && playing ? listenFromStart() : reset())
+  /** Start again (R): Practice starts a fresh run; Listen goes back to the beginning (still playing if it was). */
+  const restart = () => {
+    if (mode === 'wait') reset()
+    else if (playing) listenFromStart()
+    else {
+      listenEnded.current = false
+      setListenAt(listenRange()[0])
+    }
+  }
 
   // Space plays/pauses in Listen and plays the bar in Practice; R starts again. Not while typing or on a slider,
   // and Space is left to a focused button (keyboard users press it to click).
@@ -541,10 +564,13 @@ function Player({ song }: { song: Song }) {
         r.ms += performance.now() - startedAt.current
         startedAt.current = null
       }
-      setListenAt(!r.done && r.idx > 0 ? (steps[r.idx]?.start ?? 0) : listenRange()[0])
+      practiceAt.current = !r.done && r.idx > 0 ? (steps[r.idx]?.start ?? 0) : listenRange()[0]
+      listenEnded.current = false
+      setListenAt(practiceAt.current)
     } else {
-      // Practice carries on from the first step at or after where Listen got to.
-      moveTo(stepAt(steps, listenAt, loop), hands)
+      // Practice carries on from the first step at or after where Listen paused (or where it was, if Listen just
+      // played to the end and rewound).
+      moveTo(stepAt(steps, listenEnded.current ? practiceAt.current : listenAt, loop), hands)
     }
     setMode(m)
   }

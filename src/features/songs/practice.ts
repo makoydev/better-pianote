@@ -61,14 +61,26 @@ export function stepAt(steps: Step[], t: number, looping: boolean): number {
   return i >= 0 ? i : looping ? 0 : Math.max(0, steps.length - 1)
 }
 
+/** A fresh run from step i (starting part-way, it can't count as a best). */
+export function runFrom(hands: Hands, i: number): Run {
+  const r = newRun(hands)
+  r.idx = i
+  r.whole = r.pass.whole = i === 0
+  return r
+}
+
 /**
- * Carry a run on from step i (after switching modes or hands; i > 0, the first step is a fresh run). It stops
- * counting as a best (and the loop pass as clean) if it starts part-way, jumps ahead or changes hands; going back
- * over steps is fine.
+ * Where practice carries on from step i after switching modes or hands:
+ * - on the same step nothing changes (notes of a chord you'd already played stay played);
+ * - with nothing played yet, after finishing, or back at the top of the song, a fresh run from there;
+ * - anywhere else the run carries on, but no longer counts as a best (it skipped ahead, or would count notes it
+ *   plays again twice) and the loop pass isn't clean, except that the loop's first step starts a new pass.
  */
-export function carryOn(r: Run, i: number, hands: Hands): Run {
-  const keeps = (t: Tally) => (t.notes > 0 || t.mistakes > 0) && t.whole && hands === r.hands && i <= r.idx
-  return { ...r, idx: i, sat: new Set(), hands, whole: keeps(r), pass: { ...r.pass, whole: keeps(r.pass) } }
+export function carryOn(r: Run, i: number, hands: Hands, looping: boolean): Run {
+  if (i === r.idx && hands === r.hands && !r.done) return r
+  if (r.done || (!r.notes && !r.mistakes) || (i === 0 && !looping)) return runFrom(hands, i)
+  const pass = looping && i === 0 ? fresh() : { ...r.pass, whole: false }
+  return { ...r, idx: i, sat: new Set(), hands, whole: false, pass }
 }
 
 /** Looping a section never finishes, so each clean pass earns a little XP, up to a cap per visit to the song. */
