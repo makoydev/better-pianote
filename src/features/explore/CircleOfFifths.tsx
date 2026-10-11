@@ -81,6 +81,7 @@ export function CircleOfFifths() {
             <div className="mb-3 text-sm font-extrabold uppercase tracking-wider text-ink-mute">
               The <MusicText text={`${pitchName(tonic)} ${sel.mode}`} /> scale on your keyboard
             </div>
+            {/* Names only on the scale's keys, spelled for the key: the content here, not reading help. */}
             <Piano from={60} to={84} marks={marks} labels="marked" sparks sparkHeight={80} height={170} />
           </Card>
         </section>

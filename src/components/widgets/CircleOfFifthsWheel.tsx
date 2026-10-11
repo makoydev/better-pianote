@@ -298,7 +298,7 @@ export function KeyDetails({ index, mode, className = '' }: { index: number; mod
         </Button>
       </div>
       <div className="paper rounded-3xl px-4 py-2">
-        <Staff clef="treble" keySig={fifths} items={items} sp={16} minSlot={3.6} labels />
+        <Staff clef="treble" keySig={fifths} items={items} sp={16} minSlot={3.6} />
       </div>
       <div>
         <div className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Chords in this key · tap to hear</div>

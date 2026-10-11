@@ -300,11 +300,12 @@ export function ScaleExplorer() {
                 )}
               </AnimatePresence>
             </div>
+            {/* Names only on the scale's keys, spelled for the scale: the content here, not reading help. */}
             <Piano from={hand === 'rh' ? 60 : 48} to={hand === 'rh' ? 84 : 72} marks={marks} fingers={pianoFingers} labels="marked" sparks sparkHeight={90} height={190} octaveLabels />
           </Card>
 
           <Paper>
-            <Staff clef={hand === 'rh' ? 'treble' : 'bass'} keySig={keySig} items={items} sp={18} minSlot={3.4} labels fingers />
+            <Staff clef={hand === 'rh' ? 'treble' : 'bass'} keySig={keySig} items={items} sp={18} minSlot={3.4} fingers />
             <p className="mt-1 text-center text-sm font-bold text-paper-ink/60">
               {keyMode ? (
                 <>

@@ -285,6 +285,7 @@ export function ProgressionJam() {
               </div>
               <PlayAlong pcs={n ? pcsList[cur] : []} />
             </div>
+            {/* Names only on the chord's keys, spelled for the chord: you play along by them, so not reading help. */}
             <Piano from={36} to={84} marks={marks} labels="marked" sparks sparkHeight={110} height={170} octaveLabels />
           </Card>
 

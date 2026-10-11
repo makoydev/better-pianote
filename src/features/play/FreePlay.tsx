@@ -1,10 +1,11 @@
-import { Eraser, Footprints, Layers, Sparkles, Wand2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eraser, Footprints, Layers, Sparkles, Wand2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { Piano } from '../../components/piano/Piano'
 import { Staff, type StaffItem } from '../../components/staff/Staff'
+import { IconButton } from '../../components/ui/Button'
 import { Paper } from '../../components/ui/Card'
 import { Modal } from '../../components/ui/Modal'
 import { useElementSize } from '../../hooks/useElementSize'
@@ -32,6 +33,7 @@ import {
   spellInKey,
 } from '../../lib/theory'
 import { heldMidis, useLive } from '../../state/live'
+import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 
 interface HistoryItem {
@@ -42,11 +44,18 @@ interface HistoryItem {
 
 const KEY_OPTIONS = [...ALL_MAJOR_KEYS, ...ALL_MINOR_KEYS]
 
+/** Narrower than this, all 61 keys come out under ~30px wide: too small to tap. */
+const FULL_KEYBOARD_WIDTH = 1100
+/** Where the two-octave keyboard can start: C2 … C5, so it stays within the CT-S1's C2–C7. */
+const COMPACT_OCTAVES = [2, 3, 4, 5]
+
 export function FreePlay() {
   const held = useLive((s) => s.held)
   const sustain = useLive((s) => s.sustain)
   const mic = useLive((s) => s.mic)
+  const midiKeyboards = useLive((s) => s.midiDevices.length)
   const found = useProgress((s) => s.chordsFound)
+  const [octave, setOctave] = usePref('free-play:octave', 3, COMPACT_OCTAVES)
   const [keyChoice, setKeyChoice] = useState('auto')
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [discovered, setDiscovered] = useState<string | null>(null)
@@ -105,7 +114,11 @@ export function FreePlay() {
     sub = 'Not a standard chord name. Try moving one note.'
   }
   const roman = det && key ? chordToRoman(det.chord, key) : null
-  const pianoH = Math.round(Math.max(120, Math.min(200, areaH - 40)))
+  // All 61 keys, like the CT-S1, when it's plugged in or the screen is wide. Otherwise (mic, or tapping the
+  // keys on an iPad) two big octaves that ◀ ▶ move along. Phones always get the two octaves.
+  const compact = areaW > 0 && (areaW < 640 || (midiKeyboards === 0 && areaW < FULL_KEYBOARD_WIDTH))
+  const from = compact ? (octave + 1) * 12 : 36
+  const pianoH = Math.round(compact ? Math.max(120, Math.min(240, areaH - 100)) : Math.max(120, Math.min(200, areaH - 40)))
 
   return (
     <div className="flex h-dvh flex-col">
@@ -180,7 +193,7 @@ export function FreePlay() {
 
           {/* On the staff */}
           <Paper className="flex items-center">
-            <Staff clef="grand" items={staffItems} sp={16} minSlot={6} reserveAbove={2.6} reserveBelow={2.6} animate={false} labels={spelled.length > 0} />
+            <Staff clef="grand" items={staffItems} sp={16} minSlot={6} reserveAbove={2.6} reserveBelow={2.6} animate={false} />
           </Paper>
         </div>
 
@@ -231,17 +244,31 @@ export function FreePlay() {
           </button>
         </div>
 
-        {/* The keyboard: all 61 keys, like your CT-S1 */}
         <div ref={area} className="flex min-h-[200px] flex-1 flex-col justify-end">
-          {/* All 61 keys like the CT-S1 on wide screens; two octaves around middle C on phones. */}
+          {/* Octave buttons for the two-octave keyboard, drawn over the light trails that rise behind them. */}
+          {compact && (
+            <div className="relative z-10 mb-2 flex items-center justify-between gap-3">
+              <IconButton icon={ChevronLeft} label="Octave down" size={52} disabled={octave <= COMPACT_OCTAVES[0]} onClick={() => setOctave(octave - 1)} />
+              <span className="font-display text-xl font-bold text-ink-soft">
+                C{octave} – C{octave + 2}
+              </span>
+              <IconButton
+                icon={ChevronRight}
+                label="Octave up"
+                size={52}
+                disabled={octave >= COMPACT_OCTAVES[COMPACT_OCTAVES.length - 1]}
+                onClick={() => setOctave(octave + 1)}
+              />
+            </div>
+          )}
           <Piano
-            from={areaW && areaW < 640 ? 48 : 36}
-            to={areaW && areaW < 640 ? 72 : 96}
-            labels="c"
+            from={from}
+            to={compact ? from + 24 : 96}
             trails
             trailHeight={Math.max(60, areaH - pianoH - 30)}
             height={pianoH}
             minKeyWidth={20}
+            octaveLabels={compact}
           />
         </div>
       </div>

@@ -297,6 +297,7 @@ export function ChordExplorer() {
               to={to}
               marks={marks}
               fingers={build ? {} : fingers}
+              // Names only on the chord's keys, spelled for the chord (G♯ in E, not A♭): the content here, not reading help.
               labels="marked"
               mode={build ? 'toggle' : 'play'}
               onToggle={(m) => setPicked((xs) => (xs.includes(m) ? xs.filter((x) => x !== m) : [...xs, m].sort((a, b) => a - b)))}
@@ -309,7 +310,7 @@ export function ChordExplorer() {
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             <Paper className="flex items-center">
-              <Staff clef={hands === 'both' ? 'grand' : 'treble'} items={staffItems} sp={18} labels reserveAbove={3} reserveBelow={3} />
+              <Staff clef={hands === 'both' ? 'grand' : 'treble'} items={staffItems} sp={18} reserveAbove={3} reserveBelow={3} />
             </Paper>
             {guitar ? (
               <Card className="flex items-center gap-5">
