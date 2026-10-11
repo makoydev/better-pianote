@@ -69,6 +69,13 @@ export function multiplier(combo: number) {
   return combo >= 20 ? 4 : combo >= 10 ? 3 : combo >= 5 ? 2 : 1
 }
 
+/** Stars for a round: accuracy, and enough notes that a slow, careful round doesn't get all three. */
+export function rushStars(correct: number, wrong: number): number {
+  const total = correct + wrong
+  const accuracy = total ? Math.round((correct / total) * 100) : 0
+  return accuracy >= 95 && correct >= 25 ? 3 : accuracy >= 85 && correct >= 15 ? 2 : correct > 0 ? 1 : 0
+}
+
 export function isCorrect(note: RushNote, midi: number, strictOctave: boolean) {
   return strictOctave ? midi === note.midi : mod(midi, 12) === mod(note.midi, 12)
 }

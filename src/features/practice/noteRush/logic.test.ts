@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { midi } from '../../../lib/theory'
-import { isCorrect, keyboardRange, makeRound, multiplier, nameMatches, naturals, poolFor } from './logic'
+import { isCorrect, keyboardRange, makeRound, multiplier, nameMatches, naturals, poolFor, rushStars } from './logic'
 
 describe('note rush', () => {
   it('lists white keys between two notes', () => {
@@ -37,6 +37,17 @@ describe('note rush', () => {
 
   it('builds multipliers from combos', () => {
     expect([0, 4, 5, 9, 10, 19, 20, 50].map(multiplier)).toEqual([1, 1, 2, 2, 3, 3, 4, 4])
+  })
+
+  it('gives stars for accuracy over enough notes', () => {
+    expect(rushStars(25, 1)).toBe(3)
+    // Perfect but short: two stars at most.
+    expect(rushStars(24, 0)).toBe(2)
+    expect(rushStars(30, 4)).toBe(2)
+    expect(rushStars(14, 0)).toBe(1)
+    expect(rushStars(1, 20)).toBe(1)
+    expect(rushStars(0, 3)).toBe(0)
+    expect(rushStars(0, 0)).toBe(0)
   })
 
   it('keyboard covers the pool in whole octaves', () => {

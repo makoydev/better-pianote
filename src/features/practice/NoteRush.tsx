@@ -13,7 +13,7 @@ import { Stars } from '../../components/ui/progress'
 import { useElementSize } from '../../hooks/useElementSize'
 import { audio } from '../../lib/audio/engine'
 import { isPlainKey } from '../../lib/focus'
-import { burst, celebrate } from '../../lib/fx'
+import { burst } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
 import { pauseComputerKeys } from '../../lib/input/keys'
 import { LETTERS, mod } from '../../lib/theory'
@@ -31,7 +31,9 @@ import {
   multiplier,
   nameMatches,
   prettyName,
+  rushStars,
 } from './noteRush/logic'
+import { finishGame } from './shared/finish'
 
 type Phase = 'setup' | 'countdown' | 'play' | 'results'
 type Mode = 'play' | 'name'
@@ -49,8 +51,9 @@ interface Result {
   bestCombo: number
   avgMs: number
   missed: Record<string, number>
+  stars: number
+  /** A new best for this clef and level. */
   isBest: boolean
-  prevBest: number
   xp: number
 }
 
@@ -246,14 +249,11 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
   const finish = () => {
     if (finished.current) return
     finished.current = true
-    const p = useProgress.getState()
-    const variant = `note-rush:${config.clef}:${config.level}`
-    const { isBest, prevBest } = p.recordGame(variant, score)
-    p.recordGame('note-rush', score)
-    const xp = Math.max(5, Math.round(score / 20))
-    p.addXp(xp)
+    const stars = rushStars(correct, wrong)
+    // Records "note-rush" and "note-rush:<clef>:<level>", with XP on the same scale as the other games.
+    const saved = finishGame('note-rush', `${config.clef}:${config.level}`, score, stars)
     const avgMs = times.current.length ? times.current.reduce((a, b) => a + b, 0) / times.current.length : 0
-    onFinish({ score, correct, wrong, bestCombo, avgMs, missed: missed.current, isBest: isBest && score > 0, prevBest, xp })
+    onFinish({ score, correct, wrong, bestCombo, avgMs, missed: missed.current, stars, isBest: saved.levelBest, xp: saved.xp })
   }
 
   // The clock.
@@ -522,13 +522,7 @@ function NameButtons({ level, acc, setAcc, onPick }: { level: RushLevel; acc: nu
 function Results({ result, onAgain, onSetup }: { result: Result; onAgain: () => void; onSetup: () => void }) {
   const total = result.correct + result.wrong
   const accuracy = total ? Math.round((result.correct / total) * 100) : 0
-  const stars = accuracy >= 95 && result.correct >= 25 ? 3 : accuracy >= 85 && result.correct >= 15 ? 2 : result.correct > 0 ? 1 : 0
   const missed = Object.entries(result.missed).sort((a, b) => b[1] - a[1]).slice(0, 6)
-
-  useEffect(() => {
-    if (result.isBest || stars === 3) celebrate()
-    if (useSettings.getState().uiSounds) audio.ui(result.isBest ? 'levelup' : 'complete')
-  }, [result.isBest, stars])
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col items-center gap-6 px-5 py-8 text-center">
@@ -541,7 +535,7 @@ function Results({ result, onAgain, onSetup }: { result: Result; onAgain: () => 
         <div className="font-display text-7xl font-bold text-gradient">{result.score}</div>
         <div className="mt-1 text-lg font-bold text-ink-mute">points</div>
         <div className="mt-3 flex justify-center">
-          <Stars value={stars} size={44} animate />
+          <Stars value={result.stars} size={44} animate />
         </div>
       </motion.div>
       <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-4">
