@@ -10,6 +10,7 @@ import { Stars } from '../../components/ui/progress'
 import { DIFFICULTY_LABEL, SONGS, type Song, starsForScore } from '../../content/songs'
 import { go } from '../../router'
 import { removeEntry, useLibrary } from '../../state/library'
+import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 import { HowToGetFiles, ImportSheet } from './ImportSheet'
 import { startImport } from './importSession'
@@ -23,10 +24,11 @@ const LEVEL_COLOR: Record<Song['difficulty'], [string, string]> = {
 }
 
 type Filter = 'all' | 1 | 2 | 3 | 'mine'
+const FILTERS: readonly Filter[] = ['all', 1, 2, 3, 'mine']
 
 export function SongList() {
   const games = useProgress((s) => s.games)
-  const [filter, setFilter] = useState<Filter>('all')
+  const [filter, setFilter] = usePref<Filter>('songs:filter', 'all', FILTERS)
   const entries = useLibrary((s) => s.entries)
   const libraryError = useLibrary((s) => s.error)
   const [removing, setRemoving] = useState<Song | null>(null)
