@@ -44,8 +44,9 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   *Where:* `LessonPlayer.tsx`. `S`
 - [ ] **11. Going Back to a solved play step bounces you forward** after 1.5 s, so a step can't be redone.
   *Where:* `LessonPlayer.tsx` auto-advance, `PlayStepView.tsx`. `S`
-- [ ] **12. The red wrong-note flash is hidden while the key is held** (the pressed colour wins), so mic users almost
+- [x] **12. The red wrong-note flash is hidden while the key is held** (the pressed colour wins), so mic users almost
   never see it. *Where:* `components/piano/Piano.tsx`. `S`
+  *Done:* good/bad marks now win over the pressed colour and carry a ✓/✕ (`components/piano/Piano.tsx`).
 - [ ] **13. Space breaks after clicking a button.** Song player: Space re-clicks the focused "Listen" (reset to bar
   1). Metronome: Space re-triggers the last control, and tap-tempo `T` also plays F♯. *Where:* `SongPlayer.tsx`,
   `explore/Metronome.tsx`. `S`

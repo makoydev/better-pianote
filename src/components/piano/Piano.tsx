@@ -1,3 +1,4 @@
+import { Check, X } from 'lucide-react'
 import { type CSSProperties, type PointerEvent as ReactPointerEvent, useCallback, useMemo, useRef } from 'react'
 import { useElementSize } from '../../hooks/useElementSize'
 import { audio } from '../../lib/audio/engine'
@@ -292,9 +293,10 @@ function whiteStyle(pressed: boolean, mark: KeyMark | undefined, color: string):
           : 0
   let bg = 'linear-gradient(180deg, #e4ddcf 0%, #fffdf8 5%, #f8f3e9 72%, #ece5d6 100%)'
   if (tint) bg = `linear-gradient(180deg, #f3eee4 0%, color-mix(in oklab, ${color} ${tint * 100}%, #fffdf8) 100%)`
+  // Right/wrong feedback wins over the pressed colour, so you see it while still holding the key.
+  if (pressed && !isVerdict(mark)) bg = `linear-gradient(180deg, #f3eee4 0%, color-mix(in oklab, ${color} 70%, #fffdf8) 100%)`
   if (mark?.kind === 'good') bg = 'linear-gradient(180deg, #e9fff3 0%, #6fe3ae 100%)'
   if (mark?.kind === 'bad') bg = 'linear-gradient(180deg, #fff0f2 0%, #ff8fa0 100%)'
-  if (pressed) bg = `linear-gradient(180deg, #f3eee4 0%, color-mix(in oklab, ${color} 70%, #fffdf8) 100%)`
   return {
     background: bg,
     transform: pressed ? 'translateY(2px)' : undefined,
@@ -311,9 +313,9 @@ function blackStyle(pressed: boolean, mark: KeyMark | undefined, color: string):
   if (mark?.kind === 'chord' || mark?.kind === 'root' || mark?.kind === 'selected')
     bg = `linear-gradient(180deg, #2a2840 0%, color-mix(in oklab, ${color} 80%, #2a2840) 100%)`
   if (mark?.kind === 'scale') bg = `linear-gradient(180deg, #2a2840 0%, color-mix(in oklab, ${color} 45%, #1d1c34) 100%)`
+  if (pressed && !isVerdict(mark)) bg = `linear-gradient(180deg, #2a2840 0%, ${color} 130%)`
   if (mark?.kind === 'good') bg = 'linear-gradient(180deg, #1d3b31 0%, #2fbf80 100%)'
   if (mark?.kind === 'bad') bg = 'linear-gradient(180deg, #3b1d25 0%, #e0405f 100%)'
-  if (pressed) bg = `linear-gradient(180deg, #2a2840 0%, ${color} 130%)`
   return {
     background: bg,
     transform: pressed ? 'translateY(3px)' : undefined,
@@ -325,8 +327,22 @@ function blackStyle(pressed: boolean, mark: KeyMark | undefined, color: string):
   }
 }
 
+const isVerdict = (mark?: KeyMark) => mark?.kind === 'good' || mark?.kind === 'bad'
+
 function MarkLayer({ mark, color, black }: { mark?: KeyMark; color: string; black: boolean }) {
   if (!mark) return null
+  // A ✓ or ✕ as well as green/red, so right and wrong don't rely on colour alone.
+  if (isVerdict(mark)) {
+    const Glyph = mark.kind === 'good' ? Check : X
+    return (
+      <span
+        className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full text-white"
+        style={{ bottom: black ? '16%' : '40%', width: '44%', maxWidth: 30, aspectRatio: '1', background: mark.kind === 'good' ? '#1f9e66' : '#d23552' }}
+      >
+        <Glyph className="size-[70%]" strokeWidth={3.5} aria-hidden />
+      </span>
+    )
+  }
   if (mark.kind === 'target' || mark.kind === 'root') {
     return (
       <span className="pointer-events-none absolute left-1/2 -translate-x-1/2" style={{ bottom: black ? '14%' : '30%', width: '46%', aspectRatio: '1' }}>
