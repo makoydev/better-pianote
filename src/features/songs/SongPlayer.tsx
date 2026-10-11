@@ -1,4 +1,4 @@
-import { Ear, Flame, Hand, ListMusic, Minus, Pause, Play, Plus, Repeat, RotateCcw, SkipBack, Type, X } from 'lucide-react'
+import { Ear, Flame, Hand, ListMusic, Minus, Pause, Play, Plus, Repeat, RotateCcw, SkipBack, SkipForward, Type, Volume2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
@@ -14,6 +14,7 @@ import { useElementSize } from '../../hooks/useElementSize'
 import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { playNotes } from '../../lib/audio/play'
+import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
 import { burst, celebrate } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
 import { letterColor } from '../../lib/colors'
@@ -25,8 +26,9 @@ import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import { type SongResult, SongResults } from './SongResults'
 import { type Cue, type Playhead, advance, buildCues, firstCueAt, ringingAt } from './listen'
-import { accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
-import { type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, songScoreInput } from './timeline'
+import { type Run, carryOn, newRun, stepAt, stepsInBars } from './practice'
+import { type Hands, accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
+import { type Step, type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, songScoreInput } from './timeline'
 
 const TICK = 0.25 // listen mode wakes up every sixteenth note (and plays what's due inside it at exact times)
 const EPS = 1e-6
@@ -75,20 +77,24 @@ function Player({ song }: { song: Song }) {
 
   const [mode, setMode] = useState<'wait' | 'listen'>('wait')
   // Your own imports open with both hands (that's why you imported them); built-in songs start with the melody.
-  const [hands, setHands] = useState<'rh' | 'both'>(() =>
-    song.lh && (song.imported || !tl.notes.some((n) => n.hand === 'rh')) ? 'both' : 'rh',
-  )
+  const [hands, setHands] = useState<Hands>(() => (song.lh && (song.imported || !tl.notes.some((n) => n.hand === 'rh')) ? 'both' : 'rh'))
   const [loop, setLoop] = useState(false)
   const [loopBars, setLoopBars] = useState<[number, number]>([firstFullBar, Math.min(song.rh.length - 1, firstFullBar + 3)])
   const [backing, setBacking] = useState(true)
   const [bpm, setBpm] = useState(song.bpm)
 
+  /** The part that plays: the whole song, or the looped bars. */
+  const rangeOf = (on: boolean, bars: [number, number]): [number, number] => {
+    if (!on) return [0, tl.total]
+    const a = tl.bars[bars[0]]
+    const b = tl.bars[bars[1]]
+    return [a?.start ?? 0, b ? b.start + b.dur : tl.total]
+  }
+  const listenRange = () => rangeOf(loop, loopBars)
+
   // Wait mode
   const allSteps = useMemo(() => buildSteps(tl, hands), [tl, hands])
-  const steps = useMemo(
-    () => (loop ? allSteps.filter((s) => s.bar >= loopBars[0] && s.bar <= loopBars[1]) : allSteps),
-    [allSteps, loop, loopBars],
-  )
+  const steps = useMemo(() => stepsInBars(allSteps, loop ? loopBars : null), [allSteps, loop, loopBars])
   const [stepIdx, setStepIdx] = useState(0)
   const [satisfied, setSatisfied] = useState<Set<number>>(() => new Set())
   const [mistakes, setMistakes] = useState(0)
@@ -99,12 +105,12 @@ function Player({ song }: { song: Song }) {
   const [wrongAt, setWrongAt] = useState<number | null>(null)
   const [result, setResult] = useState<SongResult | null>(null)
   const [finished, setFinished] = useState(false)
+  /** When the current stretch of practice started (null in Listen, or before the first right note). */
   const startedAt = useRef<number | null>(null)
   const [started, setStarted] = useState(false)
   const lastCorrectAt = useRef(0)
   const prevPad = useRef<number[] | null>(null)
-  /** Wait-mode progress, updated synchronously so fast repeated notes are judged in order. */
-  const run = useRef({ idx: 0, sat: new Set<number>(), notes: 0, mistakes: 0, combo: 0, best: 0, loops: 0, done: false })
+  const run = useRef<Run>(newRun(hands))
   const sync = () => {
     const r = run.current
     setStepIdx(r.idx)
@@ -114,7 +120,7 @@ function Player({ song }: { song: Song }) {
     setLoops(r.loops)
   }
 
-  // Listen mode
+  // Listen mode (and Practice's "Hear this bar")
   const [playing, setPlaying] = useState(false)
   /** Where the listen-mode playhead is, in beats. */
   const [listenAt, setListenAt] = useState(0)
@@ -142,7 +148,7 @@ function Player({ song }: { song: Song }) {
   const step = mode === 'wait' && !finished ? steps[stepIdx] : undefined
   const cursorTime = mode === 'wait' ? (steps[stepIdx]?.start ?? tl.total) : listenAt
 
-  const stopListen = useCallback(() => {
+  const stopPlayback = useCallback(() => {
     clockRef.current?.stop()
     clockRef.current = null
     for (const id of timers.current) window.clearTimeout(id)
@@ -150,20 +156,39 @@ function Player({ song }: { song: Song }) {
     setPlaying(false)
     setSounding({})
   }, [])
-  useEffect(() => stopListen, [stopListen])
+  useEffect(() => stopPlayback, [stopPlayback])
 
-  const reset = () => {
-    stopListen()
-    run.current = { idx: 0, sat: new Set(), notes: 0, mistakes: 0, combo: 0, best: 0, loops: 0, done: false }
+  /** A fresh practice run from the first step. */
+  const resetRun = (h = hands) => {
+    run.current = newRun(h)
     sync()
     setFlash({})
     setWrongAt(null)
     setResult(null)
     setFinished(false)
-    setListenAt(loop ? (tl.bars[loopBars[0]]?.start ?? 0) : 0)
     startedAt.current = null
     setStarted(false)
     prevPad.current = null
+  }
+
+  /** Start again: a fresh run, and Listen back to the start (of the loop, when looping). */
+  const reset = (from = listenRange()[0]) => {
+    stopPlayback()
+    resetRun()
+    setListenAt(from)
+  }
+
+  /**
+   * Carry on from step i after switching modes or hands. Back on the first step it's a fresh run; a run that
+   * jumps ahead (or starts part-way) or changes hands no longer counts as a best.
+   */
+  const moveTo = (i: number, h: Hands) => {
+    if (i === 0 || run.current.done) resetRun(h)
+    if (i === 0) return
+    run.current = carryOn(run.current, i, h)
+    sync()
+    setFlash({})
+    setWrongAt(null)
   }
 
   // ---- Backing chords (soft, below the melody) ----
@@ -191,25 +216,26 @@ function Player({ song }: { song: Song }) {
     const r = run.current
     const accuracy = accuracyOf(r.notes, r.mistakes)
     const stars = starsOf(r.notes, r.mistakes)
-    const seconds = startedAt.current ? (performance.now() - startedAt.current) / 1000 : 0
+    const seconds = (r.ms + (startedAt.current === null ? 0 : performance.now() - startedAt.current)) / 1000
     const prog = useProgress.getState()
-    const first = !prog.games[songKey(song.id)]
-    const xp = (first ? 20 : 6) + stars * (first ? 5 : 2) + (hands === 'both' ? 10 : 0)
+    const first = r.whole && !prog.games[songKey(song.id)]
+    // Notes you skipped or jumped past earn nothing.
+    const total = steps.reduce((n, s) => n + s.notes.length, 0)
+    const share = total ? Math.min(1, r.notes / total) : 1
+    const xp = Math.round(((first ? 20 : 6) + stars * (first ? 5 : 2) + (hands === 'both' ? 10 : 0)) * share)
     prog.addXp(xp)
-    const isBest = recordSongRun(song.id, hands, Math.round(accuracy * 100))
-    setResult({ stars, accuracy, mistakes: r.mistakes, seconds, xp, isBest, bestCombo: r.best, hands })
+    const isBest = r.whole && recordSongRun(song.id, hands, Math.round(accuracy * 100))
+    setResult({ stars, accuracy, mistakes: r.mistakes, seconds, xp, isBest, bestCombo: r.best, hands, whole: r.whole })
     setFinished(true)
     if (uiSounds) audio.ui('complete')
     if (stars === 3) celebrate()
     else burst(paperRef.current)
   }
 
-  const completeStep = (cur: (typeof steps)[number]) => {
+  /** On to the next step: round again when looping, the results at the end. */
+  const nextStep = () => {
     const r = run.current
-    r.combo++
-    r.best = Math.max(r.best, r.combo)
     r.sat = new Set()
-    if (backing && cur.chord && mic !== 'on') playNotes(padVoicing(cur.chord.chord, hands === 'rh'), { dur: 1.8, vel: 0.34, strum: 0.012 })
     if (r.idx + 1 < steps.length) {
       r.idx++
       return
@@ -222,6 +248,24 @@ function Player({ song }: { song: Song }) {
     }
     r.done = true
     finish()
+  }
+
+  const completeStep = (cur: Step) => {
+    const r = run.current
+    r.combo++
+    r.best = Math.max(r.best, r.combo)
+    if (backing && cur.chord && mic !== 'on') playNotes(padVoicing(cur.chord.chord, hands === 'rh'), { dur: 1.8, vel: 0.34, strum: 0.012 })
+    nextStep()
+  }
+
+  /** Skip: on to the next step without playing it. It counts as a slip and breaks the combo. */
+  const skip = () => {
+    const r = run.current
+    if (mode !== 'wait' || r.done || !steps[r.idx]) return
+    r.mistakes++
+    r.combo = 0
+    nextStep()
+    sync()
   }
 
   useNoteEvents((e) => {
@@ -257,26 +301,18 @@ function Player({ song }: { song: Song }) {
     window.setTimeout(() => setWrongAt(null), 420)
   })
 
-  // ---- Listen mode: the app plays it, on the audio clock ----
+  // ---- Playback on the audio clock: Listen mode, and "Hear this bar" in Practice ----
   const cues = useMemo(() => buildCues(tl), [tl])
 
-  /** The part that plays: the whole song, or the looped bars. */
-  const listenRange = (): [number, number] => {
-    if (!loop) return [0, tl.total]
-    const a = tl.bars[loopBars[0]]
-    const b = tl.bars[loopBars[1]]
-    return [a?.start ?? 0, b ? b.start + b.dur : tl.total]
-  }
-
-  /** Play from `from`, or carry on from the playhead (back to the start if it's outside the part that plays). */
-  const startListen = (from?: number) => {
-    stopListen()
-    const [lo, hi] = listenRange()
-    let pos = from ?? listenAt
-    if (pos < lo - EPS || pos >= hi - EPS) pos = lo
-    const head: Playhead = { pos, next: firstCueAt(cues, pos) }
-    const looping = loop
-    const withChords = backing
+  /**
+   * Play [lo, hi) from `from`. Listen plays everything and moves the playhead; a bar heard in Practice plays only
+   * the hands you're practising.
+   */
+  const startPlayback = ({ from, lo, hi, looping, bar }: { from: number; lo: number; hi: number; looping: boolean; bar: boolean }) => {
+    stopPlayback()
+    const head: Playhead = { pos: from, next: firstCueAt(cues, from) }
+    const heard = (n: TimedNote) => !bar || hands === 'both' || n.hand === 'rh'
+    const withChords = backing && !bar
     prevPad.current = null
     let first = true
     let ended = false
@@ -294,10 +330,13 @@ function Player({ song }: { song: Song }) {
         }),
       )
     }
+    const pad = (c: Chord, when: number, beats: number, spb: number) =>
+      playNotes(padVoicing(c, !song.lh), { dur: beats * spb * 0.95, vel: 0.3, delay: delayTo(when) })
+    // Nothing rings on past the part that plays (a tie into the next bar, the end of the loop).
     const play = (c: Cue, when: number, spb: number) => {
-      for (const n of c.notes) sound(n, when, n.dur, spb)
-      if (c.chord && withChords) playNotes(padVoicing(c.chord.chord, !song.lh), { dur: c.chord.dur * spb * 0.95, vel: 0.3, delay: delayTo(when) })
-      if (c.col) later(when, () => setListenAt(c.t))
+      for (const n of c.notes) if (heard(n)) sound(n, when, Math.min(n.dur, hi - c.t), spb)
+      if (c.chord && withChords) pad(c.chord.chord, when, Math.min(c.chord.dur, hi - c.t), spb)
+      if (c.col && !bar) later(when, () => setListenAt(c.t))
     }
     const clock = new Clock({
       interval: () => (60 / bpmRef.current) * TICK,
@@ -307,14 +346,14 @@ function Player({ song }: { song: Song }) {
         if (first) {
           first = false
           // Starting in the middle: bring in what's still ringing there (a held bass note, the chord).
-          for (const n of ringingAt(tl, pos)) sound(n, time, n.start + n.dur - pos, spb)
-          const ch = tl.chords.find((c) => c.start < pos - EPS && c.start + c.dur > pos + EPS)
-          if (ch && withChords) playNotes(padVoicing(ch.chord, !song.lh), { dur: (ch.start + ch.dur - pos) * spb * 0.95, vel: 0.3, delay: delayTo(time) })
+          for (const n of ringingAt(tl, from)) if (heard(n)) sound(n, time, Math.min(n.start + n.dur, hi) - from, spb)
+          const ch = tl.chords.find((c) => c.start < from - EPS && c.start + c.dur > from + EPS)
+          if (ch && withChords) pad(ch.chord, time, Math.min(ch.start + ch.dur, hi) - from, spb)
         }
         const { due, end } = advance(cues, head, TICK, lo, hi, looping)
         for (const d of due) play(d.cue, time + d.offset * spb, spb)
         if (end !== undefined) {
-          // The end: stop, and rewind so Play starts from the top next time.
+          // The end: stop, and (in Listen) rewind so Play starts from the top next time.
           ended = true
           later(time + end * spb + 0.5, () => {
             clock.stop()
@@ -322,32 +361,53 @@ function Player({ song }: { song: Song }) {
             timers.current = []
             setPlaying(false)
             setSounding({})
-            setListenAt(lo)
+            if (!bar) setListenAt(lo)
           })
         }
       },
     })
     clockRef.current = clock
-    setListenAt(pos)
+    if (!bar) setListenAt(from)
     clock.start(0.2)
     setPlaying(true)
   }
 
-  const toggleListen = () => (playing ? stopListen() : startListen())
+  /** Play from `from`, or carry on from the playhead (back to the start if it's outside the part that plays). */
+  const startListen = (from?: number) => {
+    const [lo, hi] = listenRange()
+    let pos = from ?? listenAt
+    if (pos < lo - EPS || pos >= hi - EPS) pos = lo
+    startPlayback({ from: pos, lo, hi, looping: loop, bar: false })
+  }
+
+  const toggleListen = () => (playing ? stopPlayback() : startListen())
   const listenFromStart = () => startListen(listenRange()[0])
   /** Paused somewhere after the start, so Play carries on from there. */
   const pausedMidway = mode === 'listen' && !playing && listenAt > listenRange()[0] + EPS
 
-  // Space plays/pauses in Listen mode; R restarts.
+  /** Hear this bar: the bar you're on, at your tempo, with the hands you're practising. */
+  const hearBar = () => {
+    const r = run.current
+    const cur = steps[r.idx]
+    if (mode !== 'wait' || r.done || !cur) return
+    const b = tl.bars[cur.bar]
+    startPlayback({ from: b.start, lo: b.start, hi: b.start + b.dur, looping: false, bar: true })
+  }
+
+  /** Start again (R): Listen goes back to the beginning (still playing if it was); Practice starts a fresh run. */
+  const restart = () => (mode === 'listen' && playing ? listenFromStart() : reset())
+
+  // Space plays/pauses in Listen and plays the bar in Practice; R starts again. Not while typing or on a slider,
+  // and Space is left to a focused button (keyboard users press it to click).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null
-      if (e.repeat || !t || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(t.tagName)) return
-      if (e.code === 'Space' && mode === 'listen') {
+      if (!isPlainKey(e) || isTypingTarget(e.target)) return
+      if (e.code === 'Space') {
+        if (isButtonTarget(e.target)) return
         e.preventDefault()
-        toggleListen()
-      }
-      if (e.code === 'KeyR' && !e.metaKey && !e.ctrlKey) reset()
+        if (mode === 'listen') toggleListen()
+        else hearBar()
+      } else if (e.code === 'KeyR') restart()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -406,29 +466,51 @@ function Player({ song }: { song: Song }) {
       if (n.finger) fingers[n.midi] = n.finger
     }
   }
-  if (mode === 'listen') for (const [m, hand] of Object.entries(sounding)) marks[Number(m)] = hand === 'rh' ? 'chord' : 'root'
+  for (const [m, hand] of Object.entries(sounding)) marks[Number(m)] = hand === 'rh' ? 'chord' : 'root'
   for (const [m, f] of Object.entries(flash)) marks[Number(m)] = f
   const pianoHeight = Math.round(Math.max(110, Math.min(210, vh * (showBass ? 0.18 : 0.21))))
 
   const barLabel = (i: number) => (song.pickup ? (i === 0 ? 'Pickup' : `${i}`) : `${i + 1}`)
+  const barName = (i: number) => (i < firstFullBar ? 'the pickup' : `bar ${i - firstFullBar + 1}`)
   const fullBars = song.rh.length - firstFullBar
   const curBar = mode === 'wait' ? (steps[stepIdx]?.bar ?? song.rh.length - 1) : barAt(tl, listenAt)
   const progress = mode === 'wait' ? (finished ? 1 : stepIdx / Math.max(1, steps.length)) : tl.total ? Math.min(1, listenAt / tl.total) : 0
 
+  // Switching modes or hands keeps your place in the piece.
   const changeMode = (m: 'wait' | 'listen') => {
-    reset()
+    if (m === mode) return
+    stopPlayback()
+    if (m === 'listen') {
+      // Listen starts from the step you're on; the practice clock stops meanwhile.
+      const r = run.current
+      if (startedAt.current !== null) {
+        r.ms += performance.now() - startedAt.current
+        startedAt.current = null
+      }
+      setListenAt(!r.done && r.idx > 0 ? (steps[r.idx]?.start ?? 0) : listenRange()[0])
+    } else {
+      // Practice carries on from the first step at or after where Listen got to.
+      moveTo(stepAt(steps, listenAt, loop), hands)
+    }
     setMode(m)
   }
-  const changeHands = (h: 'rh' | 'both') => {
-    reset()
+  const changeHands = (h: Hands) => {
+    if (h === hands) return
+    if (mode === 'wait') {
+      // Keep your bar: the first step at or after this moment, in the new hands' steps.
+      stopPlayback()
+      const r = run.current
+      const at = r.done || r.idx === 0 ? listenRange()[0] : (steps[r.idx]?.start ?? 0)
+      moveTo(stepAt(stepsInBars(buildSteps(tl, h), loop ? loopBars : null), at, loop), h)
+    }
     setHands(h)
   }
   const changeLoop = (on: boolean) => {
-    reset()
+    reset(rangeOf(on, loopBars)[0])
     setLoop(on)
   }
   const changeLoopBars = (b: [number, number]) => {
-    reset()
+    reset(rangeOf(loop, b)[0])
     setLoopBars(b)
   }
 
@@ -439,7 +521,7 @@ function Player({ song }: { song: Song }) {
         title={song.title}
         subtitle={`${song.composer} · ${song.keyName} · ${song.time[0]}/${song.time[1]}`}
       >
-        <IconButton icon={RotateCcw} label="Start again (R)" onClick={reset} />
+        <IconButton icon={RotateCcw} label="Start again (R)" onClick={restart} />
         <IconButton
           icon={Type}
           label={staffLabels ? 'Hide note names' : 'Show note names'}
@@ -469,16 +551,25 @@ function Player({ song }: { song: Song }) {
               ]}
             />
           )}
+          {mode === 'wait' && (
+            <div className="flex items-center gap-2">
+              <Button size="lg" variant="secondary" icon={Volume2} onClick={hearBar} disabled={!step} title="Hear this bar at your tempo (Space)">
+                Hear this bar
+              </Button>
+              <Button size="lg" variant="secondary" icon={SkipForward} onClick={skip} disabled={!step} title="Skip this note (counts as a wrong note)">
+                Skip
+              </Button>
+            </div>
+          )}
           {mode === 'listen' && (
             <>
               <div className="flex items-center gap-2">
-                <IconButton icon={SkipBack} label="Restart: play from the beginning" onClick={listenFromStart} />
+                <IconButton icon={SkipBack} size={56} label="Restart: play from the beginning" onClick={listenFromStart} />
                 <Button
-                  size="md"
                   icon={playing ? Pause : Play}
                   onClick={toggleListen}
                   variant={playing ? 'secondary' : 'primary'}
-                  className="min-w-34"
+                  className="min-w-38"
                 >
                   {playing ? 'Pause' : pausedMidway ? 'Resume' : 'Play'}
                 </Button>
@@ -575,7 +666,7 @@ function Player({ song }: { song: Song }) {
           ) : mode === 'wait' && finished ? (
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex items-center gap-3">
               <span className="text-base font-extrabold text-good">Finished!</span>
-              <Button size="sm" icon={RotateCcw} onClick={reset}>
+              <Button size="sm" icon={RotateCcw} onClick={() => reset()}>
                 Play again
               </Button>
             </motion.div>
@@ -584,7 +675,7 @@ function Player({ song }: { song: Song }) {
               {playing
                 ? 'Watch the notes light up and follow along.'
                 : pausedMidway
-                  ? 'Paused. Resume (or Space) carries on from here; ⏮ plays it from the beginning.'
+                  ? `Resume (or Space) plays from ${barName(barAt(tl, listenAt))}; ⏮ plays it from the beginning.`
                   : 'Press Play (or Space) to hear it at your tempo.'}
             </span>
           ) : null}
@@ -626,7 +717,7 @@ function Player({ song }: { song: Song }) {
       <SongResults
         song={song}
         result={result}
-        onAgain={reset}
+        onAgain={() => reset()}
         onClose={() => setResult(null)}
         onSongs={() => go('/songs')}
       />

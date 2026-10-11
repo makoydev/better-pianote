@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { Stars } from '../../components/ui/progress'
 import type { Song } from '../../content/songs'
-import { clockTime } from './results'
+import { type Hands, clockTime } from './results'
 
 export interface SongResult {
   stars: number
@@ -15,7 +15,9 @@ export interface SongResult {
   xp: number
   isBest: boolean
   bestCombo: number
-  hands: 'rh' | 'both'
+  hands: Hands
+  /** Played from the start without skipping ahead or changing hands (only those runs count as a best). */
+  whole: boolean
 }
 
 const TITLES = ['Nice try!', 'You played it!', 'Lovely playing!', 'Perfect!']
@@ -54,6 +56,9 @@ export function SongResults({
             >
               <Trophy size={18} /> New personal best
             </motion.p>
+          )}
+          {!result.whole && (
+            <p className="mt-3 text-sm font-semibold text-ink-mute">Not played all the way from the start, so this run doesn’t count as a best.</p>
           )}
           <div className="mt-6 grid w-full grid-cols-3 gap-3">
             <Stat label="Accuracy" value={`${Math.round(result.accuracy * 100)}%`} />
