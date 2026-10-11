@@ -2,6 +2,7 @@ import { ListMusic, RotateCcw, Timer, Trophy, Zap } from 'lucide-react'
 import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { Button } from '../../components/ui/Button'
+import { GoalProgress } from '../../components/ui/GoalProgress'
 import { Modal } from '../../components/ui/Modal'
 import { Stars } from '../../components/ui/progress'
 import type { Song } from '../../content/songs'
@@ -73,6 +74,7 @@ export function SongResults({
               <Zap size={18} className="fill-gold" /> +{result.xp} XP
             </span>
           </div>
+          <GoalProgress className="mt-3" />
           <div className="mt-6 flex w-full flex-col gap-3 sm:flex-row">
             <Button icon={RotateCcw} className="w-full sm:w-auto sm:flex-1" onClick={onAgain}>
               Play again

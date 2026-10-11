@@ -55,16 +55,18 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [x] **12. The red wrong-note flash is hidden while the key is held** (the pressed colour wins), so mic users almost
   never see it. *Where:* `components/piano/Piano.tsx`. `S`
   *Done:* good/bad marks now win over the pressed colour and carry a ✓/✕ (`components/piano/Piano.tsx`).
-- [ ] **13. Space breaks after clicking a button.** Song player: Space re-clicks the focused "Listen" (reset to bar
+- [x] **13. Space breaks after clicking a button.** Song player: Space re-clicks the focused "Listen" (reset to bar
   1). Metronome: Space re-triggers the last control, and tap-tempo `T` also plays F♯. *Where:* `SongPlayer.tsx`,
   `explore/Metronome.tsx`. `S`
   *Partly done:* Metronome: T no longer plays F♯ and Space works after clicks (83a5260); Chrome's focus-after-click is dropped app-wide (e688569). The song player's Space comes with the Songs batch.
+  *Done:* song player: Space plays/pauses in Listen and plays the current bar in Practice, R restarts, and both work after clicking any control (c05705b). Checked: Space started Listen right after clicking a tempo preset.
 - [ ] **14. Sounds don't stop.** Scale "Listen", lesson demos and Rhythm Tap "Listen first" keep playing after a
   change of screen or scale; a double tap plays two copies; the mic stays muted meanwhile. Track scheduled notes so
   `stopAll()` can cancel them, call it on navigation. *Where:* `engine.ts`, `play.ts`, callers. `S–M`
-- [ ] **15. Song results glitches.** Time shows "1:60" (119.6 s); right-hand and both-hands runs share one best;
+- [x] **15. Song results glitches.** Time shows "1:60" (119.6 s); right-hand and both-hands runs share one best;
   accuracy counts a chord as one step but every slip separately. *Where:* `songs/SongResults.tsx`,
   `SongPlayer.tsx`. `S`
+  *Done:* results round the time first (no more "1:60"), accuracy is notes ÷ (notes + slips), and bests are kept per hands with old records still honoured; song cards show "RH 100% · Both 85%" (55c8284). Checked: Hot Cross Buns results.
 - [x] **16. Settings and Songs are missing from the nav below 768 px** (iPad mini portrait, Split View): the bottom
   tab bar has neither. *Where:* `components/layout/Nav.tsx`, `Page.tsx`. `S`
   *Done:* the phone tab bar now has Home, Learn, Practice, Play, Explore and Songs, and page headers show a Settings gear below 768 px (`Nav.tsx`, `Page.tsx`). Checked at 700 px.
@@ -73,12 +75,13 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   *Where:* `widgets/CircleOfFifthsWheel.tsx`, `explore/ProgressionJam.tsx`, `ui/RichText.tsx`. `S`
   *Partly done:* numbered steps in lesson text now render as a list (`ui/RichText.tsx`). The Circle of Fifths and Jam spellings are in the Explore batch.
   *Done:* the Circle of Fifths shows a minor key's major V among the gold main chords with corrected wording (7c45b90), and the Jam uses minor-key names and respells F♭/C♭/B𝄫 roots (977f12e); tests cover all 12 keys.
-- [ ] **18. Smaller ones.** A note shared by two voices in an imported song needs two presses (Listen plays it twice);
+- [x] **18. Smaller ones.** A note shared by two voices in an imported song needs two presses (Listen plays it twice);
   Note Rush level 5's ♯/♭ choice sticks to the next note and ⌘C/held keys answer; unplugging the keyboard is silent
   and can leave sustain stuck down. *Where:* `songs/timeline.ts`, `songs/listen.ts`, `NoteRush.tsx`,
   `lib/input/midi.ts`. `S`
   *Partly done:* unplugging the keyboard now releases a stuck sustain pedal and says so (`midi.ts`). The song and Note Rush parts are in the Songs and Practice batches.
   *Partly done:* Note Rush level 5: the ♯/♭ choice resets after each answer, held keys and ⌘ shortcuts don't answer, Shift+letter is the sharp (3ae2ff8).
+  *Done:* songs: a note two voices share is one press in Practice and sounds once in Listen (c15b69b). All three parts done.
 
 ## Across the whole app
 
@@ -88,9 +91,10 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **20. Hands-free controls everywhere.** One scheme (pedal tap, Enter, Space) for Start, Next, Play again and Hear
   it again in games, songs, tools and the lesson complete screen. A shortcut sheet (`?`), and a spare key (top C7)
   as Continue for mic users without a pedal. `M`
-- [ ] **21. Remember choices.** Note Rush setup, Rhythm Tap tempo/click, Ear Training level per mode, every Explore
+- [x] **21. Remember choices.** Note Rush setup, Rhythm Tap tempo/click, Ear Training level per mode, every Explore
   tool and the song list filter reset on each visit; game preferences aren't in Export. `S`
   *Partly done:* Note Rush, Rhythm Tap and Ear Training (4108ba9) and Free Play plus every Explore tool (981ab3b) remember their choices in the prefs store, which Export carries (e688569). The song list filter comes with the Songs batch.
+  *Done:* the song list remembers its filter (b264f7e). All parts done.
 - [x] **22. Keep your place.** Learn always reopens at Unit 1 (no scroll to the current lesson); Songs loses filter and
   scroll; Back always goes to a fixed parent page (Chord Trainer opened from Home → Back → Practice).
   *Where:* `App.tsx` (`scrollTo(0,0)`), `TopBar.tsx`, `LearnPath.tsx`. `S`
@@ -103,14 +107,16 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **25. Put the mic first on iPad.** The connect sheet opens on a disabled USB button saying "try Chrome or Edge".
   Mic first when Web MIDI is missing, an inline "Start listening" on play steps, a "Heard: C4" readout, headphones
   mode. `S–M`
-- [ ] **26. Celebrate level-ups and the daily goal when they happen**, and show goal progress on results screens.
+- [x] **26. Celebrate level-ups and the daily goal when they happen**, and show goal progress on results screens.
   *Where:* `state/progress.ts`, `XpToaster.tsx`, results screens. `S`
   *Partly done:* level-ups and the daily goal pop a toast with sound and confetti the moment they happen (`progress.ts` → `Toaster.tsx`); a goal bar (`GoalProgress`) is on the lesson complete screen. Games and song results get it once those batches are merged.
   *Partly done:* game results (shared ResultsCard and Note Rush) show the daily goal bar too.
-- [ ] **27. Rebalance XP.** One Note Rush round (`score/20`) clears the daily goal; a round with zero right answers still
+  *Done:* song results show the goal bar too. All parts done.
+- [x] **27. Rebalance XP.** One Note Rush round (`score/20`) clears the daily goal; a round with zero right answers still
   pays and keeps the streak; looping a song section earns nothing. *Where:* `NoteRush.tsx`,
   `practice/shared/finish.ts`, `SongPlayer.tsx`. `S`
   *Partly done:* games pay nothing for a round with nothing right, and Note Rush uses the same XP rule as the other games, at most 25 per round (ec7153b). Song loop XP comes with the Songs batch.
+  *Done:* a clean pass of a looped section earns +2 XP (up to 20 per visit), so section practice counts for the goal and streak (8082f43). All parts done.
 
 ## Learn
 
@@ -153,13 +159,15 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 
 - [ ] **45. Section practice:** tap or drag bars on the score to loop, "start from this bar", bar numbers on the score,
   bigger loop buttons (30 px today). `M`
-- [ ] **46. Keep your bar** when switching Practice ↔ Listen or hands (today both reset to bar 1); "Hear this bar" and
+- [x] **46. Keep your bar** when switching Practice ↔ Listen or hands (today both reset to bar 1); "Hear this bar" and
   Skip in Practice. *Where:* `SongPlayer.tsx`. `S`
+  *Done:* Listen starts at the current Practice step, Practice resumes where Listen paused, and changing hands keeps the bar; Practice has Hear this bar (Space) and Skip (c05705b, c8dad37, 943b29e). Checked: Skip to bar 2 → Listen offers "plays from bar 2".
 - [ ] **47. Left-hand-only practice**, and an option for the app to play the other hand. `M`
 - [ ] **48. Remember hands, loop, tempo and last bar per song** ("Continue from bar 37"); loop practice counts toward
   the streak. `S–M`
-- [ ] **49. Better tempo control:** −/+ and % presets instead of the ~80 px slider, count-in, metronome, speed up each
+- [x] **49. Better tempo control:** −/+ and % presets instead of the ~80 px slider, count-in, metronome, speed up each
   loop, tempo remembered per song. *Where:* `SongPlayer.tsx`. `S`
+  *Done:* −/+ buttons in 5% steps, presets 50/60/75/90/100% ("♩ = 72 · 75%"), Count-in and Metronome toggles, Speed up each loop, tempo saved per song (bb96fec). Checked: 75% preset and the count-in.
 - [ ] **50. Play along at tempo**, with timing judged. `L`
 - [ ] **51. Use the screen:** iPad portrait shows ~1.5 bars with a big empty gap above the keyboard (reproduced);
   multi-line score, score size option, narrower keys for wide pieces. `M`
