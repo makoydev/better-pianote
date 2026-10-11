@@ -1,4 +1,4 @@
-import { mod } from '../../lib/theory'
+import { type Chord, type Key, type Note, chordTones, mod, parseNote, pcOf, romanToChord, spellRoot } from '../../lib/theory'
 
 /** Progression Jam: presets, roman-numeral helpers and accompaniment patterns (pure, testable). */
 
@@ -7,9 +7,8 @@ export interface Preset {
   name: string
   /** Numerals are read against the major scale of the tonic (Nashville style), so ♭VII etc. are borrowed chords. */
   romans: string[]
-  /** Default tonic (major-key spelling). */
+  /** Default key (only its pitch class counts: the spelling follows the mode, see jamTonic). */
   tonic: string
-  minor?: boolean
   about: string
 }
 
@@ -68,7 +67,6 @@ export const PRESETS: Preset[] = [
     name: 'Andalusian cadence',
     romans: ['i', 'bVII', 'bVI', 'V'],
     tonic: 'A',
-    minor: true,
     about: 'Walking down from i to V, like flamenco or “Hit the Road Jack”.',
   },
 ]
@@ -82,6 +80,50 @@ export const PALETTE = [
 
 /** Numerals with a real flat sign: "bVII" → "♭VII". */
 export const romanLabel = (rn: string) => rn.replace(/^b/, '♭').replace(/^#/, '♯')
+
+/**
+ * The first home chord decides the mode: i makes it a minor key (like the Andalusian cadence), I or no home
+ * chord a major one. Only the first counts, so a minor progression can still end on a major I.
+ */
+export function isMinorProgression(romans: string[]): boolean {
+  for (const rn of romans) {
+    const home = /^([Ii])(?![IViv])/.exec(rn)?.[1]
+    if (home) return home === 'i'
+  }
+  return false
+}
+
+// Key names by pitch class, as musicians write them: minor keys take C♯ (4 sharps) over D♭ (8 flats).
+const MAJOR_TONICS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
+const MINOR_TONICS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B']
+
+/** The jam's tonic for a pitch class, spelled for a major or a minor key. */
+export function jamTonic(pc: number, minor: boolean): Note {
+  return parseNote(`${(minor ? MINOR_TONICS : MAJOR_TONICS)[mod(pc, 12)]}4`)
+}
+
+/** Roots no chord chart uses: double flats and sharps, and F♭ C♭ E♯ B♯. */
+function awkwardRoot(n: Note): boolean {
+  return Math.abs(n.acc) > 1 || (n.acc === -1 && (n.letter === 0 || n.letter === 3)) || (n.acc === 1 && (n.letter === 2 || n.letter === 6))
+}
+
+/** A chord with an awkward root, respelled from its simpler enharmonic: B𝄫 → A, C♭ → B, E♯ → F. */
+export function plainSpelling(c: Chord): Chord {
+  if (!awkwardRoot(c.root)) return c
+  const root = { ...spellRoot(pcOf(c.root), c.type, c.root.acc > 0 ? 'sharp' : 'flat'), oct: c.root.oct }
+  const bass = c.bass
+  if (!bass) return { ...c, root }
+  return { ...c, root, bass: chordTones(root, c.type).find((n) => pcOf(n) === pcOf(bass)) ?? bass }
+}
+
+/**
+ * A progression's chords in a key. Numerals count up the tonic's major scale, so borrowed chords can land on
+ * awkward roots in flat keys (♭VI of D♭ is B𝄫): those are respelled (A).
+ */
+export function jamChords(romans: string[], pc: number, minor: boolean): Chord[] {
+  const key: Key = { tonic: jamTonic(pc, minor), mode: 'major' }
+  return romans.map((rn) => plainSpelling(romanToChord(rn, key)))
+}
 
 const ROMANS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
 

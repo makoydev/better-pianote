@@ -20,7 +20,7 @@ import {
   transpose,
 } from '../../lib/theory'
 import { CHORD_GROUPS, GUITAR_SHAPES, PC_NAMES, chordFormula, lhFingers, lhVoicing, rhFingers, rhVoicing, shapeMidis, spellVoicing } from './chordTools'
-import { PALETTE, PRESETS, drumHits, nashville, patternHits } from './jam'
+import { PALETTE, PRESETS, drumHits, isMinorProgression, jamChords, jamTonic, nashville, patternHits } from './jam'
 import { tapTempo, tempoName } from './tempo'
 
 describe('chord explorer helpers', () => {
@@ -159,6 +159,53 @@ describe('progression jam helpers', () => {
     expect(PALETTE.map((r) => chordSymbol(romanToChord(r, C))).join(' ')).toBe(
       'C Dm Em F G Am Bdim Cmaj7 Dm7 Em7 Fmaj7 G7 Am7 Cm Fm E♭ A♭ B♭',
     )
+  })
+
+  it('names keys the way musicians write them', () => {
+    const names = (minor: boolean) => Array.from({ length: 12 }, (_, pc) => pitchName(jamTonic(pc, minor))).join(' ')
+    expect(names(false)).toBe('C D♭ D E♭ E F F♯ G A♭ A B♭ B')
+    expect(names(true)).toBe('C C♯ D D♯ E F F♯ G G♯ A B♭ B')
+  })
+
+  it('takes the mode from the first home chord', () => {
+    for (const p of PRESETS) expect(isMinorProgression(p.romans), p.id).toBe(p.id === 'andalusian')
+    expect(isMinorProgression(['i', 'iv', 'V', 'I'])).toBe(true)
+    expect(isMinorProgression(['ii7', 'V7', 'Imaj7', 'i'])).toBe(false)
+    expect(isMinorProgression(['IV', 'V', 'iii', 'vi'])).toBe(false)
+  })
+
+  it('transposes minor progressions into minor keys', () => {
+    const andalusian = PRESETS.find((p) => p.id === 'andalusian')!
+    const inKey = (pc: number) => jamChords(andalusian.romans, pc, true).map(chordSymbol).join(' ')
+    // Not D♭m C♭ B𝄫 A♭ (D♭ minor) or A♭m G♭ F♭ E♭ (A♭ minor, 7 flats).
+    expect(inKey(1)).toBe('C♯m B A G♯')
+    expect(inKey(3)).toBe('D♯m C♯ B A♯')
+    expect(inKey(6)).toBe('F♯m E D C♯')
+    expect(inKey(8)).toBe('G♯m F♯ E D♯')
+    expect(inKey(10)).toBe('B♭m A♭ G♭ F')
+    expect(inKey(0)).toBe('Cm B♭ A♭ G')
+  })
+
+  it('respells borrowed chords that would land on awkward roots', () => {
+    const borrowed = ['bIII', 'bVI', 'bVII']
+    const inKey = (pc: number) => jamChords(borrowed, pc, false).map(chordSymbol).join(' ')
+    expect(inKey(1)).toBe('E A B') // D♭ major: not F♭ B𝄫 C♭
+    expect(inKey(3)).toBe('G♭ B D♭') // E♭ major: not C♭
+    expect(inKey(8)).toBe('B E G♭') // A♭ major: not C♭ F♭
+    expect(inKey(0)).toBe('E♭ A♭ B♭')
+    // The chord's notes follow its new root: A C♯ E, not B𝄫 D♭ F♭.
+    const sixth = jamChords(['bVI'], 1, false)[0]
+    expect(chordTones(sixth.root, sixth.type).map((n) => pitchName(n))).toEqual(['A', 'C♯', 'E'])
+  })
+
+  it('never puts an awkward root on the chart, in any key', () => {
+    for (let pc = 0; pc < 12; pc++) {
+      for (const minor of [false, true]) {
+        for (const romans of [PALETTE, ...PRESETS.map((p) => p.romans)]) {
+          for (const c of jamChords(romans, pc, minor)) expect(pitchName(c.root), `${romans.join(' ')} in ${pc}`).not.toMatch(/𝄫|𝄪|F♭|C♭|E♯|B♯/u)
+        }
+      }
+    }
   })
 
   it('writes Nashville numbers', () => {

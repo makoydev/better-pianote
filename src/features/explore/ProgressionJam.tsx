@@ -10,17 +10,15 @@ import { Segmented, Slider, Toggle } from '../../components/ui/controls'
 import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { playNotes } from '../../lib/audio/play'
-import { type Key, bassFor, chordPcs, chordSymbol, mod, parseNote, pitchName, romanToChord, voiceProgression } from '../../lib/theory'
+import { bassFor, chordPcs, chordSymbol, mod, parseNote, pcOf, pitchName, voiceProgression } from '../../lib/theory'
 import { heldMidis, useLive } from '../../state/live'
 import { spellVoicing } from './chordTools'
 import { hat, kick, snare } from './drums'
-import { PALETTE, PRESETS, type PatternId, drumHits, nashville, patternHits, romanLabel } from './jam'
+import { PALETTE, PRESETS, type PatternId, drumHits, isMinorProgression, jamChords, jamTonic, nashville, patternHits, romanLabel } from './jam'
 import { OctavePicker } from './OctavePicker'
 import { useMicChords } from '../../lib/input/mic'
 
-const TONICS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
-const tonicPc = (name: string) => TONICS.indexOf(name)
-const nice = (s: string) => s.replace('#', '♯').replace(/^([A-G])b/, '$1♭')
+const tonicPc = (name: string) => pcOf(parseNote(name))
 
 interface Pos {
   /** Chord index, or -1 during the count-in. */
@@ -44,8 +42,10 @@ export function ProgressionJam() {
   const [focus, setFocus] = useState(0)
 
   const preset = PRESETS.find((p) => p.id === presetId) ?? null
-  const key: Key = useMemo(() => ({ tonic: parseNote(`${TONICS[tonic]}4`), mode: 'major' }), [tonic])
-  const chords = useMemo(() => romans.map((r) => romanToChord(r, key)), [romans, key])
+  const minor = useMemo(() => isMinorProgression(romans), [romans])
+  const tonicName = (pc: number) => pitchName(jamTonic(pc, minor))
+  const chords = useMemo(() => jamChords(romans, tonic, minor), [romans, tonic, minor])
+  const paletteChords = useMemo(() => jamChords(PALETTE, tonic, minor), [tonic, minor])
   const voicings = useMemo(() => voiceProgression(chords, { center: 64, low: 57, high: 79 }), [chords])
   const basses = useMemo(() => chords.map((c) => bassFor(c, 40)), [chords])
   const pcsList = useMemo(() => chords.map((c) => chordPcs(c)), [chords])
@@ -157,9 +157,7 @@ export function ProgressionJam() {
       <TopBar
         back="/explore"
         title="Progression Jam"
-        subtitle={
-          <MusicText text={`${preset ? preset.name : 'Your progression'} · key of ${nice(TONICS[tonic])}${preset?.minor ? ' minor' : ''}`} />
-        }
+        subtitle={<MusicText text={`${preset ? preset.name : 'Your progression'} · key of ${tonicName(tonic)}${minor ? ' minor' : ''}`} />}
       />
       <main className="mx-auto grid max-w-[1500px] gap-5 px-3 pt-5 sm:px-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="flex min-w-0 flex-col gap-5">
@@ -303,7 +301,7 @@ export function ProgressionJam() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              {PALETTE.map((r) => (
+              {PALETTE.map((r, i) => (
                 <motion.button
                   key={r}
                   type="button"
@@ -311,7 +309,7 @@ export function ProgressionJam() {
                   disabled={romans.length >= 16}
                   onClick={() => {
                     edit([...romans, r])
-                    const c = romanToChord(r, key)
+                    const c = paletteChords[i]
                     playNotes([bassFor(c, 40), ...voiceProgression([c], { center: 64, low: 57, high: 79 })[0]], { dur: 1.2, strum: 0.02 })
                   }}
                   className="flex min-w-[4.5rem] flex-col items-center rounded-2xl border border-white/10 bg-night-750 px-3 py-1.5 transition-colors hover:border-gold/50 disabled:opacity-40"
@@ -320,7 +318,7 @@ export function ProgressionJam() {
                     <MusicText text={romanLabel(r)} />
                   </span>
                   <span className="font-display text-lg font-bold">
-                    <MusicText text={chordSymbol(romanToChord(r, key))} />
+                    <MusicText text={chordSymbol(paletteChords[i])} />
                   </span>
                 </motion.button>
               ))}
@@ -430,12 +428,12 @@ export function ProgressionJam() {
                 <div className="flex items-center gap-2">
                   <IconButton icon={Minus} label="Transpose down a half step" size={40} onClick={() => setTonic((t) => (t + 11) % 12)} />
                   <span className="w-12 text-center font-display text-2xl font-bold">
-                    <MusicText text={nice(TONICS[tonic])} />
+                    <MusicText text={tonicName(tonic)} />
                   </span>
                   <IconButton icon={Plus} label="Transpose up a half step" size={40} onClick={() => setTonic((t) => (t + 1) % 12)} />
                 </div>
               </div>
-              <OctavePicker value={tonic} onChange={setTonic} height={96} label="Key" names={(p) => ({ main: nice(TONICS[p]) })} />
+              <OctavePicker value={tonic} onChange={setTonic} height={96} label="Key" names={(p) => ({ main: tonicName(p) })} />
             </div>
           </Card>
         </aside>
