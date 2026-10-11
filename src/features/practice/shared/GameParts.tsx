@@ -3,6 +3,7 @@ import { AnimatePresence, animate, motion, useMotionValue, useTransform } from '
 import { type ReactNode, useEffect } from 'react'
 import { MusicText } from '../../../components/MusicText'
 import { Button } from '../../../components/ui/Button'
+import { GoalProgress } from '../../../components/ui/GoalProgress'
 import { IconTile } from '../../../components/ui/Card'
 import { ProgressBar, Stars } from '../../../components/ui/progress'
 import { go } from '../../../router'
@@ -227,6 +228,7 @@ export function ResultsCard({
         ))}
       </dl>
       {children}
+      <GoalProgress className="mx-auto mt-5" />
       <div className="mt-7 flex flex-wrap justify-center gap-3">
         <Button size="lg" icon={RotateCcw} onClick={onAgain}>
           Play again

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // No sound or confetti in tests.
 vi.mock('../../../lib/audio/engine', () => ({ audio: { ui: vi.fn() } }))
-vi.mock('../../../lib/fx', () => ({ burst: vi.fn(), celebrate: vi.fn(), emitXp: vi.fn() }))
+vi.mock('../../../lib/fx', () => ({ burst: vi.fn(), celebrate: vi.fn(), emitXp: vi.fn(), toast: vi.fn() }))
 
 const { finishGame } = await import('./finish')
 const { useProgress } = await import('../../../state/progress')

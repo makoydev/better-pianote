@@ -7,6 +7,7 @@ import { type Marks, Piano } from '../../components/piano/Piano'
 import { Staff, type StaffItem } from '../../components/staff/Staff'
 import type { Layout } from '../../components/staff/layout'
 import { Button, IconButton } from '../../components/ui/Button'
+import { GoalProgress } from '../../components/ui/GoalProgress'
 import { Paper } from '../../components/ui/Card'
 import { Chips, Segmented, Toggle } from '../../components/ui/controls'
 import { Stars } from '../../components/ui/progress'
@@ -660,6 +661,7 @@ function Results({ result, onAgain, onSetup }: { result: Result; onAgain: () => 
       ) : (
         <div className="text-sm font-bold text-ink-mute">No notes right this time, so this round isn't saved.</div>
       )}
+      <GoalProgress />
       {missed.length > 0 && (
         <div className="w-full">
           <h3 className="mb-3 text-sm font-extrabold uppercase tracking-[0.18em] text-ink-mute">Notes to review</h3>

@@ -23,8 +23,9 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   (reproduced 2/9 → 4/9). Arrow keys inside widgets (tempo slider, circle of fifths) also move the lesson; held
   Enter auto-repeats; ⌘←/→ fires too. *Where:* `LessonPlayer.tsx` keydown handler. `S`
   *Done:* the lesson key handler ignores repeats, ⌘/Ctrl/Alt, text fields, sliders, radio groups and keys a widget already handled, and leaves Enter to a focused button; Chrome's focus-after-click is dropped app-wide (`lib/focus.ts`). Checked: Continue click then Enter moves one step.
-- [ ] **4. Note Rush gives the answer away by colour.** Staff notes are rainbow-coloured by letter and the name
+- [x] **4. Note Rush gives the answer away by colour.** Staff notes are rainbow-coloured by letter and the name
   buttons use the same palette. Reproduced. *Where:* `features/practice/NoteRush.tsx` (NoteTape, name buttons). `S`
+  *Done:* Note Rush draws the staff notes uncoloured and the letter buttons are neutral (8a1fa3b). Checked in the browser.
 - [x] **5. Blank screen after a deploy.** No error boundary; a tab or the iPad app that loads a lazy screen whose old
   hashed chunk is gone (deploy replaces `gh-pages`) unmounts the whole app. Add a "Tonic was updated – Reload"
   fallback and handle `vite:preloadError`. *Where:* `App.tsx`, `scripts/deploy.sh`. `S`
@@ -57,6 +58,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **13. Space breaks after clicking a button.** Song player: Space re-clicks the focused "Listen" (reset to bar
   1). Metronome: Space re-triggers the last control, and tap-tempo `T` also plays F♯. *Where:* `SongPlayer.tsx`,
   `explore/Metronome.tsx`. `S`
+  *Partly done:* Metronome: T no longer plays F♯ and Space works after clicks (83a5260); Chrome's focus-after-click is dropped app-wide (e688569). The song player's Space comes with the Songs batch.
 - [ ] **14. Sounds don't stop.** Scale "Listen", lesson demos and Rhythm Tap "Listen first" keep playing after a
   change of screen or scale; a double tap plays two copies; the mic stays muted meanwhile. Track scheduled notes so
   `stopAll()` can cancel them, call it on navigation. *Where:* `engine.ts`, `play.ts`, callers. `S–M`
@@ -66,15 +68,17 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [x] **16. Settings and Songs are missing from the nav below 768 px** (iPad mini portrait, Split View): the bottom
   tab bar has neither. *Where:* `components/layout/Nav.tsx`, `Page.tsx`. `S`
   *Done:* the phone tab bar now has Home, Learn, Practice, Play, Explore and Songs, and page headers show a Settings gear below 768 px (`Nav.tsx`, `Page.tsx`). Checked at 700 px.
-- [ ] **17. Accuracy slips.** Circle of Fifths calls i–iv–v the main chords of a minor key (most minor songs use a
+- [x] **17. Accuracy slips.** Circle of Fifths calls i–iv–v the main chords of a minor key (most minor songs use a
   major V); a transposed Jam shows F♭/C♭/B𝄫 and "D♭ minor"; numbered lists in lesson text render as one paragraph.
   *Where:* `widgets/CircleOfFifthsWheel.tsx`, `explore/ProgressionJam.tsx`, `ui/RichText.tsx`. `S`
   *Partly done:* numbered steps in lesson text now render as a list (`ui/RichText.tsx`). The Circle of Fifths and Jam spellings are in the Explore batch.
+  *Done:* the Circle of Fifths shows a minor key's major V among the gold main chords with corrected wording (7c45b90), and the Jam uses minor-key names and respells F♭/C♭/B𝄫 roots (977f12e); tests cover all 12 keys.
 - [ ] **18. Smaller ones.** A note shared by two voices in an imported song needs two presses (Listen plays it twice);
   Note Rush level 5's ♯/♭ choice sticks to the next note and ⌘C/held keys answer; unplugging the keyboard is silent
   and can leave sustain stuck down. *Where:* `songs/timeline.ts`, `songs/listen.ts`, `NoteRush.tsx`,
   `lib/input/midi.ts`. `S`
   *Partly done:* unplugging the keyboard now releases a stuck sustain pedal and says so (`midi.ts`). The song and Note Rush parts are in the Songs and Practice batches.
+  *Partly done:* Note Rush level 5: the ♯/♭ choice resets after each answer, held keys and ⌘ shortcuts don't answer, Shift+letter is the sharp (3ae2ff8).
 
 ## Across the whole app
 
@@ -86,6 +90,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   as Continue for mic users without a pedal. `M`
 - [ ] **21. Remember choices.** Note Rush setup, Rhythm Tap tempo/click, Ear Training level per mode, every Explore
   tool and the song list filter reset on each visit; game preferences aren't in Export. `S`
+  *Partly done:* Note Rush, Rhythm Tap and Ear Training (4108ba9) and Free Play plus every Explore tool (981ab3b) remember their choices in the prefs store, which Export carries (e688569). The song list filter comes with the Songs batch.
 - [x] **22. Keep your place.** Learn always reopens at Unit 1 (no scroll to the current lesson); Songs loses filter and
   scroll; Back always goes to a fixed parent page (Chord Trainer opened from Home → Back → Practice).
   *Where:* `App.tsx` (`scrollTo(0,0)`), `TopBar.tsx`, `LearnPath.tsx`. `S`
@@ -101,9 +106,11 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **26. Celebrate level-ups and the daily goal when they happen**, and show goal progress on results screens.
   *Where:* `state/progress.ts`, `XpToaster.tsx`, results screens. `S`
   *Partly done:* level-ups and the daily goal pop a toast with sound and confetti the moment they happen (`progress.ts` → `Toaster.tsx`); a goal bar (`GoalProgress`) is on the lesson complete screen. Games and song results get it once those batches are merged.
+  *Partly done:* game results (shared ResultsCard and Note Rush) show the daily goal bar too.
 - [ ] **27. Rebalance XP.** One Note Rush round (`score/20`) clears the daily goal; a round with zero right answers still
   pays and keeps the streak; looping a song section earns nothing. *Where:* `NoteRush.tsx`,
   `practice/shared/finish.ts`, `SongPlayer.tsx`. `S`
+  *Partly done:* games pay nothing for a round with nothing right, and Note Rush uses the same XP rule as the other games, at most 25 per round (ec7153b). Song loop XP comes with the Songs batch.
 
 ## Learn
 
@@ -129,14 +136,17 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 
 - [ ] **37. Track weak spots** (notes, chords, intervals, keys you miss or are slow on), ask about them more often,
   "Drill these" on results. `M`
-- [ ] **38. Show what you missed in Ear Training and Key Quiz**, with tap-to-hear. `S`
-- [ ] **39. Pause and Skip in Note Rush** (auto-pause when the app is hidden); don't save near-empty rounds. `S`
+- [x] **38. Show what you missed in Ear Training and Key Quiz**, with tap-to-hear. `S`
+  *Done:* Ear Training and Key Quiz results list "What you missed" (e.g. "Major 6th → you said minor 7th"); tapping an Ear Training miss plays both the way the question was asked, and option replays after a harmonic question are harmonic now (2040e5d).
+- [x] **39. Pause and Skip in Note Rush** (auto-pause when the app is hidden); don't save near-empty rounds. `S`
+  *Done:* Pause button and auto-pause when the app is hidden (any key, tap or note resumes), Skip (button or Space) counts as missed, and a round with nothing right isn't saved (e0a349b). Checked in the browser.
 - [ ] **40. Results that lead somewhere:** history per game, "Next level →" after 3★, a per-level "New best" badge. `S–M`
 - [ ] **41. Answer Ear Training and Key Quiz by playing.** `M`
 - [ ] **42. Note Rush on the shared game parts** (SetupCard/ResultsCard/finishGame), a tighter keyboard range (bigger
   keys; Bass level 4 starts below the CT-S1), optional key signatures. `M`
-- [ ] **43. Rhythm Tap insights:** "you rush by ~25 ms", first-try score, bests per tempo, bigger Next/Try again
+- [x] **43. Rhythm Tap insights:** "you rush by ~25 ms", first-try score, bests per tempo, bigger Next/Try again
   buttons. `S`
+  *Done:* results say "You rush/drag by about N ms" or "Right on time", show the first-try score next to the best-of-retries one, bests are kept per tempo band, and Next/Try again are large buttons (8bc72a9).
 - [ ] **44. A chained 5-minute "Daily workout".** `L`
 
 ## Songs
@@ -178,9 +188,10 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **64. Scale practice in time**, over two octaves, hands together. `M`
 - [ ] **65. Guitar shapes for every chord** (20 of 48 basic chords have one; F♯m from River Flows is missing), capo
   view. `M`
-- [ ] **66. Free Play and the tools respect the reading settings** (note names under the staff, key labels), and Free
+- [x] **66. Free Play and the tools respect the reading settings** (note names under the staff, key labels), and Free
   Play's on-screen keys are big enough to tap on iPad. *Where:* `play/FreePlay.tsx`, `ChordExplorer.tsx`,
   `ScaleExplorer.tsx`, `CircleOfFifthsWheel.tsx`. `S`
+  *Done:* Free Play, Chord Explorer, Scale Explorer and the circle's key details follow "Note names under the staff", Free Play follows "Names on keys", and without a USB keyboard on screens under ~1100 px Free Play shows two big octaves with ◀ ▶ (e697797). The explorers keep labels on their highlighted keys on purpose.
 
 ## Settings & platform
 
