@@ -28,9 +28,10 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **5. Blank screen after a deploy.** No error boundary; a tab or the iPad app that loads a lazy screen whose old
   hashed chunk is gone (deploy replaces `gh-pages`) unmounts the whole app. Add a "Tonic was updated – Reload"
   fallback and handle `vite:preloadError`. *Where:* `App.tsx`, `scripts/deploy.sh`. `S`
-- [ ] **6. Mic and USB both on → doubled notes.** `main.tsx` auto-starts both; the mic hears the CT-S1 speakers and
+- [x] **6. Mic and USB both on → doubled notes.** `main.tsx` auto-starts both; the mic hears the CT-S1 speakers and
   sends a late second note (in Note Rush it answers the next note wrong). The pill only shows the USB device.
   *Where:* `main.tsx`, `lib/input/bus.ts`, `components/layout/ConnectionPill.tsx`. `S`
+  *Done:* while a USB keyboard is connected the mic's notes are dropped and its pitch work is skipped (`micPaused` in `bus.ts`, `mic.ts`); the connect sheet says the mic is paused.
 - [ ] **7. One held wrong note counts as many mistakes (mic).** The "wrong" buzz sets `busyUntil`, the mic drops the
   sounding note, then re-detects the still-ringing note as new → another mistake and buzz every ~0.6 s. Lessons,
   Note Rush, Echo. *Where:* `lib/input/mic.ts`, `lib/audio/engine.ts`, `PlayStepView.tsx`. iPad check. `S–M`
@@ -72,6 +73,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   Note Rush level 5's ♯/♭ choice sticks to the next note and ⌘C/held keys answer; unplugging the keyboard is silent
   and can leave sustain stuck down. *Where:* `songs/timeline.ts`, `songs/listen.ts`, `NoteRush.tsx`,
   `lib/input/midi.ts`. `S`
+  *Partly done:* unplugging the keyboard now releases a stuck sustain pedal and says so (`midi.ts`). The song and Note Rush parts are in the Songs and Practice batches.
 
 ## Across the whole app
 
@@ -96,6 +98,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   mode. `S–M`
 - [ ] **26. Celebrate level-ups and the daily goal when they happen**, and show goal progress on results screens.
   *Where:* `state/progress.ts`, `XpToaster.tsx`, results screens. `S`
+  *Partly done:* level-ups and the daily goal pop a toast with sound and confetti the moment they happen (`progress.ts` → `Toaster.tsx`); a goal bar (`GoalProgress`) is on the lesson complete screen. Games and song results get it once those batches are merged.
 - [ ] **27. Rebalance XP.** One Note Rush round (`score/20`) clears the daily goal; a round with zero right answers still
   pays and keeps the streak; looping a song section earns nothing. *Where:* `NoteRush.tsx`,
   `practice/shared/finish.ts`, `SongPlayer.tsx`. `S`
@@ -182,8 +185,9 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **67. Safer Export/Import:** iPad share sheet, preview with merge or replace (Import overwrites everything today),
   undo, last-backup reminder. iPad check. `M`
 - [ ] **68. Onboarding:** "Coming from another device? Import" and "Show welcome again" in Settings. `S`
-- [ ] **69. Connect sheet:** a live test strip (last note heard, source, pedal), keyboard connected/disconnected
+- [x] **69. Connect sheet:** a live test strip (last note heard, source, pedal), keyboard connected/disconnected
   messages, quick volume. `S`
+  *Done:* a "Test it" strip at the top of the connect sheet (last note heard and its source, pedal down, app volume, piano-sound status with Try again), plus toasts when the keyboard is plugged in or out (`ConnectSheet.tsx`, `midi.ts`, `Toaster.tsx`). Checked: "Heard E4 from your computer keys".
 - [ ] **70. Faster, steadier start:** fetch the piano samples early with a loading/failed state and retry, a static
   loader while the app boots, `apple-mobile-web-app-title`. *Where:* `engine.ts`, `index.html`, `main.tsx`. `S`
 - [ ] **71. iPad polish:** padding under the status bar, no double-tap zoom on buttons, keyboards scroll to the lit

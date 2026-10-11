@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
 import { Button } from '../../components/ui/Button'
+import { GoalProgress } from '../../components/ui/GoalProgress'
 import { Icon } from '../../components/ui/Icon'
 import { ProgressBar, Stars } from '../../components/ui/progress'
 import { ALL_LESSONS, findLesson } from '../../content'
@@ -174,7 +175,7 @@ export function LessonPlayer({ lessonId }: { lessonId: string }) {
     pedalDownAt.current = null
     if (t0 === null || now - t0 > 600 || heldNow().length > 0 || recentNotes(now - t0 + 50).length > 0) return
     if (finished) {
-      if (finished.next) go(`/learn/${finished.next.id}`)
+      if (finished.next) go(`/learn/${finished.next.id}`, { replace: true })
     } else next()
   })
   const prevSustain = useRef(sustain)
@@ -274,7 +275,8 @@ function LessonComplete({ result, unitColor, onReplay }: { result: Result; unitC
   const mins = Math.floor(result.seconds / 60)
   const secs = result.seconds % 60
   const mistakes = result.slips.reduce((a, s) => a + s.n, 0)
-  const goNext = () => go(result.next ? `/learn/${result.next.id}` : '/learn')
+  // Lesson → lesson replaces the history entry, so Back from the next lesson returns to where you started.
+  const goNext = () => go(result.next ? `/learn/${result.next.id}` : '/learn', { replace: true })
 
   // A unit is a big moment: an extra burst of confetti after the usual one.
   useEffect(() => {
@@ -342,8 +344,9 @@ function LessonComplete({ result, unitColor, onReplay }: { result: Result; unitC
           </motion.div>
         ))}
       </motion.div>
+      <GoalProgress className="mt-3" />
       {mistakes === 0 ? (
-        <p className="mt-4 text-sm text-ink-mute">No slips!</p>
+        <p className="mt-3 text-sm text-ink-mute">No slips!</p>
       ) : (
         <div className="glass mt-3 w-full max-w-xl rounded-2xl px-4 py-3 text-left">
           <div className="mb-1.5 flex items-center gap-2 text-sm font-extrabold text-ink-soft">
@@ -369,7 +372,7 @@ function LessonComplete({ result, unitColor, onReplay }: { result: Result; unitC
         </Button>
       </div>
       {result.next && (
-        <Button variant="ghost" size="md" onClick={() => go('/learn')} className="mt-2">
+        <Button variant="ghost" size="md" onClick={() => go('/learn', { replace: true })} className="mt-2">
           All lessons
         </Button>
       )}

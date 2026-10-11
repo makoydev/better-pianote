@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useLive } from '../../state/live'
 import { useSettings } from '../../state/settings'
 import { audio, setAudioSession } from '../audio/engine'
-import { noteOff, noteOn } from './bus'
+import { micPaused, noteOff, noteOn } from './bus'
 import { estimatePitches } from './polyphony'
 
 /**
@@ -142,6 +142,11 @@ function releaseChord() {
 function tick() {
   const ctx = audio.ctx
   if (!small || !timeBuf || !ctx) return
+  // A USB keyboard is connected, so its notes come in directly: no need to listen.
+  if (micPaused()) {
+    useLive.setState({ micLevel: 0 })
+    return
+  }
   small.getFloatTimeDomainData(timeBuf)
   let sum = 0
   for (let i = 0; i < timeBuf.length; i++) sum += timeBuf[i] * timeBuf[i]

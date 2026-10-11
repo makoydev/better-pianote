@@ -13,6 +13,8 @@ export interface LiveState {
   mic: MicStatus
   micLevel: number
   lastSource: NoteSource | null
+  /** The last note played (any source), for the "is it working?" strip in the connect sheet. */
+  lastNote: number | null
   /** Base octave for computer-keyboard playing (A key = C of this octave). */
   keysOctave: number
 }
@@ -25,6 +27,7 @@ export const useLive = create<LiveState>()(() => ({
   mic: typeof navigator !== 'undefined' && !!navigator.mediaDevices && 'getUserMedia' in navigator.mediaDevices ? 'off' : 'unsupported',
   micLevel: 0,
   lastSource: null,
+  lastNote: null,
   keysOctave: 4,
 }))
 

@@ -22,6 +22,28 @@ const SAMPLES: [string, number][] = (() => {
   return out
 })()
 
+// Sample files fetched ahead of time (before the first tap allows sound), keyed by file name.
+const prefetched = new Map<string, Promise<ArrayBuffer>>()
+const fetchSample = (name: string) =>
+  fetch(`${SAMPLE_BASE}${name}.mp3`).then((res) => {
+    if (!res.ok) throw new Error(`${name}: ${res.status}`)
+    return res.arrayBuffer()
+  })
+
+/**
+ * Start downloading the piano right away, so it's ready by the time you play (decoding waits for the
+ * AudioContext, which needs a tap). Middle of the keyboard first: the notes you're most likely to hear.
+ */
+export function prefetchSamples() {
+  const order = [...SAMPLES].sort((a, b) => Math.abs(a[1] - 62) - Math.abs(b[1] - 62))
+  for (const [name] of order) {
+    if (prefetched.has(name)) continue
+    const bytes = fetchSample(name)
+    bytes.catch(() => {}) // a failed prefetch is retried when the samples load
+    prefetched.set(name, bytes)
+  }
+}
+
 type AudioSessionType = 'auto' | 'playback' | 'play-and-record'
 
 /**
@@ -133,20 +155,29 @@ class AudioEngine {
 
   private async loadSamples() {
     const ctx = this.ctx
-    if (!ctx || this.status === 'loading' || this.status === 'ready') return
+    if (!ctx || this.status === 'loading') return
+    const todo = SAMPLES.filter(([, m]) => !this.buffers.has(m))
+    if (todo.length === 0) return
     this.setStatus('loading')
     // Middle of the keyboard first, so the notes you're most likely to hear arrive first.
-    const order = [...SAMPLES].sort((a, b) => Math.abs(a[1] - 62) - Math.abs(b[1] - 62))
-    const results = await Promise.allSettled(
+    const order = todo.sort((a, b) => Math.abs(a[1] - 62) - Math.abs(b[1] - 62))
+    await Promise.allSettled(
       order.map(async ([name, m]) => {
-        const res = await fetch(`${SAMPLE_BASE}${name}.mp3`)
-        if (!res.ok) throw new Error(`${name}: ${res.status}`)
-        const buf = await ctx.decodeAudioData(await res.arrayBuffer())
-        this.buffers.set(m, buf)
+        const early = prefetched.get(name)
+        prefetched.delete(name)
+        const bytes = await (early ?? fetchSample(name)).catch(() => fetchSample(name))
+        this.buffers.set(m, await ctx.decodeAudioData(bytes))
       }),
     )
-    const ok = results.filter((r) => r.status === 'fulfilled').length
-    this.setStatus(ok >= SAMPLES.length * 0.8 ? 'ready' : ok > 0 ? 'ready' : 'error')
+    // A few missing samples are covered by their neighbours (repitched); none at all means the synth.
+    this.setStatus(this.buffers.size > 0 ? 'ready' : 'error')
+    if (this.buffers.size < SAMPLES.length) window.addEventListener('online', () => void this.loadSamples(), { once: true })
+  }
+
+  /** Try the piano samples again (after a failed download). */
+  retrySamples() {
+    this.unlock()
+    void this.loadSamples()
   }
 
   private nearest(midi: number): [number, AudioBuffer] | null {

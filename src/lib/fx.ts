@@ -16,6 +16,29 @@ export function emitXp(n: number) {
   xpListeners.forEach((fn) => fn(n))
 }
 
+/**
+ * Short messages at the top of the screen: big moments (a new level, the daily goal) and status news
+ * (your keyboard connected or came unplugged).
+ */
+export interface Toast {
+  kind: 'level' | 'goal' | 'connected' | 'disconnected' | 'info'
+  title: string
+  detail?: string
+}
+type ToastListener = (t: Toast) => void
+const toastListeners = new Set<ToastListener>()
+
+export function onToast(fn: ToastListener) {
+  toastListeners.add(fn)
+  return () => {
+    toastListeners.delete(fn)
+  }
+}
+
+export function toast(t: Toast) {
+  toastListeners.forEach((fn) => fn(t))
+}
+
 const reduced = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
 const PALETTE = ['#ffc857', '#ff7b6b', '#9b8cff', '#3ee6c8', '#5cc8ff', '#ff9ad5']

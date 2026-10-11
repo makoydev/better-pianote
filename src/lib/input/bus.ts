@@ -24,10 +24,17 @@ function makesSound(source: NoteSource) {
   return source === 'midi' && useSettings.getState().midiThru
 }
 
+/**
+ * With a USB keyboard connected the mic would only hear its speakers a moment later: a late, doubled note
+ * (in a game, an answer to the next question). The keyboard wins; the mic waits until it's unplugged.
+ */
+export const micPaused = () => useLive.getState().midiDevices.length > 0
+
 export function noteOn(midi: number, velocity = 0.75, source: NoteSource = 'screen') {
+  if (source === 'mic' && micPaused()) return
   const time = performance.now()
   if (makesSound(source)) audio.noteOn(midi, velocity)
-  useLive.setState((s) => ({ held: { ...s.held, [midi]: source }, lastSource: source }))
+  useLive.setState((s) => ({ held: { ...s.held, [midi]: source }, lastSource: source, lastNote: midi }))
   recent.push({ midi, time })
   while (recent.length && time - recent[0].time > 4000) recent.shift()
   const e: NoteEvent = { type: 'on', midi, velocity, source, time }
@@ -35,6 +42,7 @@ export function noteOn(midi: number, velocity = 0.75, source: NoteSource = 'scre
 }
 
 export function noteOff(midi: number, source: NoteSource = 'screen') {
+  if (source === 'mic' && micPaused()) return
   if (makesSound(source)) audio.noteOff(midi)
   const held = useLive.getState().held
   if (midi in held) {

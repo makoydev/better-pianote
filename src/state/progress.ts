@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { emitXp } from '../lib/fx'
+import { emitXp, toast } from '../lib/fx'
+import { levelFor } from '../lib/levels'
 
 export interface LessonRecord {
   stars: number
@@ -62,6 +63,7 @@ export const useProgress = create<Progress>()(
       addXp: (n) => {
         if (n <= 0) return
         const today = dayKeyOf()
+        const before = get()
         set((s) => {
           let { streak, bestStreak, days } = s
           if (s.lastDay !== today) {
@@ -73,6 +75,14 @@ export const useProgress = create<Progress>()(
           return { xp: s.xp + n, streak, bestStreak, days, lastDay: today, dayKey: today, dayXp }
         })
         emitXp(n)
+        // Big moments get their own toast, right when they happen.
+        const after = get()
+        const level = levelFor(after.xp)
+        if (level.level > levelFor(before.xp).level) toast({ kind: 'level', title: `Level ${level.level}: ${level.title}!`, detail: 'New level unlocked.' })
+        const dayBefore = before.dayKey === today ? before.dayXp : 0
+        if (dayBefore < after.dailyGoal && after.dayXp >= after.dailyGoal) {
+          toast({ kind: 'goal', title: 'Daily goal reached!', detail: after.streak > 1 ? `${after.streak}-day streak` : 'See you tomorrow for a streak.' })
+        }
       },
       completeLesson: (id, stars) => {
         const prev = get().lessons[id]

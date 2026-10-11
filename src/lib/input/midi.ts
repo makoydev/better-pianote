@@ -1,3 +1,4 @@
+import { toast } from '../fx'
 import { useLive } from '../../state/live'
 import { useSettings } from '../../state/settings'
 import { noteOff, noteOn, releaseAll, setSustain } from './bus'
@@ -44,6 +45,9 @@ export async function autoConnectMidi() {
   }
 }
 
+// Keyboards seen at the last check (null until the first one), to tell plugging in from unplugging.
+let known: string[] | null = null
+
 function bind() {
   if (!access) return
   const names: string[] = []
@@ -52,8 +56,20 @@ function bind() {
     input.onmidimessage = handle
     names.push(prettyName(input.name ?? 'MIDI keyboard'))
   }
-  if (names.length === 0) releaseAll('midi')
+  const before = known
+  known = names
+  if (names.length === 0) {
+    releaseAll('midi')
+    // A pedal held down while the cable came out would otherwise stay "down" forever.
+    if (useLive.getState().sustain) setSustain(false)
+  } else if (!before?.length) {
+    // The keyboard takes over from the mic (see micPaused in bus.ts).
+    releaseAll('mic')
+  }
   useLive.setState({ midi: 'ready', midiDevices: names })
+  if (!before) return
+  if (names.length > before.length) toast({ kind: 'connected', title: `${names.find((n) => !before.includes(n)) ?? names[0]} connected`, detail: 'Play away!' })
+  else if (names.length < before.length && names.length === 0) toast({ kind: 'disconnected', title: 'Keyboard disconnected', detail: 'Plug it back in: it reconnects by itself.' })
 }
 
 function prettyName(name: string) {
