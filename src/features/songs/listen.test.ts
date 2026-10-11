@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type Song, type SongEvent, parseBars } from '../../content/songs'
-import { type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
+import { type NoteFilter, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
 import { buildTimeline } from './timeline'
 
 const song = (rh: SongEvent[][] | string, lh?: string): Song => ({
@@ -106,6 +106,16 @@ describe('listen mode timing', () => {
     // Starting in the middle brings the shared note back once too.
     const held: Song = { ...song('C5:w'), voices: [{ hand: 'rh', bars: parseBars('C5:h D5:h') }] }
     expect(ringingAt(buildTimeline(held), 1).map((n) => `${n.name}/${n.dur}`)).toEqual(['C5/4'])
+  })
+
+  it('picks the hand that plays before merging, so a key shared with the other hand is kept', () => {
+    const tl = buildTimeline(song('C4:q D4 E4 F4', 'C4:h G3:h'))
+    const rh: NoteFilter = (n) => n.hand === 'rh'
+    // Both hands: the shared C4 is the left hand's longer one. The right hand alone still plays its own.
+    expect(buildCues(tl)[0].notes.map((n) => `${n.hand}:${n.name}`)).toEqual(['lh:C4'])
+    expect(buildCues(tl, [], rh)[0].notes.map((n) => `${n.hand}:${n.name}`)).toEqual(['rh:C4'])
+    expect(ringingAt(tl, 1).map((n) => `${n.hand}:${n.name}`)).toEqual(['lh:C4'])
+    expect(ringingAt(tl, 1, rh)).toEqual([])
   })
 })
 

@@ -27,7 +27,7 @@ import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import { type SongResult, SongResults } from './SongResults'
 import { TempoPresets, TempoStepper } from './TempoControl'
-import { type CountIn, type Cue, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
+import { type CountIn, type Cue, type NoteFilter, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
 import { type Run, carryOn, endPass, newRun, stepAt, stepsInBars, tally } from './practice'
 import { type Hands, accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
 import { clampTempo, loopSpeedUp } from './tempo'
@@ -333,8 +333,10 @@ function Player({ song }: { song: Song }) {
   const startPlayback = (opts: { from: number; lo: number; hi: number; looping: boolean; bar: boolean; count?: CountIn }) => {
     const { from, lo, hi, looping, bar, count } = opts
     stopPlayback()
-    const head: Playhead = { pos: from, next: firstCueAt(cues, from) }
-    const heard = (n: TimedNote) => !bar || hands === 'both' || n.hand === 'rh'
+    // A bar heard with the right hand only leaves the left hand out before shared notes merge (so none go missing).
+    const only: NoteFilter | undefined = bar && hands === 'rh' ? (n) => n.hand === 'rh' : undefined
+    const list = only ? buildCues(tl, [], only) : cues
+    const head: Playhead = { pos: from, next: firstCueAt(list, from) }
     const withChords = backing && !bar
     prevPad.current = null
     let first = true
@@ -362,7 +364,7 @@ function Player({ song }: { song: Song }) {
       playNotes(padVoicing(c, !song.lh), { dur: beats * spb * 0.95, vel: 0.3, delay: delayTo(when) })
     // Nothing rings on past the part that plays (a tie into the next bar, the end of the loop).
     const play = (c: Cue, when: number) => {
-      for (const n of c.notes) if (heard(n)) sound(n, when, Math.min(n.dur, hi - c.t))
+      for (const n of c.notes) sound(n, when, Math.min(n.dur, hi - c.t))
       if (c.chord && withChords) pad(c.chord.chord, when, Math.min(c.chord.dur, hi - c.t))
       if (c.click && !bar && live.current.metronome) audio.click(c.click === 'bar', when)
       if (c.col && !bar) later(when, () => setListenAt(c.t))
@@ -392,11 +394,11 @@ function Player({ song }: { song: Song }) {
         if (first) {
           first = false
           // Starting in the middle: bring in what's still ringing there (a held bass note, the chord).
-          for (const n of ringingAt(tl, from)) if (heard(n)) sound(n, start, Math.min(n.start + n.dur, hi) - from)
+          for (const n of ringingAt(tl, from, only)) sound(n, start, Math.min(n.start + n.dur, hi) - from)
           const ch = tl.chords.find((c) => c.start < from - EPS && c.start + c.dur > from + EPS)
           if (ch && withChords) pad(ch.chord, start, Math.min(ch.start + ch.dur, hi) - from)
         }
-        const { due, end, wraps } = advance(cues, head, TICK - off, lo, hi, looping)
+        const { due, end, wraps } = advance(list, head, TICK - off, lo, hi, looping)
         for (const d of due) play(d.cue, start + d.offset * spb)
         // Speed up each loop: 5 % faster from the tick after each pass, up to the song's tempo (and remembered).
         const faster = wraps.length && !bar && live.current.speedUp ? loopSpeedUp(bpmRef.current, song.bpm) : bpmRef.current

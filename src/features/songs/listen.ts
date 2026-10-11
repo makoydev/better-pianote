@@ -22,7 +22,11 @@ export interface Click {
   accent: boolean
 }
 
-export function buildCues(tl: Timeline, clicks: Click[] = []): Cue[] {
+/** Which notes play (e.g. only the right hand's), picked before shared notes merge so none go missing. */
+export type NoteFilter = (n: TimedNote) => boolean
+const everything: NoteFilter = () => true
+
+export function buildCues(tl: Timeline, clicks: Click[] = [], keep = everything): Cue[] {
   const map = new Map<number, Cue>()
   const at = (t: number) => {
     const k = Math.round(t * 1e6)
@@ -31,7 +35,7 @@ export function buildCues(tl: Timeline, clicks: Click[] = []): Cue[] {
     return c
   }
   // A pitch two voices start together sounds once (playing it twice would just make it louder).
-  for (const n of tl.notes) if (!n.cont) addShared(at(n.start).notes, n)
+  for (const n of tl.notes) if (!n.cont && keep(n)) addShared(at(n.start).notes, n)
   for (const c of tl.chords) at(c.start).chord = c
   for (const t of tl.cols) at(t).col = true
   for (const c of clicks) at(c.t).click = c.accent ? 'bar' : 'beat'
@@ -144,10 +148,10 @@ export function advance(cues: Cue[], head: Playhead, len: number, lo: number, hi
 }
 
 /** Notes that started before t and are still sounding at t (picked up when playback starts there), one per key. */
-export function ringingAt(tl: Timeline, t: number): TimedNote[] {
+export function ringingAt(tl: Timeline, t: number, keep = everything): TimedNote[] {
   const byKey = new Map<number, TimedNote>()
   for (const n of tl.notes) {
-    if (n.cont || n.start >= t - EPS || n.start + n.dur <= t + EPS) continue
+    if (n.cont || !keep(n) || n.start >= t - EPS || n.start + n.dur <= t + EPS) continue
     const twin = byKey.get(n.midi)
     if (!twin || n.start + n.dur > twin.start + twin.dur + EPS) byKey.set(n.midi, n)
   }
