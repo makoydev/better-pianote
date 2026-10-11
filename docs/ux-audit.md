@@ -14,9 +14,10 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **1. Finishing a lesson keeps awarding XP.** After a lesson that ends on a "play" step (10 of 38), the complete
   screen re-runs `finish()` every ~1.5 s: +5 XP, confetti and the chime on loop. Reproduced (55 → 85 XP in 10 s).
   The play-step auto-advance effect has no `finished` guard. *Where:* `features/learn/LessonPlayer.tsx`. `S`
-- [ ] **2. The right quiz answer is almost always option 1.** 79 of 87 quizzes have `answer: 0` and options are
+- [x] **2. The right quiz answer is almost always option 1.** 79 of 87 quizzes have `answer: 0` and options are
   never shuffled, so pressing 1 passes nearly everything. *Where:* `features/learn/steps/QuizStepView.tsx`,
   `content/units/*`. `S`
+  *Done:* options are shuffled per visit (`learn/quizOrder.ts`); two-option and `ordered` questions keep their order, number options show smallest first. A test checks the answer is no longer usually first. Number keys skip ⌘/repeat.
 - [ ] **3. Enter skips lesson steps.** After clicking Continue (Chrome keeps focus on it), one Enter advances twice
   (reproduced 2/9 → 4/9). Arrow keys inside widgets (tempo slider, circle of fifths) also move the lesson; held
   Enter auto-repeats; ⌘←/→ fires too. *Where:* `LessonPlayer.tsx` keydown handler. `S`

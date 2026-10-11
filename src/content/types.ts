@@ -5,7 +5,8 @@ import type { IconName } from '../components/ui/Icon'
 /**
  * Lesson content is plain data. Notes are written as names ("C4", "F#3", "Bb4");
  * chords as symbols ("Am7", "C/E"). Body text supports the RichText markup:
- * **bold**, *emphasis*, [[C4]] note chips, {{Am}} chord chips, "- " bullets, blank-line paragraphs.
+ * **bold**, *emphasis*, [[C4]] note chips, {{Am}} chord chips, [Note Rush](/practice/note-rush) links to a screen,
+ * "- " bullets, "1. " numbered steps, blank-line paragraphs.
  */
 
 export interface KeyboardVisual {
@@ -100,6 +101,8 @@ export interface PlayStep {
   showTargets?: boolean
   hint?: string
   success?: string
+  /** Other notes don't count as slips (the prompt asks you to play something else first, e.g. C major, then F). */
+  free?: boolean
 }
 
 export interface QuizStep {
@@ -109,8 +112,13 @@ export interface QuizStep {
   visual?: Visual
   /** Played automatically when the question appears (ear questions). */
   listen?: AudioClip
+  /**
+   * Options are shuffled each time (so the answer isn't always in the same place), except two-option questions,
+   * all-number options (shown smallest first) and `ordered` ones (a natural order like Higher / Lower / The same).
+   */
   options: string[]
   answer: number
+  ordered?: boolean
   /** Shown after answering. */
   explain?: string
 }
@@ -133,6 +141,8 @@ export interface Lesson {
   minutes: number
   icon: IconName
   steps: Step[]
+  /** Set to false to turn off "tap the sustain pedal to continue" (the lesson about the pedal itself). */
+  pedalContinue?: boolean
 }
 
 export interface Unit {

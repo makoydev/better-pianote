@@ -8,8 +8,10 @@ import { RichText } from '../../../components/ui/RichText'
 import type { QuizStep } from '../../../content/types'
 import { audio } from '../../../lib/audio/engine'
 import { playSequence } from '../../../lib/audio/play'
+import { isPlainKey, isTypingTarget } from '../../../lib/focus'
 import { burst } from '../../../lib/fx'
 import { useSettings } from '../../../state/settings'
+import { optionOrder } from '../quizOrder'
 import { VisualBlock } from '../VisualBlock'
 import { noteMidi } from '../visual'
 
@@ -28,6 +30,8 @@ export function QuizStepView({
   const [wrong, setWrong] = useState<number[]>([])
   const [shake, setShake] = useState<number | null>(null)
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([])
+  // Shown order (indices into step.options), fixed for this visit to the question.
+  const [order] = useState(() => optionOrder(step.options, step.ordered))
 
   const listen = () => {
     if (!step.listen) return
@@ -56,11 +60,12 @@ export function QuizStepView({
     }
   }
 
-  // Number keys 1–4 pick an answer.
+  // Number keys 1–4 pick the answer shown in that place.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!isPlainKey(e) || isTypingTarget(e.target)) return
       const n = Number(e.key)
-      if (n >= 1 && n <= step.options.length) choose(n - 1)
+      if (n >= 1 && n <= order.length) choose(order[n - 1])
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -82,8 +87,9 @@ export function QuizStepView({
         </div>
       )}
       {step.visual && <VisualBlock v={step.visual} />}
-      <div className={`grid gap-3 ${step.options.length > 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-2'}`}>
-        {step.options.map((o, i) => {
+      <div className="grid gap-3 sm:grid-cols-2">
+        {order.map((i, place) => {
+          const o = step.options[i]
           const isRight = solved && i === step.answer
           const isWrong = wrong.includes(i)
           return (
@@ -111,7 +117,7 @@ export function QuizStepView({
                   isRight ? 'bg-good text-night-900' : isWrong ? 'bg-bad/30' : 'bg-white/8 text-ink-mute'
                 }`}
               >
-                {isRight ? <CheckCircle2 size={20} /> : isWrong ? <XCircle size={20} /> : i + 1}
+                {isRight ? <CheckCircle2 size={20} /> : isWrong ? <XCircle size={20} /> : place + 1}
               </span>
               <MusicText text={o} />
             </motion.button>
