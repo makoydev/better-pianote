@@ -12,7 +12,6 @@ import { Chips, Segmented, Toggle } from '../../components/ui/controls'
 import { Stars } from '../../components/ui/progress'
 import { useElementSize } from '../../hooks/useElementSize'
 import { audio } from '../../lib/audio/engine'
-import { letterColor } from '../../lib/colors'
 import { burst, celebrate } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
 import { pauseComputerKeys } from '../../lib/input/keys'
@@ -441,7 +440,8 @@ function NoteTape({ config, round, index, wrong }: { config: Config; round: Rush
   const clefW = bg ? bg.contentStart - 0.3 * SP : 120
   const anchor = Math.min(220, Math.max(90, (width - clefW) * 0.2))
   const x = tape ? anchor - (tape.start + index * tape.slot + tape.slot / 2) : 0
-  const common = { clef, sp: SP, minSp: SP, reserveAbove: reserve, reserveBelow: reserve, labels: false, fingers: false } as const
+  // No names and no letter colours on the notes: either one gives the answer away.
+  const common = { clef, sp: SP, minSp: SP, reserveAbove: reserve, reserveBelow: reserve, labels: false, colorNotes: false, fingers: false } as const
 
   return (
     <Paper className="relative overflow-hidden !px-0">
@@ -491,6 +491,7 @@ function NameButtons({ level, acc, setAcc, onPick }: { level: RushLevel; acc: nu
           />
         </div>
       )}
+      {/* Plain buttons: with the rainbow colours you'd match colours instead of reading the note. */}
       <div className="grid grid-cols-7 gap-2">
         {LETTERS.map((l, i) => (
           <motion.button
@@ -498,8 +499,7 @@ function NameButtons({ level, acc, setAcc, onPick }: { level: RushLevel; acc: nu
             type="button"
             whileTap={{ scale: 0.92 }}
             onClick={() => onPick(i)}
-            className="flex h-20 items-center justify-center rounded-2xl border-2 bg-night-750 font-display text-4xl font-bold sm:h-24"
-            style={{ color: letterColor(i), borderColor: `${letterColor(i)}55` }}
+            className="flex h-20 items-center justify-center rounded-2xl border-2 border-white/10 bg-night-750 font-display text-4xl font-bold text-ink transition-colors hover:border-white/30 sm:h-24"
           >
             {l}
           </motion.button>
