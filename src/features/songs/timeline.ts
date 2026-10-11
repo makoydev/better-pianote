@@ -171,8 +171,19 @@ export function barAt(tl: Timeline, t: number): number {
 export interface Step {
   start: number
   bar: number
+  /** One per key: when two voices start the same pitch together, they share it (the longer note stands for both). */
   notes: TimedNote[]
   chord?: ChordChange
+}
+
+/**
+ * Add a note to the notes starting at one moment. Two voices starting the same pitch together share one key
+ * (one press, one sound), so only the longer note is kept; it already holds any tie.
+ */
+export function addShared(notes: TimedNote[], n: TimedNote) {
+  const twin = notes.findIndex((x) => x.midi === n.midi)
+  if (twin < 0) notes.push(n)
+  else if (n.dur > notes[twin].dur + EPS) notes[twin] = n
 }
 
 export function buildSteps(tl: Timeline, hands: 'rh' | 'both'): Step[] {
@@ -180,7 +191,9 @@ export function buildSteps(tl: Timeline, hands: 'rh' | 'both'): Step[] {
   for (const n of tl.notes) {
     if (n.cont || (hands === 'rh' && n.hand === 'lh')) continue
     const k = Math.round(n.start * 1000)
-    groups.set(k, [...(groups.get(k) ?? []), n])
+    const group = groups.get(k) ?? []
+    addShared(group, n)
+    groups.set(k, group)
   }
   return [...groups.entries()]
     .sort((a, b) => a[0] - b[0])

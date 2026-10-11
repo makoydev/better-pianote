@@ -1,4 +1,4 @@
-import type { ChordChange, Timeline, TimedNote } from './timeline'
+import { type ChordChange, type Timeline, type TimedNote, addShared } from './timeline'
 
 /** Listen mode: what to play when, at exact times (triplets and 32nds included), from any starting point. */
 
@@ -21,7 +21,8 @@ export function buildCues(tl: Timeline): Cue[] {
     if (!c) map.set(k, (c = { t, notes: [], col: false }))
     return c
   }
-  for (const n of tl.notes) if (!n.cont) at(n.start).notes.push(n)
+  // A pitch two voices start together sounds once (playing it twice would just make it louder).
+  for (const n of tl.notes) if (!n.cont) addShared(at(n.start).notes, n)
   for (const c of tl.chords) at(c.start).chord = c
   for (const t of tl.cols) at(t).col = true
   return [...map.values()].sort((a, b) => a.t - b.t)
@@ -77,7 +78,13 @@ export function advance(cues: Cue[], head: Playhead, len: number, lo: number, hi
   return { due }
 }
 
-/** Notes that started before t and are still sounding at t (picked up when playback starts there). */
+/** Notes that started before t and are still sounding at t (picked up when playback starts there), one per key. */
 export function ringingAt(tl: Timeline, t: number): TimedNote[] {
-  return tl.notes.filter((n) => !n.cont && n.start < t - EPS && n.start + n.dur > t + EPS)
+  const byKey = new Map<number, TimedNote>()
+  for (const n of tl.notes) {
+    if (n.cont || n.start >= t - EPS || n.start + n.dur <= t + EPS) continue
+    const twin = byKey.get(n.midi)
+    if (!twin || n.start + n.dur > twin.start + twin.dur + EPS) byKey.set(n.midi, n)
+  }
+  return [...byKey.values()]
 }

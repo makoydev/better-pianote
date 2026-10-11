@@ -364,8 +364,10 @@ function Player({ song }: { song: Song }) {
     if (mode === 'listen') return playing && listenAt >= n.start - EPS && listenAt < n.start + n.dur - EPS ? 'active' : undefined
     if (finished) return 'done'
     if (!cur) return undefined
-    if (cur.notes.includes(n)) {
-      if (satisfied.has(n.id)) return 'done'
+    // A note two voices share is one key in the step, so both noteheads light up together.
+    const key = !n.cont && Math.abs(n.start - cur.start) < EPS ? cur.notes.find((x) => x.midi === n.midi) : undefined
+    if (key) {
+      if (satisfied.has(key.id)) return 'done'
       return wrongAt !== null && Math.abs(wrongAt - cur.start) < EPS ? 'wrong' : 'active'
     }
     if (n.start < cur.start - EPS) return n.start < loopFrom - EPS ? undefined : 'done'

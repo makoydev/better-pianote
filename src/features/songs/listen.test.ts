@@ -93,4 +93,18 @@ describe('listen mode timing', () => {
     expect(ringingAt(tl, 2).map((n) => n.name)).toEqual(['C5'])
     expect(ringingAt(tl, 0)).toEqual([])
   })
+
+  it('plays a pitch two voices start together once, for as long as the longer note', () => {
+    const shared: Song = { ...song('C5:h E5:h'), voices: [{ hand: 'rh', bars: parseBars('C5:q D5 E5:h') }] }
+    const cues = buildCues(buildTimeline(shared))
+    expect(cues.map((c) => c.notes.map((n) => `${n.name}/${n.dur}`).join('+'))).toEqual(['C5/2', 'D5/1', 'E5/2'])
+    expect(run(shared, 0, 0, 4, false).out).toEqual([
+      [0, 'C5'],
+      [1, 'D5'],
+      [2, 'E5'],
+    ])
+    // Starting in the middle brings the shared note back once too.
+    const held: Song = { ...song('C5:w'), voices: [{ hand: 'rh', bars: parseBars('C5:h D5:h') }] }
+    expect(ringingAt(buildTimeline(held), 1).map((n) => `${n.name}/${n.dur}`)).toEqual(['C5/4'])
+  })
 })

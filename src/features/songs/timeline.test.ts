@@ -73,6 +73,27 @@ describe('song timeline', () => {
     expect(tl.cols).toEqual([0, 1, 2, 3])
   })
 
+  it('makes one key of a pitch two voices start together (the longer note stands for both)', () => {
+    const tl = buildTimeline(make('C5:h E5:h', undefined, { voices: [{ hand: 'rh', bars: parseBars('C5:q D5 E5:h') }] }))
+    const steps = buildSteps(tl, 'rh')
+    expect(steps.map((s) => names(s.notes))).toEqual(['C5', 'D5', 'E5'])
+    expect(steps[0].notes[0].dur).toBe(2)
+  })
+
+  it('keeps a shared note held when it is tied', () => {
+    // The main line holds C5 for two beats (tied); the second voice starts C5 with it, then moves on.
+    const tl = buildTimeline(make('C5:q~ C5:q D5:h', undefined, { voices: [{ hand: 'rh', bars: parseBars('C5:q E4 F4:h') }] }))
+    const steps = buildSteps(tl, 'rh')
+    expect(steps.map((s) => names(s.notes))).toEqual(['C5', 'E4', 'F4+D5'])
+    expect(steps[0].notes[0].dur).toBe(2)
+  })
+
+  it('shares a key between the hands too', () => {
+    const tl = buildTimeline(make('C4:w', 'C4:h E3:h'))
+    expect(buildSteps(tl, 'both').map((s) => s.notes.map((n) => `${n.hand}:${n.name}`).join('+'))).toEqual(['rh:C4', 'lh:E3'])
+    expect(buildSteps(tl, 'both')[0].notes[0].dur).toBe(4)
+  })
+
   it("doesn't make columns for hidden filler rests", () => {
     const hidden = [[ev([], 'h', { hidden: true }), ev(['G4'], 'h')]]
     const tl = buildTimeline(make('C5:w', undefined, { voices: [{ hand: 'rh', bars: hidden }] }))
