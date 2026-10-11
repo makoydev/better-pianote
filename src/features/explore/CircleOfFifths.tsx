@@ -1,5 +1,4 @@
 import { Compass, Lightbulb } from 'lucide-react'
-import { useState } from 'react'
 import { MusicText } from '../../components/MusicText'
 import { TopBar } from '../../components/layout/TopBar'
 import { type KeyMark, Piano } from '../../components/piano/Piano'
@@ -7,12 +6,16 @@ import { Card } from '../../components/ui/Card'
 import { Segmented, Toggle } from '../../components/ui/controls'
 import { CircleOfFifthsWheel, KeyDetails } from '../../components/widgets/CircleOfFifthsWheel'
 import { CIRCLE, type Mode, keyScale, midiOf, pcOf, pitchName } from '../../lib/theory'
+import { usePref } from '../../state/prefs'
+
+const POSITIONS = CIRCLE.map((_, i) => i)
 
 export function CircleOfFifths() {
-  const [sel, setSel] = useState<{ index: number; mode: Mode }>({ index: 0, mode: 'major' })
-  const [spin, setSpin] = useState(true)
-  const tonic = sel.mode === 'major' ? CIRCLE[sel.index].major : CIRCLE[sel.index].minor
-  const scale = keyScale({ tonic, mode: sel.mode })
+  const [index, setIndex] = usePref('circle:index', 0, POSITIONS)
+  const [mode, setMode] = usePref<Mode>('circle:mode', 'major', ['major', 'minor'])
+  const [spin, setSpin] = usePref('circle:spin', true)
+  const tonic = mode === 'major' ? CIRCLE[index].major : CIRCLE[index].minor
+  const scale = keyScale({ tonic, mode })
 
   const marks: Record<number, KeyMark> = {}
   let prev = 59
@@ -30,11 +33,20 @@ export function CircleOfFifths() {
       <main className="mx-auto grid max-w-[1500px] gap-5 px-3 pt-5 sm:px-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
         <section className="flex flex-col gap-5">
           <Card>
-            <CircleOfFifthsWheel index={sel.index} mode={sel.mode} spin={spin} details={false} onSelect={(index, mode) => setSel({ index, mode })} />
+            <CircleOfFifthsWheel
+              index={index}
+              mode={mode}
+              spin={spin}
+              details={false}
+              onSelect={(i, m) => {
+                setIndex(i)
+                setMode(m)
+              }}
+            />
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <Segmented
-                value={sel.mode}
-                onChange={(mode) => setSel((s) => ({ ...s, mode }))}
+                value={mode}
+                onChange={setMode}
                 options={[
                   { value: 'major', label: 'Major' },
                   { value: 'minor', label: 'Minor' },
@@ -75,11 +87,11 @@ export function CircleOfFifths() {
         </section>
         <section className="flex min-w-0 flex-col gap-5">
           <Card>
-            <KeyDetails index={sel.index} mode={sel.mode} />
+            <KeyDetails index={index} mode={mode} />
           </Card>
           <Card className="pt-4">
             <div className="mb-3 text-sm font-extrabold uppercase tracking-wider text-ink-mute">
-              The <MusicText text={`${pitchName(tonic)} ${sel.mode}`} /> scale on your keyboard
+              The <MusicText text={`${pitchName(tonic)} ${mode}`} /> scale on your keyboard
             </div>
             {/* Names only on the scale's keys, spelled for the key: the content here, not reading help. */}
             <Piano from={60} to={84} marks={marks} labels="marked" sparks sparkHeight={80} height={170} />

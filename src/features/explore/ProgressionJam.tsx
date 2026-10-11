@@ -12,13 +12,22 @@ import { audio } from '../../lib/audio/engine'
 import { playNotes } from '../../lib/audio/play'
 import { bassFor, chordPcs, chordSymbol, mod, parseNote, pcOf, pitchName, voiceProgression } from '../../lib/theory'
 import { heldMidis, useLive } from '../../state/live'
+import { usePref } from '../../state/prefs'
 import { spellVoicing } from './chordTools'
 import { hat, kick, snare } from './drums'
-import { PALETTE, PRESETS, type PatternId, drumHits, isMinorProgression, jamChords, jamTonic, nashville, patternHits, romanLabel } from './jam'
+import { PALETTE, PRESETS, type PatternId, drumHits, isMinorProgression, isProgression, jamChords, jamTonic, nashville, patternHits, romanLabel } from './jam'
 import { OctavePicker } from './OctavePicker'
 import { useMicChords } from '../../lib/input/mic'
 
 const tonicPc = (name: string) => pcOf(parseNote(name))
+
+const RIVER = PRESETS.find((p) => p.id === 'river')!
+/** Your own progression (after any edit), kept in "jam:romans"; presets always use their own chords. */
+const CUSTOM = 'custom'
+const PRESET_IDS = [...PRESETS.map((p) => p.id), CUSTOM]
+const KEYS = Array.from({ length: 12 }, (_, pc) => pc)
+const FEELS: PatternId[] = ['block', 'fingerstyle', 'ballad']
+const NO_CHORDS: string[] = []
 
 interface Pos {
   /** Chord index, or -1 during the count-in. */
@@ -27,21 +36,22 @@ interface Pos {
 }
 
 export function ProgressionJam() {
-  const river = PRESETS.find((p) => p.id === 'river')!
-  const [presetId, setPresetId] = useState<string | null>(river.id)
-  const [romans, setRomans] = useState<string[]>(river.romans)
-  const [tonic, setTonic] = useState(tonicPc(river.tonic))
-  const [bpm, setBpm] = useState(76)
-  const [pattern, setPattern] = useState<PatternId>('ballad')
-  const [drums, setDrums] = useState(false)
-  const [loop, setLoop] = useState(true)
-  const [countIn, setCountIn] = useState(true)
-  const [perChord, setPerChord] = useState<8 | 4>(8)
+  const [presetId, setPresetId] = usePref('jam:preset', RIVER.id, PRESET_IDS)
+  const [ownRomans, setOwnRomans] = usePref<string[]>('jam:romans', NO_CHORDS)
+  const [tonic, setTonic] = usePref('jam:tonic', tonicPc(RIVER.tonic), KEYS)
+  const [savedBpm, setBpm] = usePref('jam:bpm', 76)
+  const bpm = Math.min(160, Math.max(50, savedBpm))
+  const [pattern, setPattern] = usePref<PatternId>('jam:feel', 'ballad', FEELS)
+  const [drums, setDrums] = usePref('jam:drums', false)
+  const [loop, setLoop] = usePref('jam:loop', true)
+  const [countIn, setCountIn] = usePref('jam:count-in', true)
+  const [perChord, setPerChord] = usePref<8 | 4>('jam:chord-length', 8, [8, 4])
   const [playing, setPlaying] = useState(false)
   const [pos, setPos] = useState<Pos | null>(null)
   const [focus, setFocus] = useState(0)
 
   const preset = PRESETS.find((p) => p.id === presetId) ?? null
+  const romans = preset ? preset.romans : isProgression(ownRomans) ? ownRomans : NO_CHORDS
   const minor = useMemo(() => isMinorProgression(romans), [romans])
   const tonicName = (pc: number) => pitchName(jamTonic(pc, minor))
   const chords = useMemo(() => jamChords(romans, tonic, minor), [romans, tonic, minor])
@@ -118,13 +128,12 @@ export function ProgressionJam() {
   const choosePreset = (id: string) => {
     const p = PRESETS.find((x) => x.id === id)!
     setPresetId(id)
-    setRomans(p.romans)
     setTonic(tonicPc(p.tonic))
     setFocus(0)
   }
   const edit = (next: string[]) => {
-    setPresetId(null)
-    setRomans(next)
+    setPresetId(CUSTOM)
+    setOwnRomans(next)
     setFocus((f) => Math.min(f, Math.max(0, next.length - 1)))
     if (!next.length) stop()
   }
@@ -197,9 +206,9 @@ export function ProgressionJam() {
                 Jam
               </Button>
             )}
-            <IconButton icon={Minus} label="Slower" size={44} onClick={() => setBpm((b) => Math.max(50, b - 4))} />
+            <IconButton icon={Minus} label="Slower" size={44} onClick={() => setBpm(Math.max(50, bpm - 4))} />
             <span className="w-16 text-center font-display text-2xl font-bold">{bpm}</span>
-            <IconButton icon={Plus} label="Faster" size={44} onClick={() => setBpm((b) => Math.min(160, b + 4))} />
+            <IconButton icon={Plus} label="Faster" size={44} onClick={() => setBpm(Math.min(160, bpm + 4))} />
             <span className="text-sm font-extrabold text-ink-mute">BPM</span>
           </div>
 
@@ -366,9 +375,9 @@ export function ProgressionJam() {
                 </span>
               </div>
               <div className="flex items-center gap-3">
-                <IconButton icon={Minus} label="Slower" size={44} onClick={() => setBpm((b) => Math.max(50, b - 4))} />
+                <IconButton icon={Minus} label="Slower" size={44} onClick={() => setBpm(Math.max(50, bpm - 4))} />
                 <Slider value={bpm} min={50} max={160} onChange={setBpm} label="Tempo" />
-                <IconButton icon={Plus} label="Faster" size={44} onClick={() => setBpm((b) => Math.min(160, b + 4))} />
+                <IconButton icon={Plus} label="Faster" size={44} onClick={() => setBpm(Math.min(160, bpm + 4))} />
               </div>
             </div>
 
@@ -427,11 +436,11 @@ export function ProgressionJam() {
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-extrabold uppercase tracking-wider text-ink-mute">Key</span>
                 <div className="flex items-center gap-2">
-                  <IconButton icon={Minus} label="Transpose down a half step" size={40} onClick={() => setTonic((t) => (t + 11) % 12)} />
+                  <IconButton icon={Minus} label="Transpose down a half step" size={40} onClick={() => setTonic((tonic + 11) % 12)} />
                   <span className="w-12 text-center font-display text-2xl font-bold">
                     <MusicText text={tonicName(tonic)} />
                   </span>
-                  <IconButton icon={Plus} label="Transpose up a half step" size={40} onClick={() => setTonic((t) => (t + 1) % 12)} />
+                  <IconButton icon={Plus} label="Transpose up a half step" size={40} onClick={() => setTonic((tonic + 1) % 12)} />
                 </div>
               </div>
               <OctavePicker value={tonic} onChange={setTonic} height={96} label="Key" names={(p) => ({ main: tonicName(p) })} />

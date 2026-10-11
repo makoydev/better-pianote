@@ -43,6 +43,7 @@ interface HistoryItem {
 }
 
 const KEY_OPTIONS = [...ALL_MAJOR_KEYS, ...ALL_MINOR_KEYS]
+const KEY_CHOICES = ['auto', 'none', ...KEY_OPTIONS.map(keyId)]
 
 /** Narrower than this, all 61 keys come out under ~30px wide: too small to tap. */
 const FULL_KEYBOARD_WIDTH = 1100
@@ -56,7 +57,7 @@ export function FreePlay() {
   const midiKeyboards = useLive((s) => s.midiDevices.length)
   const found = useProgress((s) => s.chordsFound)
   const [octave, setOctave] = usePref('free-play:octave', 3, COMPACT_OCTAVES)
-  const [keyChoice, setKeyChoice] = useState('auto')
+  const [keyChoice, setKeyChoice] = usePref('free-play:key', 'auto', KEY_CHOICES)
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [discovered, setDiscovered] = useState<string | null>(null)
   const [showCollection, setShowCollection] = useState(false)

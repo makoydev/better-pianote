@@ -12,6 +12,7 @@ import { playNotes, playSequence } from '../../lib/audio/play'
 import { noteColor } from '../../lib/colors'
 import {
   CHORD_TYPE,
+  CHORD_TYPES,
   type Chord,
   INVERSION_NAMES,
   chordLongName,
@@ -25,20 +26,24 @@ import {
   spellRoot,
 } from '../../lib/theory'
 import { heldMidis, useLive } from '../../state/live'
+import { usePref } from '../../state/prefs'
 import { CHORD_GROUPS, GUITAR_SHAPES, PC_NAMES, chordFormula, lhFingers, lhVoicing, rhFingers, rhVoicing, spellVoicing } from './chordTools'
 import { GuitarDiagram } from './GuitarDiagram'
 import { OctavePicker } from './OctavePicker'
 import { useMicChords } from '../../lib/input/mic'
 
 const INV_LABELS = ['Root', '1st', '2nd', '3rd']
+const ROOTS = PC_NAMES.map((n) => n.pc)
+const TYPE_IDS = CHORD_TYPES.map((t) => t.id)
+const INVERSIONS = INV_LABELS.map((_, i) => i)
 
 type Choice = { pc?: number; typeId?: string; inversion?: number }
 
 export function ChordExplorer() {
-  const [pc, setPc] = useState(0)
-  const [typeId, setTypeId] = useState('maj')
-  const [inversion, setInversion] = useState(0)
-  const [hands, setHands] = useState<'rh' | 'both'>('rh')
+  const [pc, setPc] = usePref('chord:root', 0, ROOTS)
+  const [typeId, setTypeId] = usePref('chord:type', 'maj', TYPE_IDS)
+  const [inversion, setInversion] = usePref('chord:inversion', 0, INVERSIONS)
+  const [hands, setHands] = usePref<'rh' | 'both'>('chord:hands', 'rh', ['rh', 'both'])
   const [build, setBuild] = useState(false)
   const [picked, setPicked] = useState<number[]>([])
   const [pulse, setPulse] = useState(0)

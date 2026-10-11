@@ -9,6 +9,7 @@ import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
 import { pauseComputerKeys } from '../../lib/input/keys'
+import { getPref, setPref, usePref, usePrefs } from '../../state/prefs'
 import { softTick } from './drums'
 import { MAX_BPM, METERS, MIN_BPM, clampBpm, tapTempo, tempoName } from './tempo'
 
@@ -18,41 +19,35 @@ const SUBDIVISIONS = [
   { value: 3, label: 'Triplets' },
   { value: 4, label: 'Sixteenths' },
 ]
+const SUB_VALUES = SUBDIVISIONS.map((s) => s.value)
+const METER_IDS = METERS.map((m) => m.id)
 
-const STORE = 'tonic-metronome'
-
-function loadSaved(): { bpm: number; meter: string } {
+/** Older builds saved { bpm, meter } as "tonic-metronome": move it into prefs (which Export carries), once. */
+function moveOldSave() {
+  const old = getPref<{ bpm?: unknown; meter?: unknown } | null>('metronome', null)
+  if (!old) return
+  const { values } = usePrefs.getState()
+  if (typeof old.bpm === 'number' && Number.isFinite(old.bpm) && !('metronome:bpm' in values)) setPref('metronome:bpm', clampBpm(old.bpm))
+  if (typeof old.meter === 'string' && METER_IDS.includes(old.meter) && !('metronome:meter' in values)) setPref('metronome:meter', old.meter)
   try {
-    const raw = localStorage.getItem(STORE)
-    if (raw) {
-      const v = JSON.parse(raw) as { bpm?: number; meter?: string }
-      return { bpm: clampBpm(v.bpm ?? 90), meter: METERS.some((m) => m.id === v.meter) ? v.meter! : '4/4' }
-    }
+    localStorage.removeItem('tonic-metronome')
   } catch {
-    /* storage unavailable: use defaults */
+    /* storage unavailable: nothing to move */
   }
-  return { bpm: 90, meter: '4/4' }
 }
+moveOldSave()
 
 export function Metronome() {
-  const [saved] = useState(loadSaved)
-  const [bpm, setBpm] = useState(saved.bpm)
-  const [meterId, setMeterId] = useState(saved.meter)
-  const [sub, setSub] = useState(1)
-  const [accent, setAccent] = useState(true)
+  const [savedBpm, setBpm] = usePref('metronome:bpm', 90)
+  const bpm = clampBpm(savedBpm)
+  const [meterId, setMeterId] = usePref('metronome:meter', '4/4', METER_IDS)
+  const [sub, setSub] = usePref('metronome:sub', 1, SUB_VALUES)
+  const [accent, setAccent] = usePref('metronome:accent', true)
   const [running, setRunning] = useState(false)
   const [beat, setBeat] = useState(-1)
   const [swing, setSwing] = useState(0)
   const taps = useRef<number[]>([])
   const meter = METERS.find((m) => m.id === meterId) ?? METERS[2]
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORE, JSON.stringify({ bpm, meter: meterId }))
-    } catch {
-      /* ignore */
-    }
-  }, [bpm, meterId])
 
   const live = useRef({ bpm, meter, sub, accent })
   useEffect(() => {
@@ -192,9 +187,9 @@ export function Metronome() {
           <Card>
             <h2 className="mb-3 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Tempo</h2>
             <div className="flex items-center gap-3">
-              <IconButton icon={Minus} label="Slower" size={52} onClick={() => setBpm((b) => clampBpm(b - 1))} />
+              <IconButton icon={Minus} label="Slower" size={52} onClick={() => setBpm(clampBpm(bpm - 1))} />
               <Slider value={bpm} min={MIN_BPM} max={MAX_BPM} onChange={setBpm} label="Tempo in beats per minute" />
-              <IconButton icon={Plus} label="Faster" size={52} onClick={() => setBpm((b) => clampBpm(b + 1))} />
+              <IconButton icon={Plus} label="Faster" size={52} onClick={() => setBpm(clampBpm(bpm + 1))} />
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               {[60, 72, 80, 92, 100, 120].map((v) => (

@@ -20,7 +20,7 @@ import {
   transpose,
 } from '../../lib/theory'
 import { CHORD_GROUPS, GUITAR_SHAPES, PC_NAMES, chordFormula, lhFingers, lhVoicing, rhFingers, rhVoicing, shapeMidis, spellVoicing } from './chordTools'
-import { PALETTE, PRESETS, drumHits, isMinorProgression, jamChords, jamTonic, nashville, patternHits } from './jam'
+import { PALETTE, PRESETS, drumHits, isMinorProgression, isProgression, jamChords, jamTonic, nashville, patternHits } from './jam'
 import { tapTempo, tempoName } from './tempo'
 
 describe('chord explorer helpers', () => {
@@ -206,6 +206,16 @@ describe('progression jam helpers', () => {
         }
       }
     }
+  })
+
+  it('reads back a saved progression only if every numeral still makes sense', () => {
+    expect(isProgression(['vi', 'IV', 'I', 'V'])).toBe(true)
+    expect(isProgression(['I7', 'bVII', 'ii7', 'vii°'])).toBe(true)
+    expect(isProgression([])).toBe(true)
+    expect(isProgression(['I', 'XI'])).toBe(false)
+    expect(isProgression(['I', 4])).toBe(false)
+    expect(isProgression('I V vi IV')).toBe(false)
+    expect(isProgression({ 0: 'I' })).toBe(false)
   })
 
   it('writes Nashville numbers', () => {

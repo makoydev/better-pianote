@@ -125,6 +125,20 @@ export function jamChords(romans: string[], pc: number, minor: boolean): Chord[]
   return romans.map((rn) => plainSpelling(romanToChord(rn, key)))
 }
 
+/** A progression saved on an earlier visit, if every numeral in it can still be read. */
+export function isProgression(v: unknown): v is string[] {
+  if (!Array.isArray(v)) return false
+  return v.every((rn) => {
+    if (typeof rn !== 'string') return false
+    try {
+      romanToChord(rn, { tonic: parseNote('C4'), mode: 'major' })
+      return true
+    } catch {
+      return false
+    }
+  })
+}
+
 const ROMANS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
 
 /** Nashville number for a numeral: vi → 6m, V7 → 57, ♭VII → ♭7, vii° → 7°. */

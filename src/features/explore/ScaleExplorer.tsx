@@ -14,11 +14,14 @@ import { noteColor } from '../../lib/colors'
 import { burst } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
 import { SCALE_TYPE, SCALE_TYPES, keyFifths, midiOf, mod, parseNote, pcOf, pitchName, scaleFingering, scaleNotes, stepPattern } from '../../lib/theory'
+import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 import { OctavePicker } from './OctavePicker'
 
 const MAJOR_TONICS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
 const MINOR_TONICS = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B']
+const TONIC_PCS = MAJOR_TONICS.map((_, pc) => pc)
+const SCALE_IDS = SCALE_TYPES.map((s) => s.id)
 const MINORISH = new Set(['minor', 'harmonic-minor', 'melodic-minor', 'minor-pentatonic', 'blues', 'dorian'])
 const KEY_SIG_MODE: Record<string, 'major' | 'minor'> = { major: 'major', minor: 'minor', 'harmonic-minor': 'minor', 'melodic-minor': 'minor' }
 
@@ -32,10 +35,10 @@ interface Practice {
 }
 
 export function ScaleExplorer() {
-  const [pc, setPc] = useState(0)
-  const [typeId, setTypeId] = useState('major')
-  const [hand, setHand] = useState<'rh' | 'lh'>('rh')
-  const [upDown, setUpDown] = useState(true)
+  const [pc, setPc] = usePref('scale:tonic', 0, TONIC_PCS)
+  const [typeId, setTypeId] = usePref('scale:type', 'major', SCALE_IDS)
+  const [hand, setHand] = usePref<'rh' | 'lh'>('scale:hand', 'rh', ['rh', 'lh'])
+  const [upDown, setUpDown] = usePref('scale:up-down', true)
   const [playIdx, setPlayIdx] = useState<number | null>(null)
   const [practice, setPractice] = useState<Practice | null>(null)
   const timers = useRef<number[]>([])
