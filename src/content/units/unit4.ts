@@ -516,7 +516,7 @@ Slide from E♭ up to E and you're instantly playing the blues.`,
           body: `Major, natural minor, harmonic minor, pentatonic and blues: you now know the scales behind most pop, rock and film music.
 
 Next unit, we stack these notes into **chords**.`,
-          tip: 'Open **Free Play**, hold a low A with your left hand, and wander around the A minor pentatonic with your right. Instant blues jam.',
+          tip: 'Open [Free Play](/play), hold a low A with your left hand, and wander around the A minor pentatonic with your right. Instant blues jam.',
         },
       ],
     },

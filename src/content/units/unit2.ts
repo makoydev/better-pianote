@@ -557,7 +557,7 @@ Your eyes follow the shape of the melody and your hand follows your eyes.`,
           title: 'How to get fluent',
           body: `Reading is a skill like typing: a little every day beats a lot once a week.
 
-- Play **Note Rush** for 3–5 minutes a day (Practice tab).
+- Play [Note Rush](/practice/note-rush) for 3–5 minutes a day.
 - Say the note names out loud.
 - Keep your eyes on the music, and feel for the black-key groups instead of looking down.
 - Use landmarks and steps/skips instead of reciting EGBDF every time.`,

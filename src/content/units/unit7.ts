@@ -400,7 +400,7 @@ It's worth practising even if you do have a pedal. Pianists with good finger leg
         {
           kind: 'explain',
           title: 'Free Play is your ear trainer',
-          body: `Open **Free Play** and play along with a song (yours, or a recording). Whenever you find a chord by ear, the app **names it** and shows it on the staff.
+          body: `Open [Free Play](/play) and play along with a song (yours, or a recording). Whenever you find a chord by ear, the app **names it** and shows it on the staff.
 
 It's the fastest way to connect the sounds you hear to the names and notes you've learned.`,
         },

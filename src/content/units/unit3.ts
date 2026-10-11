@@ -589,7 +589,7 @@ Ties are how a note can last across a bar line.`,
           body: `Whole, half, quarter and eighth notes, their rests, time signatures, dots and ties: that covers most of the rhythms in beginner and intermediate piano music.
 
 Next up: the distances *between* notes, and the scales built from them.`,
-          tip: 'Try the **Rhythm** game in Practice to drill these with a metronome.',
+          tip: 'Try [Rhythm Tap](/practice/rhythm) in Practice to drill these with a metronome.',
         },
       ],
     },

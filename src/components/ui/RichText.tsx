@@ -2,12 +2,14 @@ import { type ReactNode, Fragment } from 'react'
 import { playChord, playNotes } from '../../lib/audio/play'
 import { letterColor } from '../../lib/colors'
 import { chordSymbol, midiOf, noteName, parseChord, parseNote } from '../../lib/theory'
+import { go } from '../../router'
 import { MusicText } from '../MusicText'
 
 /**
  * Lesson text with a tiny markup:
  *   **bold**   *emphasis*   [[C4]] a note chip (tap to hear)   {{Am7}} a chord chip (tap to hear)
- *   blank line = new paragraph, "- " = bullet point.
+ *   [Note Rush](/practice/note-rush) a link to another screen
+ *   blank line = new paragraph, "- " = bullet point, "1. " = numbered step.
  */
 export function RichText({ text, className = '' }: { text: string; className?: string }) {
   const blocks = text.trim().split(/\n\s*\n/)
@@ -27,19 +29,44 @@ export function RichText({ text, className = '' }: { text: string; className?: s
             </ul>
           )
         }
+        if (lines.every((l) => NUMBERED.test(l.trim()))) {
+          return (
+            <ol key={i} className="space-y-1.5">
+              {lines.map((l, j) => {
+                const [, n, rest] = NUMBERED.exec(l.trim())!
+                return (
+                  <li key={j} className="flex gap-2.5">
+                    <span className="mt-[0.15em] flex size-[1.4em] shrink-0 items-center justify-center rounded-full bg-gold/15 text-[0.8em] font-extrabold text-gold">{n}</span>
+                    <span>{inline(rest)}</span>
+                  </li>
+                )
+              })}
+            </ol>
+          )
+        }
         return <p key={i}>{inline(lines.join(' '))}</p>
       })}
     </div>
   )
 }
 
-const TOKEN = /(\*\*[^*]+\*\*|\*[^*]+\*|\[\[[^\]]+\]\]|\{\{[^}]+\}\})/g
+const NUMBERED = /^(\d+)\.\s+(.*)$/
+const TOKEN = /(\*\*[^*]+\*\*|\*[^*]+\*|\[\[[^\]]+\]\]|\{\{[^}]+\}\}|\[[^\]]+\]\([^)]+\))/g
+const LINK = /^\[([^\]]+)\]\(([^)]+)\)$/
 
 function inline(s: string): ReactNode {
   return s.split(TOKEN).map((part, i) => {
     if (part.startsWith('**')) return <strong key={i} className="font-extrabold text-ink">{inline(part.slice(2, -2))}</strong>
     if (part.startsWith('[[')) return <NoteChip key={i} note={part.slice(2, -2)} />
     if (part.startsWith('{{')) return <ChordChip key={i} symbol={part.slice(2, -2)} />
+    const link = LINK.exec(part)
+    if (link) {
+      return (
+        <button key={i} type="button" onClick={() => go(link[2])} className="font-extrabold text-gold underline decoration-gold/40 underline-offset-4 hover:decoration-gold">
+          {inline(link[1])}
+        </button>
+      )
+    }
     if (part.startsWith('*') && part.length > 2) return <em key={i} className="text-gold not-italic font-bold">{part.slice(1, -1)}</em>
     return /[♯♭♮]/.test(part) ? <MusicText key={i} text={part} /> : <Fragment key={i}>{part}</Fragment>
   })

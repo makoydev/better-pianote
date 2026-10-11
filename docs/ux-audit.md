@@ -66,6 +66,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **17. Accuracy slips.** Circle of Fifths calls i–iv–v the main chords of a minor key (most minor songs use a
   major V); a transposed Jam shows F♭/C♭/B𝄫 and "D♭ minor"; numbered lists in lesson text render as one paragraph.
   *Where:* `widgets/CircleOfFifthsWheel.tsx`, `explore/ProgressionJam.tsx`, `ui/RichText.tsx`. `S`
+  *Partly done:* numbered steps in lesson text now render as a list (`ui/RichText.tsx`). The Circle of Fifths and Jam spellings are in the Explore batch.
 - [ ] **18. Smaller ones.** A note shared by two voices in an imported song needs two presses (Listen plays it twice);
   Note Rush level 5's ♯/♭ choice sticks to the next note and ⌘C/held keys answer; unplugging the keyboard is silent
   and can leave sustain stuck down. *Where:* `songs/timeline.ts`, `songs/listen.ts`, `NoteRush.tsx`,
@@ -111,8 +112,9 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **32. Answer note and chord quizzes by playing them** (19 quizzes fit). `M`
 - [ ] **33. Review mode** for finished lessons (Continue always on, step strip) and a quick mixed review weighted to
   low-star lessons. `M`
-- [ ] **34. End of lesson and unit:** a unit-complete moment; "Next" goes to the first unfinished lesson; lesson text
+- [x] **34. End of lesson and unit:** a unit-complete moment; "Next" goes to the first unfinished lesson; lesson text
   can link to the matching game; a real button instead of the tiny "Back to all lessons" link. `S`
+  *Done:* unit-complete banner and extra confetti; "Next" goes to the next unfinished lesson; Enter or a pedal tap goes there from the complete screen; "All lessons" is a real button; lesson tips link to Note Rush, Rhythm Tap, Chord Trainer and Free Play (`[text](/path)` markup in RichText).
 - [ ] **35. Demos light up the keys** in time with the sound. `M`
 - [ ] **36. Learn page navigation:** a unit jump strip and lesson search. `S–M`
 

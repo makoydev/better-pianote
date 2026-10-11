@@ -553,7 +553,7 @@ Tap any chord to hear it.`,
 2. Add the right **3rd**: major (4 half steps) or minor (3).
 3. Add the **5th**, then any extras the symbol asks for (7, maj7, add9…).
 4. Check for a **slash**: that note goes at the bottom.`,
-          tip: 'Drill this with the **Chord Trainer** in Practice. Speed comes quickly once the steps are automatic.',
+          tip: 'Drill this with the [Chord Trainer](/practice/chord-trainer) in Practice. Speed comes quickly once the steps are automatic.',
         },
       ],
     },
