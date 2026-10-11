@@ -184,3 +184,27 @@ export function scoreTaps(expected: number[], taps: number[]): { results: NoteRe
   const score = Math.max(0, Math.round(avg - extras.length * 12))
   return { results, extras, score }
 }
+
+/**
+ * Your timing habit, from the signed errors (seconds) of every tap that hit a note: early on average is
+ * rushing, late is dragging. Within ±10 ms is on time. Null when nothing was hit.
+ */
+export function timingTendency(errors: number[]): { ms: number; text: string } | null {
+  if (!errors.length) return null
+  const ms = (errors.reduce((a, b) => a + b, 0) / errors.length) * 1000
+  if (Math.abs(ms) <= 10) return { ms, text: 'Right on time' }
+  const about = Math.round(Math.abs(ms) / 5) * 5
+  return { ms, text: `You ${ms < 0 ? 'rush' : 'drag'} by about ${about} ms` }
+}
+
+/** Tempo bands for bests, so 92% at 50 BPM and 92% at 110 BPM are separate records. */
+const TEMPO_BANDS = [
+  { id: 'slow', below: 70, label: 'under 70 BPM' },
+  { id: 'mid', below: 90, label: '70–89 BPM' },
+  { id: 'fast', below: 110, label: '90–109 BPM' },
+  { id: 'faster', below: Infinity, label: '110 BPM and up' },
+]
+
+export function tempoBand(bpm: number): { id: string; label: string } {
+  return TEMPO_BANDS.find((b) => bpm < b.below) ?? TEMPO_BANDS[TEMPO_BANDS.length - 1]
+}

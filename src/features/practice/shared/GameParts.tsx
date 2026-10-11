@@ -165,6 +165,7 @@ export function ResultsCard({
   title,
   score,
   scoreLabel,
+  scoreNote,
   stars,
   result,
   stats,
@@ -175,6 +176,8 @@ export function ResultsCard({
   title: string
   score: number
   scoreLabel?: string
+  /** A line under the score, e.g. how it was counted. */
+  scoreNote?: ReactNode
   stars: number
   result: FinishResult | null
   stats: { label: string; value: ReactNode }[]
@@ -197,6 +200,7 @@ export function ResultsCard({
         <CountUp value={score} duration={1.1} />
         {scoreLabel && <span className="ml-1 text-3xl text-ink-soft">{scoreLabel}</span>}
       </div>
+      {scoreNote && <div className="mt-1 text-lg font-bold text-ink-soft">{scoreNote}</div>}
       <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
         {result?.isBest && (
           <motion.span

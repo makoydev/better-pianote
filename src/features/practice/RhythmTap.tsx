@@ -1,4 +1,4 @@
-import { Drum, Hand, Play, RotateCcw, SkipForward, Volume2 } from 'lucide-react'
+import { Drum, Hand, Play, RotateCcw, SkipForward, Trophy, Volume2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
@@ -10,7 +10,19 @@ import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { useNoteEvents } from '../../lib/input/bus'
 import { pauseComputerKeys } from '../../lib/input/keys'
-import { type Grade, type NoteResult, RHYTHM_LEVELS, type RNote, makePattern, onsetBeats, patternToStaff, scoreTaps } from './logic/rhythm'
+import { useProgress } from '../../state/progress'
+import {
+  type Grade,
+  type NoteResult,
+  RHYTHM_LEVELS,
+  type RNote,
+  makePattern,
+  onsetBeats,
+  patternToStaff,
+  scoreTaps,
+  tempoBand,
+  timingTendency,
+} from './logic/rhythm'
 import { GameMain, Hud, ResultsCard, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame, remember, sfx, starsFor, store } from './shared/finish'
 
@@ -20,6 +32,15 @@ const BEATS = BARS * 4
 const LEVEL_IDS = RHYTHM_LEVELS.map((l) => l.id)
 
 const GRADE_COLOR: Record<Grade, string> = { perfect: '#3ddc97', good: '#a3e635', ok: '#ffc857', miss: '#ff5c7a' }
+
+/** How one rhythm went: your best try, your first try, and the timing (seconds, minus = early) of every tap that hit a note. */
+interface PatternResult {
+  best: number
+  first: number
+  errors: number[]
+}
+
+const average = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0)
 
 /**
  * Convert a performance.now() time to the audio clock *as heard*: getOutputTimestamp maps the moment
@@ -42,7 +63,7 @@ export function RhythmTap() {
   const [bpm, setBpm] = useState(level.bpm)
   const [clickOn, setClickOn] = useState(true)
   const [patterns, setPatterns] = useState<RNote[][]>([])
-  const [scores, setScores] = useState<number[]>([])
+  const [done, setDone] = useState<PatternResult[]>([])
   const [finish, setFinish] = useState<FinishResult | null>(null)
 
   // The computer keyboard belongs to tapping here (Space), not to playing notes.
@@ -56,20 +77,26 @@ export function RhythmTap() {
   const start = () => {
     store('rhythm-level', level.id)
     setPatterns(Array.from({ length: PATTERNS }, () => makePattern(level, BARS)))
-    setScores([])
+    setDone([])
     setFinish(null)
     setPhase('play')
   }
 
-  const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0
+  // The score counts your best try at each rhythm; the first tries are shown next to it.
+  const avg = average(done.map((d) => d.best))
+  const firstAvg = average(done.map((d) => d.first))
   const stars = starsFor(avg / 100, 0.85, 0.65)
+  const tendency = timingTendency(done.flatMap((d) => d.errors))
 
-  const onDone = (score: number) => {
-    const all = [...scores, score]
-    setScores(all)
+  const onDone = (r: PatternResult) => {
+    const all = [...done, r]
+    setDone(all)
     if (all.length >= PATTERNS) {
-      const final = Math.round(all.reduce((a, b) => a + b, 0) / all.length)
-      setFinish(finishGame('rhythm', level.id, final, starsFor(final / 100, 0.85, 0.65)))
+      const final = average(all.map((d) => d.best))
+      // Bests are kept per tempo band ("rhythm:l1:mid"), so 92% at 50 BPM isn't the same record as 92% at 110 BPM.
+      setFinish(finishGame('rhythm', `${level.id}:${tempoBand(bpm).id}`, final, starsFor(final / 100, 0.85, 0.65)))
+      // The level's best at any tempo, which the level cards show (records from before tempo bands live here too).
+      useProgress.getState().recordGame(`rhythm:${level.id}`, final)
       setPhase('done')
     }
   }
@@ -96,14 +123,14 @@ export function RhythmTap() {
             onLevel={pickLevel}
             onStart={start}
           >
-            <TempoControls bpm={bpm} setBpm={setBpm} clickOn={clickOn} setClickOn={setClickOn} />
+            <TempoControls levelId={level.id} bpm={bpm} setBpm={setBpm} clickOn={clickOn} setClickOn={setClickOn} />
           </SetupCard>
         </GameMain>
       )}
-      {phase === 'play' && patterns[scores.length] && (
+      {phase === 'play' && patterns[done.length] && (
         <GameMain wide>
-          <Hud step={scores.length} total={PATTERNS} score={avg} streak={0} label="Rhythm" />
-          <Round key={scores.length} pattern={patterns[scores.length]} bpm={bpm} clickOn={clickOn} onDone={onDone} />
+          <Hud step={done.length} total={PATTERNS} score={avg} streak={0} label="Rhythm" />
+          <Round key={done.length} pattern={patterns[done.length]} bpm={bpm} clickOn={clickOn} onDone={onDone} />
         </GameMain>
       )}
       {phase === 'done' && (
@@ -112,16 +139,27 @@ export function RhythmTap() {
             title={avg >= 90 ? 'Rock-solid rhythm!' : avg >= 70 ? 'Nice groove!' : 'Round complete'}
             score={avg}
             scoreLabel="%"
+            scoreNote={firstAvg !== avg ? `with retries · first try ${firstAvg}%` : undefined}
             stars={stars}
             result={finish}
             stats={[
-              { label: 'Best rhythm', value: `${Math.max(...scores)}%` },
+              { label: 'Best rhythm', value: `${Math.max(...done.map((d) => d.best))}%` },
               { label: 'Tempo', value: `${bpm} BPM` },
               { label: 'Level', value: level.name },
             ]}
             onAgain={start}
             onSetup={() => setPhase('setup')}
           >
+            {tendency && (
+              <p className="mt-5 text-xl font-extrabold">
+                {tendency.text}
+                {Math.abs(tendency.ms) > 10 && (
+                  <span className="mt-0.5 block text-base font-semibold text-ink-soft">
+                    {tendency.ms < 0 ? 'Wait for each beat a moment longer.' : 'Tap a touch sooner, right on the beat.'}
+                  </span>
+                )}
+              </p>
+            )}
             {avg < 70 && <p className="mt-5 text-ink-soft">Tip: slow the tempo down a little and count out loud: “1, 2, 3, 4”.</p>}
           </ResultsCard>
         </GameMain>
@@ -130,32 +168,56 @@ export function RhythmTap() {
   )
 }
 
-function TempoControls({ bpm, setBpm, clickOn, setClickOn }: { bpm: number; setBpm: (n: number) => void; clickOn: boolean; setClickOn: (v: boolean) => void }) {
+function TempoControls({
+  levelId,
+  bpm,
+  setBpm,
+  clickOn,
+  setClickOn,
+}: {
+  levelId: string
+  bpm: number
+  setBpm: (n: number) => void
+  clickOn: boolean
+  setClickOn: (v: boolean) => void
+}) {
+  const band = tempoBand(bpm)
+  const best = useProgress((s) => s.games[`rhythm:${levelId}:${band.id}`]?.best)
   return (
-    <div className="glass flex flex-col gap-4 rounded-3xl p-5 sm:flex-row sm:items-center sm:gap-8">
-      <label className="flex flex-1 items-center gap-4">
-        <span className="w-28 shrink-0 font-extrabold">
-          Tempo <span className="block text-2xl text-gold">{bpm} BPM</span>
-        </span>
-        <Slider value={bpm} min={50} max={120} step={2} onChange={setBpm} label="Tempo" />
-      </label>
-      <label className="flex items-center gap-3 font-bold text-ink-soft">
-        <Toggle checked={clickOn} onChange={setClickOn} label="Metronome while tapping" />
-        Click while I tap
-      </label>
+    <div className="glass flex flex-col gap-3 rounded-3xl p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-8">
+        <label className="flex flex-1 items-center gap-4">
+          <span className="w-28 shrink-0 font-extrabold">
+            Tempo <span className="block text-2xl text-gold">{bpm} BPM</span>
+          </span>
+          <Slider value={bpm} min={50} max={120} step={2} onChange={setBpm} label="Tempo" />
+        </label>
+        <label className="flex items-center gap-3 font-bold text-ink-soft">
+          <Toggle checked={clickOn} onChange={setClickOn} label="Metronome while tapping" />
+          Click while I tap
+        </label>
+      </div>
+      {best !== undefined && (
+        <p className="flex items-center gap-1.5 text-sm font-extrabold text-ink-mute">
+          <Trophy size={14} className="text-gold" /> Your best on this level at {band.label}: {best}%
+        </p>
+      )}
     </div>
   )
 }
 
 type RoundPhase = 'ready' | 'listen' | 'countin' | 'run' | 'review'
 
-function Round({ pattern, bpm, clickOn, onDone }: { pattern: RNote[]; bpm: number; clickOn: boolean; onDone: (score: number) => void }) {
+function Round({ pattern, bpm, clickOn, onDone }: { pattern: RNote[]; bpm: number; clickOn: boolean; onDone: (r: PatternResult) => void }) {
   const [phase, setPhase] = useState<RoundPhase>('ready')
   const phaseRef = useRef<RoundPhase>('ready')
   const [beat, setBeat] = useState<number | null>(null)
   const [tapMarks, setTapMarks] = useState<number[]>([])
   const [result, setResult] = useState<ReturnType<typeof scoreTaps> | null>(null)
   const [best, setBest] = useState(0)
+  // Your first try at this rhythm, and the timing of every tap that hit a note, for the results.
+  const first = useRef<number | null>(null)
+  const errors = useRef<number[]>([])
   const [cursor, setCursor] = useState<number | undefined>(undefined)
   const [pulse, setPulse] = useState(0)
   const [blocked, setBlocked] = useState(false)
@@ -257,6 +319,8 @@ function Round({ pattern, bpm, clickOn, onDone }: { pattern: RNote[]; bpm: numbe
     const r = scoreTaps(expected, taps.current)
     setResult(r)
     setBest((b) => Math.max(b, r.score))
+    if (first.current === null) first.current = r.score
+    for (const n of r.results) if (n.error !== null) errors.current.push(n.error)
     setBeat(null)
     setCursor(undefined)
     setP('review')
@@ -404,10 +468,10 @@ function Round({ pattern, bpm, clickOn, onDone }: { pattern: RNote[]; bpm: numbe
               </div>
               <p className="text-sm text-ink-mute">Numbers under the notes are milliseconds: minus = early, plus = late.</p>
               <div className="flex flex-wrap gap-2">
-                <Button size="md" variant="secondary" icon={RotateCcw} onClick={() => void begin(false)}>
+                <Button size="lg" variant="secondary" icon={RotateCcw} onClick={() => void begin(false)}>
                   Try again
                 </Button>
-                <Button size="md" iconRight={SkipForward} onClick={() => onDone(Math.max(best, result.score))}>
+                <Button size="lg" iconRight={SkipForward} onClick={() => onDone({ best: Math.max(best, result.score), first: first.current ?? result.score, errors: errors.current })}>
                   Next
                 </Button>
               </div>

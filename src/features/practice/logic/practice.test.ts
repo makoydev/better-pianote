@@ -3,7 +3,7 @@ import { CHORD_TYPE, chordSymbol, midi, parseChord, parseKey } from '../../../li
 import { TRAINER_LEVELS, chordRecipe, matchChord, pickRound } from './chords'
 import { ECHO_LEVELS, INTERVAL_LEVELS, type IntervalQ, type QualityQ, describeMiss, makeEcho, makeInterval, optionNotes, rightOption } from './ear'
 import { KEY_LEVELS, describeKeyMiss, makeKeyQuestion } from './keys'
-import { RHYTHM_LEVELS, countLabel, makePattern, onsetBeats, patternToStaff, scoreTaps } from './rhythm'
+import { RHYTHM_LEVELS, countLabel, makePattern, onsetBeats, patternToStaff, scoreTaps, tempoBand, timingTendency } from './rhythm'
 
 const m = (...names: string[]) => names.map(midi)
 
@@ -93,6 +93,16 @@ describe('rhythm', () => {
     const late = scoreTaps([0, 1], [0.15, 1])
     expect(late.results[0].grade).toBe('ok')
     expect(late.results[0].error).toBeCloseTo(0.15)
+  })
+  it('says whether you rush or drag', () => {
+    expect(timingTendency([-0.02, -0.03, -0.025])?.text).toBe('You rush by about 25 ms')
+    expect(timingTendency([0.03, 0.028, 0.031])?.text).toBe('You drag by about 30 ms')
+    expect(timingTendency([0.009, -0.004, 0.01])?.text).toBe('Right on time')
+    expect(timingTendency([0.012])?.text).toBe('You drag by about 10 ms')
+    expect(timingTendency([])).toBeNull()
+  })
+  it('keeps bests per tempo band', () => {
+    expect([50, 68, 70, 88, 90, 108, 110, 120].map((b) => tempoBand(b).id)).toEqual(['slow', 'slow', 'mid', 'mid', 'fast', 'fast', 'faster', 'faster'])
   })
 })
 
