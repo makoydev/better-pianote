@@ -1,4 +1,4 @@
-import { Flame, Hand, Keyboard, Play, RotateCcw, Settings2, Timer, Trophy, Zap } from 'lucide-react'
+import { Flame, Hand, Keyboard, Pause, Play, RotateCcw, Settings2, SkipForward, Timer, Trophy, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
@@ -6,13 +6,13 @@ import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
 import { Staff, type StaffItem } from '../../components/staff/Staff'
 import type { Layout } from '../../components/staff/layout'
-import { Button } from '../../components/ui/Button'
+import { Button, IconButton } from '../../components/ui/Button'
 import { Paper } from '../../components/ui/Card'
 import { Chips, Segmented, Toggle } from '../../components/ui/controls'
 import { Stars } from '../../components/ui/progress'
 import { useElementSize } from '../../hooks/useElementSize'
 import { audio } from '../../lib/audio/engine'
-import { isPlainKey } from '../../lib/focus'
+import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
 import { burst } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
 import { pauseComputerKeys } from '../../lib/input/keys'
@@ -52,6 +52,8 @@ interface Result {
   avgMs: number
   missed: Record<string, number>
   stars: number
+  /** Kept in your scores (rounds with nothing right aren't). */
+  saved: boolean
   /** A new best for this clef and level. */
   isBest: boolean
   xp: number
@@ -233,6 +235,10 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
   const [pop, setPop] = useState<{ id: number; text: string } | null>(null)
   const [acc, setAcc] = useState(0)
   const [left, setLeft] = useState(ROUND_MS)
+  // Notes you skipped, drawn as missed once they slide past.
+  const [skipped, setSkipped] = useState<number[]>([])
+  const [paused, setPaused] = useState(false)
+  const pausedAt = useRef<number | null>(null)
   const missed = useRef<Record<string, number>>({})
   const times = useRef<number[]>([])
   const shownAt = useRef(0)
@@ -250,21 +256,48 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
     if (finished.current) return
     finished.current = true
     const stars = rushStars(correct, wrong)
-    // Records "note-rush" and "note-rush:<clef>:<level>", with XP on the same scale as the other games.
-    const saved = finishGame('note-rush', `${config.clef}:${config.level}`, score, stars)
+    // A round with nothing right isn't saved: no best or last score, no XP (so no streak either).
+    // Otherwise it records "note-rush" and "note-rush:<clef>:<level>", with XP on the same scale as the other games.
+    const saved = correct > 0 ? finishGame('note-rush', `${config.clef}:${config.level}`, score, stars) : null
     const avgMs = times.current.length ? times.current.reduce((a, b) => a + b, 0) / times.current.length : 0
-    onFinish({ score, correct, wrong, bestCombo, avgMs, missed: missed.current, stars, isBest: saved.levelBest, xp: saved.xp })
+    onFinish({ score, correct, wrong, bestCombo, avgMs, missed: missed.current, stars, saved: !!saved, isBest: saved?.levelBest ?? false, xp: saved?.xp ?? 0 })
   }
 
-  // The clock.
+  // The clock. While paused it stands still, and resuming moves the end time on by the pause.
   useEffect(() => {
     const id = window.setInterval(() => {
+      if (pausedAt.current !== null) return
       const l = endAt.current - performance.now()
       setLeft(Math.max(0, l))
       if (l <= 0) finish()
     }, 100)
     return () => window.clearInterval(id)
   })
+
+  const pause = () => {
+    if (finished.current || pausedAt.current !== null) return
+    pausedAt.current = performance.now()
+    setPaused(true)
+  }
+
+  const resume = () => {
+    if (pausedAt.current === null) return
+    const away = performance.now() - pausedAt.current
+    endAt.current += away
+    shownAt.current += away
+    pausedAt.current = null
+    setPaused(false)
+  }
+
+  // Switching apps or locking the iPad pauses the round.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) pause()
+    }
+    onVisibility()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
 
   const flashKey = (m: number, kind: 'good' | 'bad') => {
     setFlash((f) => ({ ...f, [m]: kind }))
@@ -276,7 +309,7 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
   }
 
   const answer = (ok: boolean, midi?: number) => {
-    if (finished.current) return
+    if (finished.current || pausedAt.current !== null) return
     // The ♭/♯ choice is part of one answer; the next one starts from natural again.
     setAcc(0)
     if (ok) {
@@ -307,28 +340,60 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
     }
   }
 
+  // Skip: on to the next note. It counts as missed and breaks the combo.
+  const skip = () => {
+    if (finished.current || pausedAt.current !== null || !current) return
+    setAcc(0)
+    setCombo(0)
+    setWrong((w) => w + 1)
+    setMisses(0)
+    missed.current[current.name] = (missed.current[current.name] ?? 0) + 1
+    setSkipped((s) => [...s, i])
+    shownAt.current = performance.now()
+    setI((x) => x + 1)
+  }
+
   useNoteEvents((e) => {
-    if (config.mode !== 'play' || e.type !== 'on' || !current) return
+    if (e.type !== 'on') return
+    // A note ends a pause; it doesn't answer.
+    if (pausedAt.current !== null) {
+      resume()
+      return
+    }
+    if (config.mode !== 'play' || !current) return
     answer(isCorrect(current, e.midi, strict), e.midi)
   })
 
-  // Name mode: letter keys on the computer keyboard answer too.
+  // Name mode: letter keys answer, so they stop playing notes meanwhile.
+  useEffect(() => (config.mode === 'name' ? pauseComputerKeys() : undefined), [config.mode])
+
+  // Keys: any key ends a pause, Space skips, and in name mode the letters answer.
   useEffect(() => {
-    if (config.mode !== 'name') return
-    const resume = pauseComputerKeys()
     const onKey = (e: KeyboardEvent) => {
       // A held key repeats, and ⌘C is a copy, not an answer.
       if (!isPlainKey(e)) return
+      const space = e.code === 'Space'
+      if (pausedAt.current !== null) {
+        // A focused button (normally the pause screen itself) gets Enter and Space as a click.
+        if ((space || e.key === 'Enter') && isButtonTarget(e.target)) return
+        if (space) e.preventDefault()
+        resume()
+        return
+      }
+      if (space) {
+        if (isButtonTarget(e.target) || isTypingTarget(e.target)) return
+        e.preventDefault()
+        skip()
+        return
+      }
+      if (config.mode !== 'name') return
       const letter = 'CDEFGAB'.indexOf(e.key.toUpperCase())
       if (letter < 0 || e.key.length !== 1) return
       // Shift + letter is the sharp (only level 5 has accidentals).
       answer(nameMatches(current, letter, e.shiftKey && config.level === 5 ? 1 : acc))
     }
     window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      resume()
-    }
+    return () => window.removeEventListener('keydown', onKey)
   })
 
   // Hint after two misses: name under the note, key glowing.
@@ -390,11 +455,15 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
           </span>
           <span className="text-xs font-bold">combo {combo}</span>
         </motion.div>
+        <Button size="lg" variant="secondary" icon={SkipForward} onClick={skip} aria-label="Skip" title="Skip this note (Space)">
+          <span className="hidden sm:inline">Skip</span>
+        </Button>
+        <IconButton icon={Pause} label="Pause" size={56} onClick={pause} />
       </div>
 
       {/* The note tape */}
       <motion.div ref={staffRef} animate={wrongFlash ? { x: [0, -10, 10, -6, 6, 0] } : { x: 0 }} transition={{ duration: 0.35 }}>
-        <NoteTape config={config} round={round} index={i} wrong={wrongFlash} />
+        <NoteTape config={config} round={round} index={i} skipped={skipped} wrong={wrongFlash} />
       </motion.div>
 
       <div className="flex h-9 items-center justify-center">
@@ -419,12 +488,37 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
           <Piano from={lo} to={hi} marks={marks} labels="c" sparks sparkHeight={Math.max(30, Math.min(80, kbH - kbHeight - 26))} height={kbHeight} />
         </div>
       )}
+
+      <AnimatePresence>{paused && <PausedOverlay onResume={resume} />}</AnimatePresence>
     </div>
   )
 }
 
+/** Covers the whole round below the top bar, so the note can't be studied while the clock is stopped. */
+function PausedOverlay({ onResume }: { onResume: () => void }) {
+  return (
+    <motion.button
+      type="button"
+      // Focused, so Enter and Space click it rather than whatever had focus before.
+      autoFocus
+      onClick={onResume}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+      className="fixed inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-night-900/85 px-6 text-center backdrop-blur-md"
+    >
+      <span className="flex size-24 items-center justify-center rounded-full bg-linear-to-b from-gold to-gold-deep text-night-900 shadow-[0_5px_0_#b9761f]">
+        <Play size={44} strokeWidth={2.5} className="ml-1" />
+      </span>
+      <span className="font-display text-5xl font-bold">Paused</span>
+      <span className="text-lg font-bold text-ink-soft">Tap, press any key or play a note to resume</span>
+    </motion.button>
+  )
+}
+
 /** Notes slide past a fixed clef; the current note sits near the left with a glow. */
-function NoteTape({ config, round, index, wrong }: { config: Config; round: RushNote[]; index: number; wrong: boolean }) {
+function NoteTape({ config, round, index, skipped, wrong }: { config: Config; round: RushNote[]; index: number; skipped: number[]; wrong: boolean }) {
   const [box, { width }] = useElementSize<HTMLDivElement>()
   const [bg, setBg] = useState<Layout | null>(null)
   const [tape, setTape] = useState<{ slot: number; start: number } | null>(null)
@@ -440,7 +534,7 @@ function NoteTape({ config, round, index, wrong }: { config: Config; round: Rush
       notes: [n.name],
       dur: 'w',
       staff: clef === 'grand' ? n.staff : undefined,
-      state: g < index ? 'correct' : g === index ? (wrong ? 'wrong' : 'active') : 'normal',
+      state: g < index ? (skipped.includes(g) ? 'wrong' : 'correct') : g === index ? (wrong ? 'wrong' : 'active') : 'normal',
     }
   })
 
@@ -551,7 +645,11 @@ function Results({ result, onAgain, onSetup }: { result: Result; onAgain: () => 
           </motion.div>
         ))}
       </div>
-      <div className="text-sm font-bold text-gold">+{result.xp} XP</div>
+      {result.saved ? (
+        <div className="text-sm font-bold text-gold">+{result.xp} XP</div>
+      ) : (
+        <div className="text-sm font-bold text-ink-mute">No notes right this time, so this round isn't saved.</div>
+      )}
       {missed.length > 0 && (
         <div className="w-full">
           <h3 className="mb-3 text-sm font-extrabold uppercase tracking-[0.18em] text-ink-mute">Notes to review</h3>
