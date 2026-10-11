@@ -7,6 +7,8 @@ import { Card } from '../../components/ui/Card'
 import { Chips, Slider, Toggle } from '../../components/ui/controls'
 import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
+import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
+import { pauseComputerKeys } from '../../lib/input/keys'
 import { softTick } from './drums'
 import { MAX_BPM, METERS, MIN_BPM, clampBpm, tapTempo, tempoName } from './tempo'
 
@@ -110,16 +112,23 @@ export function Metronome() {
     audio.click(false)
   }
 
+  // The computer keyboard belongs to the shortcuts here (T would also play F♯ on the computer-keys piano).
+  useEffect(() => pauseComputerKeys(), [])
+
   // Space starts/stops, T taps the tempo.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'BUTTON')) return
+      if (!isPlainKey(e)) return
+      // The tempo slider keeps focus after a drag but has no use for Space, so Space still starts and stops.
+      const slider = e.target instanceof HTMLInputElement && e.target.type === 'range'
+      if (isTypingTarget(e.target) && !slider) return
       if (e.code === 'Space') {
+        // A button focused with Tab gets Space as its click.
+        if (isButtonTarget(e.target)) return
         e.preventDefault()
         if (clock.current) stop()
         else start()
-      } else if (e.code === 'KeyT' && !e.repeat) tap()
+      } else if (e.code === 'KeyT') tap()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
