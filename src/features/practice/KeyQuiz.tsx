@@ -8,11 +8,17 @@ import { Button } from '../../components/ui/Button'
 import { Segmented } from '../../components/ui/controls'
 import { burst } from '../../lib/fx'
 import { keyName } from '../../lib/theory'
-import { KEY_LEVELS, type KeyMode, type KeyQuestion, describeSignature, explainKey, makeKeyQuestion } from './logic/keys'
-import { FeedbackLine, GameMain, Hud, ResultsCard, SetupCard } from './shared/GameParts'
+import { KEY_LEVELS, type KeyMode, type KeyQuestion, describeKeyMiss, describeSignature, explainKey, makeKeyQuestion } from './logic/keys'
+import { FeedbackLine, GameMain, Hud, MissList, ResultsCard, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame, remember, sfx, starsFor, store } from './shared/finish'
 
 const ROUND = 10
+
+/** A wrong answer, kept for the list on the results. */
+interface WrongPick {
+  q: KeyQuestion
+  picked: number
+}
 
 export function KeyQuiz() {
   const [phase, setPhase] = useState<'setup' | 'play' | 'done'>('setup')
@@ -25,13 +31,13 @@ export function KeyQuiz() {
   const [score, setScore] = useState(0)
   const [streak, setStreak] = useState(0)
   const [finish, setFinish] = useState<FinishResult | null>(null)
-  const [summary, setSummary] = useState({ clean: 0, best: 0 })
-  const tally = useRef({ answered: 0, clean: 0, score: 0, streak: 0, best: 0 })
+  const [summary, setSummary] = useState({ clean: 0, best: 0, misses: [] as WrongPick[] })
+  const tally = useRef({ answered: 0, clean: 0, score: 0, streak: 0, best: 0, misses: [] as WrongPick[] })
 
   const start = () => {
     store('key-quiz-mode', mode)
     store('key-quiz-level', level.id)
-    tally.current = { answered: 0, clean: 0, score: 0, streak: 0, best: 0 }
+    tally.current = { answered: 0, clean: 0, score: 0, streak: 0, best: 0, misses: [] }
     setQuestion(makeKeyQuestion(level, null))
     setQIndex(0)
     setScore(0)
@@ -40,15 +46,16 @@ export function KeyQuiz() {
     setPhase('play')
   }
 
-  const answered = (right: boolean) => {
+  const answered = (q: KeyQuestion, picked: number) => {
     const t = tally.current
+    const right = picked === q.answer
     t.answered++
     t.streak = right ? t.streak + 1 : 0
     t.best = Math.max(t.best, t.streak)
     if (right) {
       t.clean++
       t.score += 100 + 10 * Math.min(t.streak, 5)
-    }
+    } else t.misses.push({ q, picked })
     setScore(t.score)
     setStreak(t.streak)
   }
@@ -57,7 +64,7 @@ export function KeyQuiz() {
     const t = tally.current
     if (t.answered >= ROUND) {
       setFinish(finishGame('key-quiz', level.id, t.score, starsFor(t.clean / ROUND, 0.9, 0.7)))
-      setSummary({ clean: t.clean, best: t.best })
+      setSummary({ clean: t.clean, best: t.best, misses: t.misses })
       setPhase('done')
       return
     }
@@ -99,7 +106,7 @@ export function KeyQuiz() {
       {phase === 'play' && question && (
         <GameMain>
           <Hud step={qIndex} total={ROUND} score={score} streak={streak} />
-          <Question key={qIndex} q={question} mode={mode} grand={level.grand} onAnswer={answered} onNext={next} />
+          <Question key={qIndex} q={question} mode={mode} grand={level.grand} onAnswer={(picked) => answered(question, picked)} onNext={next} />
         </GameMain>
       )}
       {phase === 'done' && (
@@ -116,14 +123,16 @@ export function KeyQuiz() {
             ]}
             onAgain={start}
             onSetup={() => setPhase('setup')}
-          />
+          >
+            <MissList misses={summary.misses.map((m) => describeKeyMiss(m.q, m.picked, mode))} />
+          </ResultsCard>
         </GameMain>
       )}
     </div>
   )
 }
 
-function Question({ q, mode, grand, onAnswer, onNext }: { q: KeyQuestion; mode: KeyMode; grand: boolean; onAnswer: (right: boolean) => void; onNext: () => void }) {
+function Question({ q, mode, grand, onAnswer, onNext }: { q: KeyQuestion; mode: KeyMode; grand: boolean; onAnswer: (picked: number) => void; onNext: () => void }) {
   const [picked, setPicked] = useState<number | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
   const right = picked === q.answer
@@ -132,7 +141,7 @@ function Question({ q, mode, grand, onAnswer, onNext }: { q: KeyQuestion; mode: 
     if (picked !== null) return
     setPicked(i)
     const ok = i === q.answer
-    onAnswer(ok)
+    onAnswer(i)
     if (ok) {
       sfx('correct')
       burst(cardRef.current, { count: 28 })

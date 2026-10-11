@@ -65,6 +65,13 @@ export function describeSignature(fifths: number): string {
   return `${n} ${fifths > 0 ? 'sharp' : 'flat'}${n > 1 ? 's' : ''}`
 }
 
+/** A wrong answer in words, for the results: "3 sharps → you said E major (it's A major)". */
+export function describeKeyMiss(q: KeyQuestion, picked: number, mode: KeyMode): { asked: string; verb: string; said: string; answer: string } {
+  if (mode === 'find') return { asked: keyName(q.key), verb: 'you picked', said: describeSignature(q.options[picked].fifths), answer: describeSignature(q.fifths) }
+  const sig = describeSignature(q.fifths)
+  return { asked: sig[0].toUpperCase() + sig.slice(1), verb: 'you said', said: q.options[picked].label, answer: keyName(q.key) }
+}
+
 /** "D major has 2 sharps: F♯, C♯. Trick: …" */
 export function explainKey(fifths: number, key: Key): string {
   const sig = keySignature(fifths)

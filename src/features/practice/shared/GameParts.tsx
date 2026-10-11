@@ -1,4 +1,4 @@
-import { ArrowLeft, Flame, type LucideIcon, Play, RotateCcw, SlidersHorizontal, Trophy, Zap } from 'lucide-react'
+import { ArrowLeft, Flame, type LucideIcon, Play, RotateCcw, SlidersHorizontal, Trophy, Volume2, Zap } from 'lucide-react'
 import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'motion/react'
 import { type ReactNode, useEffect } from 'react'
 import { MusicText } from '../../../components/MusicText'
@@ -235,6 +235,73 @@ export function ResultsCard({
         </Button>
       </div>
     </motion.section>
+  )
+}
+
+/** One question you missed: "Major 6th → you said minor 7th", "3 sharps → you said E major (it's A major)". */
+export interface Miss {
+  /** What was asked (in Ear Training, that's the right answer itself). */
+  asked: string
+  /** Words before your answer. */
+  verb?: string
+  said?: string
+  /** The right answer, when `asked` isn't it already. */
+  answer?: string
+  /** Makes the row a button that plays it: the right answer, then yours. */
+  onPlay?: () => void
+}
+
+/** The list of misses under the results, so you know what to work on. */
+export function MissList({ misses }: { misses: Miss[] }) {
+  if (!misses.length) return null
+  const playable = misses.some((m) => m.onPlay)
+  return (
+    <div className="mt-6 text-left">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 px-1">
+        <h3 className="text-sm font-extrabold uppercase tracking-wider text-ink-mute">What you missed</h3>
+        {playable && <span className="text-sm font-bold text-ink-mute">Tap one to hear it, then your answer</span>}
+      </div>
+      <ul className="flex flex-col gap-2">
+        {misses.map((m, i) => {
+          const body = (
+            <span className="min-w-0 flex-1 text-lg font-bold leading-snug text-ink-soft">
+              <MusicText text={m.asked} className="font-extrabold text-ink" />
+              <span className="mx-2 text-ink-mute">→</span>
+              {m.verb ?? 'you said'}
+              {m.said && (
+                <>
+                  {' '}
+                  <MusicText text={m.said} className="font-extrabold text-bad" />
+                </>
+              )}
+              {m.answer && (
+                <>
+                  {' '}
+                  (it’s <MusicText text={m.answer} className="font-extrabold text-good" />)
+                </>
+              )}
+            </span>
+          )
+          return (
+            <li key={i}>
+              {m.onPlay ? (
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.98 }}
+                  onClick={m.onPlay}
+                  className="flex min-h-14 w-full items-center gap-3 rounded-2xl bg-night-850 px-4 py-2.5 text-left transition-colors hover:bg-night-800"
+                >
+                  {body}
+                  <Volume2 size={20} className="shrink-0 text-ink-mute" />
+                </motion.button>
+              ) : (
+                <div className="flex min-h-14 items-center rounded-2xl bg-night-850 px-4 py-2.5">{body}</div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 

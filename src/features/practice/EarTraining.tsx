@@ -5,27 +5,31 @@ import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
 import { Button } from '../../components/ui/Button'
-import { playNotes, playSequence } from '../../lib/audio/play'
+import { playNotes } from '../../lib/audio/play'
 import { burst } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
 import { fromMidi, pitchName } from '../../lib/theory'
 import {
   ECHO_LEVELS,
   type EarMode,
+  type EarOutcome,
+  type EarQuestion,
+  type EchoQ,
   INTERVAL_LEVELS,
-  type IntervalQ,
   QUALITY_LABEL,
   QUALITY_LEVELS,
-  type QualityQ,
+  describeMiss,
   intervalCue,
   intervalName,
   makeEcho,
   makeInterval,
   makeQuality,
+  optionNotes,
   qualityNotes,
+  rightOption,
   samePitchClass,
 } from './logic/ear'
-import { FeedbackLine, GameMain, Hud, ResultsCard, SetupCard } from './shared/GameParts'
+import { FeedbackLine, GameMain, Hud, type Miss, MissList, ResultsCard, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame, remember, sfx, starsFor, store } from './shared/finish'
 
 const ROUND = 10
@@ -41,12 +45,45 @@ function levelsFor(mode: EarMode) {
   return list.map((l) => ({ id: `${mode}-${l.id}`, name: l.name, description: l.description }))
 }
 
-type Question = QualityQ | IntervalQ | { kind: 'echo'; notes: number[] }
+/** What a question reports when it's answered (the game adds the question itself). */
+type Answer = Omit<EarOutcome, 'question'>
 
-interface Outcome {
-  correct: boolean
-  /** Right without help (first try for choices, no reveal for echo). */
-  clean: boolean
+/**
+ * Play notes the way a question asks them: a chord broken then together, an interval one after the other
+ * or together, a tune note by note. Returns how long it takes, in seconds.
+ */
+function playAs(q: EarQuestion, notes: number[], delay = 0): number {
+  const sequence = (gap: number, dur: number) => {
+    notes.forEach((n, i) => playNotes([n], { dur, delay: delay + i * gap }))
+    return notes.length * gap + dur
+  }
+  if (q.kind === 'quality') {
+    sequence(0.32, 1.1)
+    playNotes(notes, { dur: 1.8, delay: delay + 1.05 })
+    return 1.05 + 1.8
+  }
+  if (q.kind === 'interval' && q.harmonic) {
+    playNotes(notes, { dur: 1.8, delay })
+    return 1.8
+  }
+  return q.kind === 'interval' ? sequence(0.75, 1.3) : sequence(0.55, 0.8)
+}
+
+/** A miss for the results list; tapping it plays the right answer, then yours. */
+function toMiss(o: EarOutcome): Miss {
+  const q = o.question
+  const { asked, said } = describeMiss(o)
+  const right = q.kind === 'echo' ? q.notes : optionNotes(q, rightOption(q))
+  const yours = q.kind === 'echo' ? o.played : o.said === undefined ? undefined : optionNotes(q, o.said)
+  return {
+    asked,
+    verb: q.kind !== 'echo' ? 'you said' : said ? 'you played' : 'you tapped Show me',
+    said,
+    onPlay: () => {
+      const secs = playAs(q, right)
+      if (yours?.length) playAs(q, yours, secs + 0.4)
+    },
+  }
 }
 
 export function EarTraining() {
@@ -56,18 +93,18 @@ export function EarTraining() {
   const [levelId, setLevelId] = useState(() => remember('ear-level', levelsFor(mode)[0].id, allLevelIds))
   const levels = levelsFor(mode)
   const level = levels.find((l) => l.id === levelId) ?? levels[0]
-  const [question, setQuestion] = useState<Question | null>(null)
+  const [question, setQuestion] = useState<EarQuestion | null>(null)
   // Which question we're on (changes on "next", so answering doesn't remount the question).
   const [qIndex, setQIndex] = useState(0)
-  const [outcomes, setOutcomes] = useState<Outcome[]>([])
+  const [outcomes, setOutcomes] = useState<EarOutcome[]>([])
   const [score, setScore] = useState(0)
   const [streak, setStreak] = useState(0)
   const [bestStreak, setBestStreak] = useState(0)
   const [finish, setFinish] = useState<FinishResult | null>(null)
   // Answers can arrive from timers, so the running tally lives in a ref too.
-  const tally = useRef({ outcomes: [] as Outcome[], score: 0, streak: 0, best: 0 })
+  const tally = useRef({ outcomes: [] as EarOutcome[], score: 0, streak: 0, best: 0 })
 
-  const makeQuestion = (prev: Question | null): Question => {
+  const makeQuestion = (prev: EarQuestion | null): EarQuestion => {
     const lid = level.id.slice(mode.length + 1)
     if (mode === 'quality') return makeQuality(QUALITY_LEVELS.find((l) => l.id === lid) ?? QUALITY_LEVELS[0], prev?.kind === 'quality' ? prev : null)
     if (mode === 'interval') return makeInterval(INTERVAL_LEVELS.find((l) => l.id === lid) ?? INTERVAL_LEVELS[0], prev?.kind === 'interval' ? prev : null)
@@ -93,7 +130,7 @@ export function EarTraining() {
     setPhase('play')
   }
 
-  const answered = (o: Outcome) => {
+  const answered = (o: EarOutcome) => {
     const t = tally.current
     t.streak = o.correct ? t.streak + 1 : 0
     t.best = Math.max(t.best, t.streak)
@@ -172,22 +209,14 @@ export function EarTraining() {
               key={qIndex}
               title="Major or minor?"
               prompt="Is this chord happy, sad… or something stranger?"
-              play={() => {
-                const notes = qualityNotes(question)
-                playSequence(notes, { gap: 0.32, dur: 1.1 })
-                playNotes(notes, { dur: 1.8, delay: 1.05 })
-              }}
+              play={() => playAs(question, qualityNotes(question))}
               options={(level.id.endsWith('mm') ? ['maj', 'min'] : ['maj', 'min', 'dim', 'aug']).map((id) => ({ id, label: QUALITY_LABEL[id] }))}
-              answer={question.type.id}
-              hear={(id) => {
-                const notes = [0, ...(id === 'maj' ? [4, 7] : id === 'min' ? [3, 7] : id === 'dim' ? [3, 6] : [4, 8])].map((s) => question.root + s)
-                playSequence(notes, { gap: 0.32, dur: 1.1 })
-                playNotes(notes, { dur: 1.8, delay: 1.05 })
-              }}
+              answer={rightOption(question)}
+              hear={(id) => playAs(question, optionNotes(question, id))}
               reveal={() => (
                 <MusicText text={`${pitchName(fromMidi(question.root))} ${QUALITY_LABEL[question.type.id].toLowerCase()}`} />
               )}
-              onAnswer={answered}
+              onAnswer={(a) => answered({ ...a, question })}
               onNext={next}
             />
           )}
@@ -196,10 +225,11 @@ export function EarTraining() {
               key={qIndex}
               title="Name the interval"
               prompt={question.harmonic ? 'Two notes played together. How far apart?' : 'Two notes, low then high. How far apart?'}
-              play={() => (question.harmonic ? playNotes([question.low, question.low + question.semis], { dur: 1.8 }) : playSequence([question.low, question.low + question.semis], { gap: 0.75, dur: 1.3 }))}
+              play={() => playAs(question, optionNotes(question, rightOption(question)))}
               options={INTERVAL_LEVELS.find((l) => level.id.endsWith(l.id))!.semis.map((s) => ({ id: String(s), label: intervalName(s) }))}
-              answer={String(question.semis)}
-              hear={(id) => playSequence([question.low, question.low + Number(id)], { gap: 0.75, dur: 1.3 })}
+              answer={rightOption(question)}
+              // Played the way the question was: together for a harmonic interval.
+              hear={(id) => playAs(question, optionNotes(question, id))}
               reveal={() => (
                 <span>
                   {intervalName(question.semis)} · {question.semis} half step{question.semis > 1 ? 's' : ''}
@@ -207,11 +237,11 @@ export function EarTraining() {
                 </span>
               )}
               keyboard={{ from: 48, to: 84, marks: { [question.low]: { kind: 'root', label: pitchName(fromMidi(question.low)) }, [question.low + question.semis]: { kind: 'chord', label: pitchName(fromMidi(question.low + question.semis)) } } }}
-              onAnswer={answered}
+              onAnswer={(a) => answered({ ...a, question })}
               onNext={next}
             />
           )}
-          {question.kind === 'echo' && <EchoQuestion key={qIndex} notes={question.notes} onAnswer={answered} onNext={next} />}
+          {question.kind === 'echo' && <EchoQuestion key={qIndex} q={question} onAnswer={(a) => answered({ ...a, question })} onNext={next} />}
         </GameMain>
       )}
       {phase === 'done' && (
@@ -228,7 +258,9 @@ export function EarTraining() {
             ]}
             onAgain={start}
             onSetup={() => setPhase('setup')}
-          />
+          >
+            <MissList misses={outcomes.filter((o) => !o.clean).map(toMiss)} />
+          </ResultsCard>
         </GameMain>
       )}
     </div>
@@ -292,7 +324,7 @@ function ChoiceQuestion({
   hear: (id: string) => void
   reveal: () => ReactNode
   keyboard?: { from: number; to: number; marks: Marks }
-  onAnswer: (o: Outcome) => void
+  onAnswer: (a: Answer) => void
   onNext: () => void
 }) {
   const [wrongs, setWrongs] = useState<string[]>([])
@@ -313,7 +345,7 @@ function ChoiceQuestion({
       setResult(clean ? 'clean' : 'second')
       sfx('correct')
       burst(cardRef.current, { count: 30 })
-      onAnswer({ correct: true, clean })
+      onAnswer({ correct: true, clean, said: wrongs[0] })
       if (clean) window.setTimeout(onNext, 1500)
       return
     }
@@ -323,7 +355,7 @@ function ChoiceQuestion({
     setWrongs(w)
     if (w.length >= maxWrong) {
       setResult('missed')
-      onAnswer({ correct: false, clean: false })
+      onAnswer({ correct: false, clean: false, said: w[0] })
     }
   }
 
@@ -384,23 +416,28 @@ function ChoiceQuestion({
   )
 }
 
-function EchoQuestion({ notes, onAnswer, onNext }: { notes: number[]; onAnswer: (o: Outcome) => void; onNext: () => void }) {
+function EchoQuestion({ q, onAnswer, onNext }: { q: EchoQ; onAnswer: (a: Answer) => void; onNext: () => void }) {
+  const { notes } = q
   const [pos, setPos] = useState(0)
   const [attempts, setAttempts] = useState(0)
   const [state, setState] = useState<'listening' | 'solved' | 'revealed'>('listening')
   const [shake, setShake] = useState(0)
   const [revealIndex, setRevealIndex] = useState<number | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
+  // The notes of the try in progress, and your first wrong try (listed on the results).
+  const tryNotes = useRef<number[]>([])
+  const firstMiss = useRef<number[] | undefined>(undefined)
   const { playing, run } = usePlayback(() => {
     setPos(0)
-    return playSequence(notes, { gap: 0.55, dur: 0.8 })
+    tryNotes.current = []
+    return playAs(q, notes)
   }, notes.join('-'))
   const first = fromMidi(notes[0])
 
   const reveal = () => {
     setState('revealed')
-    onAnswer({ correct: false, clean: false })
-    playSequence(notes, { gap: 0.55, dur: 0.8 })
+    onAnswer({ correct: false, clean: false, played: firstMiss.current })
+    playAs(q, notes)
     notes.forEach((_, i) => window.setTimeout(() => setRevealIndex(i), 50 + i * 550))
     window.setTimeout(() => setRevealIndex(null), notes.length * 550 + 400)
   }
@@ -408,16 +445,19 @@ function EchoQuestion({ notes, onAnswer, onNext }: { notes: number[]; onAnswer: 
   useNoteEvents((e) => {
     if (e.type !== 'on' || state !== 'listening') return
     if (samePitchClass(e.midi, notes[pos])) {
+      tryNotes.current.push(e.midi)
       const next = pos + 1
       setPos(next)
       if (next === notes.length) {
         setState('solved')
         sfx('correct')
         burst(cardRef.current, { count: 36 })
-        onAnswer({ correct: true, clean: attempts === 0 })
+        onAnswer({ correct: true, clean: attempts === 0, played: firstMiss.current })
         window.setTimeout(onNext, 1500)
       }
     } else {
+      if (!firstMiss.current) firstMiss.current = [...tryNotes.current, e.midi]
+      tryNotes.current = []
       sfx('wrong')
       setShake((x) => x + 1)
       setPos(0)

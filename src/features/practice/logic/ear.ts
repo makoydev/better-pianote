@@ -1,4 +1,4 @@
-import { CHORD_TYPE, type ChordType, INTERVAL_SONGS, SEMITONE_NAMES, mod } from '../../../lib/theory'
+import { CHORD_TYPE, type ChordType, INTERVAL_SONGS, SEMITONE_NAMES, fromMidi, mod, pitchName } from '../../../lib/theory'
 
 /** Ear Training question generators. All notes are MIDI numbers. */
 
@@ -100,3 +100,40 @@ export function makeEcho(level: (typeof ECHO_LEVELS)[number], rng: () => number 
 
 /** Echo answers compare letter names only, so any octave counts. */
 export const samePitchClass = (a: number, b: number) => mod(a, 12) === mod(b, 12)
+
+export type EarQuestion = QualityQ | IntervalQ | EchoQ
+
+/** How one question went. */
+export interface EarOutcome {
+  question: EarQuestion
+  correct: boolean
+  /** Right without help (first try for choices, no reveal for echo). */
+  clean: boolean
+  /** Your first wrong choice (an option id), when you didn't get it first time. */
+  said?: string
+  /** Echo: the notes of your first wrong try. */
+  played?: number[]
+}
+
+/** The option id of the right answer ("min", "9"). */
+export function rightOption(q: QualityQ | IntervalQ): string {
+  return q.kind === 'quality' ? q.type.id : String(q.semis)
+}
+
+/** The notes an option stands for: that chord colour on the question's root, or that interval above its low note. */
+export function optionNotes(q: QualityQ | IntervalQ, id: string): number[] {
+  if (q.kind === 'interval') return [q.low, q.low + Number(id)]
+  return (CHORD_TYPE[id] ?? q.type).ivs.map((iv) => q.root + iv.semis)
+}
+
+const tune = (notes: number[]) => notes.map((m) => pitchName(fromMidi(m))).join(' – ')
+
+/** A miss in words: what it was ("Major 6th", "C♯ minor") and what you answered ("minor 7th", "major"). */
+export function describeMiss(o: EarOutcome): { asked: string; said?: string } {
+  const q = o.question
+  if (q.kind === 'echo') return { asked: tune(q.notes), said: o.played?.length ? tune(o.played) : undefined }
+  if (q.kind === 'quality') {
+    return { asked: `${pitchName(fromMidi(q.root))} ${QUALITY_LABEL[q.type.id].toLowerCase()}`, said: o.said && QUALITY_LABEL[o.said]?.toLowerCase() }
+  }
+  return { asked: intervalName(q.semis), said: o.said && intervalName(Number(o.said))?.toLowerCase() }
+}

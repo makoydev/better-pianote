@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { chordSymbol, midi, parseChord } from '../../../lib/theory'
+import { CHORD_TYPE, chordSymbol, midi, parseChord, parseKey } from '../../../lib/theory'
 import { TRAINER_LEVELS, chordRecipe, matchChord, pickRound } from './chords'
-import { ECHO_LEVELS, INTERVAL_LEVELS, makeEcho, makeInterval } from './ear'
-import { KEY_LEVELS, makeKeyQuestion } from './keys'
+import { ECHO_LEVELS, INTERVAL_LEVELS, type IntervalQ, type QualityQ, describeMiss, makeEcho, makeInterval, optionNotes, rightOption } from './ear'
+import { KEY_LEVELS, describeKeyMiss, makeKeyQuestion } from './keys'
 import { RHYTHM_LEVELS, countLabel, makePattern, onsetBeats, patternToStaff, scoreTaps } from './rhythm'
 
 const m = (...names: string[]) => names.map(midi)
@@ -109,6 +109,26 @@ describe('ear training', () => {
     const level = INTERVAL_LEVELS[0]
     for (let s = 1; s < 20; s++) expect(level.semis).toContain(makeInterval(level, null, seeded(s)).semis)
   })
+
+  const minor: QualityQ = { kind: 'quality', root: midi('C#3'), type: CHORD_TYPE.min }
+  const sixth: IntervalQ = { kind: 'interval', low: midi('G3'), semis: 9, harmonic: true }
+
+  it('turns an answer into the notes it stands for', () => {
+    expect(rightOption(minor)).toBe('min')
+    expect(rightOption(sixth)).toBe('9')
+    expect(optionNotes(minor, 'min')).toEqual(m('C#3', 'E3', 'G#3'))
+    expect(optionNotes(minor, 'aug')).toEqual(m('C#3', 'F3', 'A3'))
+    expect(optionNotes(sixth, '10')).toEqual(m('G3', 'F4'))
+  })
+
+  it('describes a miss in words', () => {
+    expect(describeMiss({ question: sixth, correct: false, clean: false, said: '10' })).toEqual({ asked: 'Major 6th', said: 'minor 7th' })
+    expect(describeMiss({ question: minor, correct: true, clean: false, said: 'maj' })).toEqual({ asked: 'C♯ minor', said: 'major' })
+    const echo = { kind: 'echo' as const, notes: m('C4', 'D4', 'E4', 'G4') }
+    expect(describeMiss({ question: echo, correct: true, clean: false, played: m('C4', 'D4', 'F#4') })).toEqual({ asked: 'C – D – E – G', said: 'C – D – F♯' })
+    // "Show me" before playing anything: nothing to compare.
+    expect(describeMiss({ question: echo, correct: false, clean: false }).said).toBeUndefined()
+  })
 })
 
 describe('key quiz', () => {
@@ -122,6 +142,17 @@ describe('key quiz', () => {
         expect(Math.abs(q.fifths)).toBeLessThanOrEqual(level.max)
       }
     }
+  })
+})
+
+describe('key quiz misses', () => {
+  const q = { fifths: 3, key: parseKey('A'), options: [{ label: 'E major', fifths: 4 }, { label: 'A major', fifths: 3 }], answer: 1 }
+
+  it('says what was shown, what you picked and what it was', () => {
+    expect(describeKeyMiss(q, 0, 'name')).toEqual({ asked: '3 sharps', verb: 'you said', said: 'E major', answer: 'A major' })
+    expect(describeKeyMiss(q, 0, 'find')).toEqual({ asked: 'A major', verb: 'you picked', said: '4 sharps', answer: '3 sharps' })
+    const c = { fifths: 0, key: parseKey('C'), options: [{ label: 'F major', fifths: -1 }, { label: 'C major', fifths: 0 }], answer: 1 }
+    expect(describeKeyMiss(c, 0, 'name').asked).toBe('No sharps or flats')
   })
 })
 
