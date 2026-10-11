@@ -16,6 +16,7 @@ import {
   midiOf,
   pitchName,
   relativeKey,
+  romanToChord,
 } from '../../lib/theory'
 import { MusicText, SvgMusicText } from '../MusicText'
 import { Staff, type StaffItem } from '../staff/Staff'
@@ -250,14 +251,22 @@ export function KeyDetails({ index, mode, className = '' }: { index: number; mod
   const fifths = keyFifths(key)
   const sig = keySignature(fifths)
   const rel = relativeKey(key)
-  const chords = diatonicChords(key)
+  const diatonic = diatonicChords(key)
+  // The main chords are I, IV and V. A minor key's V is usually major (its 7th note gets raised), so it gets
+  // a chip of its own next to the minor v that the key signature gives.
+  const majorV = mode === 'minor' ? romanToChord('V', key) : null
+  const chords = majorV
+    ? [
+        ...diatonic.slice(0, 5).map((d) => ({ ...d, main: d.degree === 0 || d.degree === 3 })),
+        { degree: 4, roman: 'V', chord: majorV, main: true },
+        ...diatonic.slice(5).map((d) => ({ ...d, main: false })),
+      ]
+    : diatonic.map((d) => ({ ...d, main: [0, 3, 4].includes(d.degree) }))
   const scale = useMemo(() => {
     const k = keyAt(index, mode)
     return [...keyScale(k), { ...k.tonic, oct: k.tonic.oct + 1 }]
   }, [index, mode])
   const items: StaffItem[] = useMemo(() => scale.map((n, i) => ({ key: `${index}-${mode}-${i}`, notes: [n], dur: 'q' })), [scale, index, mode])
-  // I, IV and V (i, iv, v in minor): the chords most songs in the key lean on.
-  const primary = [0, 3, 4]
   const enharmonic = CIRCLE[index].fifths === 6 ? (mode === 'major' ? 'Also written as G♭ major (6 flats).' : 'Also written as E♭ minor (6 flats).') : null
 
   return (
@@ -294,8 +303,7 @@ export function KeyDetails({ index, mode, className = '' }: { index: number; mod
       <div>
         <div className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Chords in this key · tap to hear</div>
         <div className="flex flex-wrap gap-2">
-          {chords.map((d, i) => {
-            const main = primary.includes(i)
+          {chords.map(({ main, ...d }, i) => {
             const dim = d.chord.type.id === 'dim'
             return (
               <motion.button
@@ -317,7 +325,13 @@ export function KeyDetails({ index, mode, className = '' }: { index: number; mod
           })}
         </div>
         <p className="mt-2 text-sm text-ink-mute">
-          Gold = the three main chords ({mode === 'major' ? 'I, IV, V' : 'i, iv, v'}). Most songs in this key use mostly these.
+          {majorV ? (
+            <MusicText
+              text={`Gold = the main chords (i, iv, V). In a minor key the V chord is usually major – ${chordSymbol(majorV)} in ${keyName(key)} – because the 7th note is raised.`}
+            />
+          ) : (
+            'Gold = the three main chords (I, IV, V). Most songs in this key use mostly these.'
+          )}
         </p>
       </div>
     </div>

@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { CHORD_TYPE, CHORD_TYPES, chordSymbol, detectChord, midi, noteName, parseChord, parseKey, parseNote, romanToChord } from '../../lib/theory'
+import {
+  CHORD_TYPE,
+  CHORD_TYPES,
+  CIRCLE,
+  IV,
+  type Key,
+  type Note,
+  chordSymbol,
+  chordTones,
+  detectChord,
+  diatonicChords,
+  midi,
+  noteName,
+  parseChord,
+  parseKey,
+  parseNote,
+  pitchName,
+  romanToChord,
+  transpose,
+} from '../../lib/theory'
 import { CHORD_GROUPS, GUITAR_SHAPES, PC_NAMES, chordFormula, lhFingers, lhVoicing, rhFingers, rhVoicing, shapeMidis, spellVoicing } from './chordTools'
 import { PALETTE, PRESETS, drumHits, nashville, patternHits } from './jam'
 import { tapTempo, tempoName } from './tempo'
@@ -63,6 +82,60 @@ describe('chord explorer helpers', () => {
   it('has guitar shapes that really are the chords they claim', () => {
     for (const [symbol, shape] of Object.entries(GUITAR_SHAPES)) {
       expect(detectChord(shapeMidis(shape.frets))?.symbol, `${symbol} (${shape.frets})`).toBe(symbol)
+    }
+  })
+})
+
+describe('circle of fifths', () => {
+  // KeyDetails shows i, iv and a major V (built with romanToChord) as a minor key's main chords.
+  const minorKeys: Key[] = CIRCLE.map((c) => ({ tonic: c.minor, mode: 'minor' }))
+  const names = (notes: Note[]) => notes.map((n) => pitchName(n)).join(' ')
+
+  it('spells i, iv and v of every minor key from its key signature', () => {
+    const main = minorKeys.map((k) => {
+      const d = diatonicChords(k)
+      return [d[0], d[3], d[4]].map((c) => chordSymbol(c.chord)).join(' ')
+    })
+    expect(main).toEqual([
+      'Am Dm Em',
+      'Em Am Bm',
+      'Bm Em F♯m',
+      'F♯m Bm C♯m',
+      'C♯m F♯m G♯m',
+      'G♯m C♯m D♯m',
+      'D♯m G♯m A♯m',
+      'B♭m E♭m Fm',
+      'Fm B♭m Cm',
+      'Cm Fm Gm',
+      'Gm Cm Dm',
+      'Dm Gm Am',
+    ])
+  })
+
+  it('spells the major V of every minor key with the raised 7th as its 3rd', () => {
+    const fives = minorKeys.map((k) => {
+      const V = romanToChord('V', k)
+      return names(chordTones(V.root, V.type))
+    })
+    expect(fives).toEqual([
+      'E G♯ B',
+      'B D♯ F♯',
+      'F♯ A♯ C♯',
+      'C♯ E♯ G♯',
+      'G♯ B♯ D♯',
+      'D♯ F𝄪 A♯',
+      'A♯ C𝄪 E♯',
+      'F A C',
+      'C E G',
+      'G B D',
+      'D F♯ A',
+      'A C♯ E',
+    ])
+    for (const k of minorKeys) {
+      const V = romanToChord('V', k)
+      expect(V.type.id).toBe('maj')
+      // The 3rd of V is the leading tone: the 7th letter, a half step below the tonic.
+      expect(pitchName(chordTones(V.root, V.type)[1])).toBe(pitchName(transpose(k.tonic, IV.M7)))
     }
   })
 })
