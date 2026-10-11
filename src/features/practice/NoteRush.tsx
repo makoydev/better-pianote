@@ -12,6 +12,7 @@ import { Chips, Segmented, Toggle } from '../../components/ui/controls'
 import { Stars } from '../../components/ui/progress'
 import { useElementSize } from '../../hooks/useElementSize'
 import { audio } from '../../lib/audio/engine'
+import { isPlainKey } from '../../lib/focus'
 import { burst, celebrate } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
 import { pauseComputerKeys } from '../../lib/input/keys'
@@ -276,6 +277,8 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
 
   const answer = (ok: boolean, midi?: number) => {
     if (finished.current) return
+    // The ♭/♯ choice is part of one answer; the next one starts from natural again.
+    setAcc(0)
     if (ok) {
       const nextCombo = combo + 1
       const mult = multiplier(nextCombo)
@@ -314,8 +317,12 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
     if (config.mode !== 'name') return
     const resume = pauseComputerKeys()
     const onKey = (e: KeyboardEvent) => {
+      // A held key repeats, and ⌘C is a copy, not an answer.
+      if (!isPlainKey(e)) return
       const letter = 'CDEFGAB'.indexOf(e.key.toUpperCase())
-      if (letter >= 0 && e.key.length === 1) answer(nameMatches(current, letter, acc))
+      if (letter < 0 || e.key.length !== 1) return
+      // Shift + letter is the sharp (only level 5 has accidentals).
+      answer(nameMatches(current, letter, e.shiftKey && config.level === 5 ? 1 : acc))
     }
     window.addEventListener('keydown', onKey)
     return () => {
@@ -505,7 +512,9 @@ function NameButtons({ level, acc, setAcc, onPick }: { level: RushLevel; acc: nu
           </motion.button>
         ))}
       </div>
-      <p className="text-center text-sm font-semibold text-ink-mute">Tip: you can also type the letter on your computer keyboard.</p>
+      <p className="text-center text-sm font-semibold text-ink-mute">
+        {level === 5 ? 'Tip: you can also type the letter on your computer keyboard (Shift + letter for a sharp).' : 'Tip: you can also type the letter on your computer keyboard.'}
+      </p>
     </div>
   )
 }
