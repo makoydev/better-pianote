@@ -13,6 +13,7 @@ import { removeEntry, useLibrary } from '../../state/library'
 import { useProgress } from '../../state/progress'
 import { HowToGetFiles, ImportSheet } from './ImportSheet'
 import { startImport } from './importSession'
+import { bestText, songKey } from './results'
 import { buildTimeline, previewBars, songScoreInput } from './timeline'
 
 const LEVEL_COLOR: Record<Song['difficulty'], [string, string]> = {
@@ -36,7 +37,7 @@ export function SongList() {
   const matches = (s: Song) => filter === 'all' || filter === 'mine' || s.difficulty === filter
   const mine = entries.map((e) => e.song).filter(matches)
   const builtIn = filter === 'mine' ? [] : SONGS.filter(matches)
-  const best = (s: Song) => games[`song-${s.id}`]?.best ?? 0
+  const best = (s: Song) => games[songKey(s.id)]?.best ?? 0
 
   // Drop a file anywhere on the page to import it.
   useEffect(() => {
@@ -117,7 +118,14 @@ export function SongList() {
           {mine.length ? (
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {mine.map((song, i) => (
-                <SongCard key={song.id} song={song} best={best(song)} index={i} onRemove={() => setRemoving(song)} />
+                <SongCard
+                  key={song.id}
+                  song={song}
+                  best={best(song)}
+                  label={bestText(games, song.id)}
+                  index={i}
+                  onRemove={() => setRemoving(song)}
+                />
               ))}
             </div>
           ) : (
@@ -130,7 +138,7 @@ export function SongList() {
         <Section title={entries.length ? 'Song library' : undefined}>
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {builtIn.map((song, i) => (
-              <SongCard key={song.id} song={song} best={best(song)} index={i} />
+              <SongCard key={song.id} song={song} best={best(song)} label={bestText(games, song.id)} index={i} />
             ))}
           </div>
         </Section>
@@ -220,7 +228,21 @@ function RemoveSong({ song, onClose }: { song: Song | null; onClose: () => void 
   )
 }
 
-function SongCard({ song, best, index, onRemove }: { song: Song; best: number; index: number; onRemove?: () => void }) {
+function SongCard({
+  song,
+  best,
+  label,
+  index,
+  onRemove,
+}: {
+  song: Song
+  /** Overall best (%), for the stars. */
+  best: number
+  /** "Best 90%", or "RH 100% · Both 85%" once both have been played. */
+  label: string | null
+  index: number
+  onRemove?: () => void
+}) {
   const [c1, c2] = LEVEL_COLOR[song.difficulty]
   // The first couple of bars as a preview, without fingers or note names.
   const preview = useMemo(() => {
@@ -274,7 +296,7 @@ function SongCard({ song, best, index, onRemove }: { song: Song; best: number; i
           </span>
         )}
         <span className="ml-auto inline-flex items-center gap-1 text-gold opacity-80 transition-opacity group-hover:opacity-100">
-          {best > 0 ? `Best ${best}%` : 'Play'} <ChevronRight size={18} strokeWidth={2.6} />
+          {label ?? 'Play'} <ChevronRight size={18} strokeWidth={2.6} />
         </span>
       </div>
       <p className="relative mt-3 line-clamp-2 text-sm leading-relaxed text-ink-mute [overflow-wrap:anywhere]">{song.about}</p>

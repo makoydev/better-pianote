@@ -25,6 +25,7 @@ import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import { type SongResult, SongResults } from './SongResults'
 import { type Cue, type Playhead, advance, buildCues, firstCueAt, ringingAt } from './listen'
+import { accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
 import { type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, songScoreInput } from './timeline'
 
 const TICK = 0.25 // listen mode wakes up every sixteenth note (and plays what's due inside it at exact times)
@@ -103,7 +104,7 @@ function Player({ song }: { song: Song }) {
   const lastCorrectAt = useRef(0)
   const prevPad = useRef<number[] | null>(null)
   /** Wait-mode progress, updated synchronously so fast repeated notes are judged in order. */
-  const run = useRef({ idx: 0, sat: new Set<number>(), mistakes: 0, combo: 0, best: 0, loops: 0, done: false })
+  const run = useRef({ idx: 0, sat: new Set<number>(), notes: 0, mistakes: 0, combo: 0, best: 0, loops: 0, done: false })
   const sync = () => {
     const r = run.current
     setStepIdx(r.idx)
@@ -130,7 +131,7 @@ function Player({ song }: { song: Song }) {
   const staffLabels = useSettings((s) => s.staffLabels)
   const uiSounds = useSettings((s) => s.uiSounds)
   const setSettings = useSettings((s) => s.set)
-  const best = useProgress((s) => s.games[`song-${song.id}`]?.best ?? 0)
+  const best = useProgress((s) => handsBest(s.games, song.id, hands))
 
   const vh = useViewportHeight()
   const [viewRef, view] = useElementSize<HTMLDivElement>()
@@ -153,7 +154,7 @@ function Player({ song }: { song: Song }) {
 
   const reset = () => {
     stopListen()
-    run.current = { idx: 0, sat: new Set(), mistakes: 0, combo: 0, best: 0, loops: 0, done: false }
+    run.current = { idx: 0, sat: new Set(), notes: 0, mistakes: 0, combo: 0, best: 0, loops: 0, done: false }
     sync()
     setFlash({})
     setWrongAt(null)
@@ -188,16 +189,14 @@ function Player({ song }: { song: Song }) {
 
   const finish = () => {
     const r = run.current
-    const total = steps.length
-    const accuracy = total / (total + r.mistakes)
-    const stars = r.mistakes === 0 ? 3 : accuracy >= 0.85 ? 2 : 1
+    const accuracy = accuracyOf(r.notes, r.mistakes)
+    const stars = starsOf(r.notes, r.mistakes)
     const seconds = startedAt.current ? (performance.now() - startedAt.current) / 1000 : 0
     const prog = useProgress.getState()
-    const key = `song-${song.id}`
-    const first = !prog.games[key]
+    const first = !prog.games[songKey(song.id)]
     const xp = (first ? 20 : 6) + stars * (first ? 5 : 2) + (hands === 'both' ? 10 : 0)
     prog.addXp(xp)
-    const { isBest } = prog.recordGame(key, Math.round(accuracy * 100))
+    const isBest = recordSongRun(song.id, hands, Math.round(accuracy * 100))
     setResult({ stars, accuracy, mistakes: r.mistakes, seconds, xp, isBest, bestCombo: r.best, hands })
     setFinished(true)
     if (uiSounds) audio.ui('complete')
@@ -241,6 +240,7 @@ function Player({ song }: { song: Song }) {
       }
       flashKey(e.midi, 'good')
       r.sat.add(hit.id)
+      r.notes++
       if (r.sat.size >= cur.notes.length) completeStep(cur)
       sync()
       return

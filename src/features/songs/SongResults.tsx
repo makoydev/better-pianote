@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { Stars } from '../../components/ui/progress'
 import type { Song } from '../../content/songs'
+import { clockTime } from './results'
 
 export interface SongResult {
   stars: number
@@ -57,11 +58,7 @@ export function SongResults({
           <div className="mt-6 grid w-full grid-cols-3 gap-3">
             <Stat label="Accuracy" value={`${Math.round(result.accuracy * 100)}%`} />
             <Stat label="Wrong notes" value={String(result.mistakes)} />
-            <Stat
-              label="Time"
-              value={`${Math.floor(result.seconds / 60)}:${String(Math.round(result.seconds % 60)).padStart(2, '0')}`}
-              icon={<Timer size={16} />}
-            />
+            <Stat label="Time" value={clockTime(result.seconds)} icon={<Timer size={16} />} />
           </div>
           <div className="mt-3 flex w-full items-center justify-between rounded-2xl bg-night-850 px-4 py-3 text-left">
             <span className="text-ink-soft">
