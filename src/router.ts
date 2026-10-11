@@ -7,17 +7,51 @@ const read = () => {
   return h.split('?')[0] || '/'
 }
 
+const listeners = new Set<() => void>()
+const notify = () => listeners.forEach((l) => l())
+
+/** How you got to the current page: opened the app here, followed a link, or used Back/Forward. */
+export type NavKind = 'load' | 'push' | 'pop'
+let lastNav: NavKind = 'load'
+export const navKind = (): NavKind => lastNav
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('popstate', () => {
+    lastNav = 'pop'
+    notify()
+  })
+  // A typed URL or an old-style link changes the hash without going through go().
+  window.addEventListener('hashchange', notify)
+}
+
 const subscribe = (cb: () => void) => {
-  window.addEventListener('hashchange', cb)
-  return () => window.removeEventListener('hashchange', cb)
+  listeners.add(cb)
+  return () => {
+    listeners.delete(cb)
+  }
 }
 
 export function usePath(): string {
   return useSyncExternalStore(subscribe, read, () => '/')
 }
 
-export function go(path: string) {
-  if (read() !== path) window.location.hash = path
+/** How many in-app pages are behind this one (0 when the app was opened right here). */
+const depth = (): number => (window.history.state as { depth?: number } | null)?.depth ?? 0
+
+/** Open a page. `replace` swaps the current history entry (e.g. lesson → next lesson), so Back skips it. */
+export function go(path: string, opts: { replace?: boolean } = {}) {
+  if (read() === path) return
+  lastNav = 'push'
+  const url = `#${path}`
+  if (opts.replace) window.history.replaceState({ depth: depth() }, '', url)
+  else window.history.pushState({ depth: depth() + 1 }, '', url)
+  notify()
+}
+
+/** Back to the page you came from in the app, or up to `fallback` if you opened the app on this page. */
+export function goBack(fallback: string) {
+  if (depth() > 0) window.history.back()
+  else go(fallback, { replace: true })
 }
 
 /** Match "/learn/:id" against a path; returns params or null. */

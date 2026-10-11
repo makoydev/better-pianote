@@ -1,5 +1,5 @@
 import { Check, X } from 'lucide-react'
-import { type CSSProperties, type PointerEvent as ReactPointerEvent, useCallback, useMemo, useRef } from 'react'
+import { type CSSProperties, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useElementSize } from '../../hooks/useElementSize'
 import { audio } from '../../lib/audio/engine'
 import { noteColor } from '../../lib/colors'
@@ -118,6 +118,24 @@ export function Piano({
     },
     [keyX, W],
   )
+
+  // When the keyboard is too wide for the screen and scrolls sideways, bring the lit keys (or middle C) into view.
+  // Right/wrong flashes don't count, so playing never makes it jump.
+  const litKeys = Object.keys(marks)
+    .map(Number)
+    .filter((m) => {
+      const k = normal(marks[m])?.kind
+      return k && k !== 'dim' && k !== 'good' && k !== 'bad'
+    })
+    .join(',')
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!scroll || !el) return
+    const xs = (litKeys ? litKeys.split(',').map(Number) : [60]).map(keyX).filter((x): x is number => x !== null)
+    if (xs.length === 0) return
+    const mid = ((Math.min(...xs) + Math.max(...xs)) / 2) * whites.length * minKeyWidth
+    el.scrollTo({ left: mid - el.clientWidth / 2, behavior: 'smooth' })
+  }, [scroll, litKeys, keyX, whites.length, minKeyWidth, wrapRef])
 
   // Pointer handling: multi-touch, and sliding across keys plays a glissando.
   const active = useRef(new Map<number, number | null>())

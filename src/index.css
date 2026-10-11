@@ -119,6 +119,8 @@
     background: var(--color-night-900);
     color: var(--color-ink);
     color-scheme: dark;
+    /* Quick taps (Next, answers, tempo ±) shouldn't trigger the iPad's double-tap zoom. Pinch zoom still works. */
+    touch-action: manipulation;
   }
   html[data-scale='large'] {
     font-size: 112.5%;
@@ -140,6 +142,13 @@
   button:not(:disabled),
   [role='button'] {
     cursor: pointer;
+  }
+  /* A long press on a button or tile shouldn't pop up the iPad's text menu. */
+  button,
+  [role='button'] {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
   ::selection {
     background: color-mix(in oklab, var(--color-violet) 45%, transparent);

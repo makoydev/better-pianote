@@ -1,11 +1,12 @@
 import { Check, Clock, Star } from 'lucide-react'
 import { motion } from 'motion/react'
+import { useEffect } from 'react'
 import { Page } from '../../components/layout/Page'
 import { Icon } from '../../components/ui/Icon'
 import { ProgressBar, Stars } from '../../components/ui/progress'
 import { ALL_LESSONS, UNITS, nextLesson } from '../../content'
 import type { Lesson, Unit } from '../../content/types'
-import { go } from '../../router'
+import { go, navKind } from '../../router'
 import { useProgress } from '../../state/progress'
 
 // Horizontal wiggle of the trail, in rem.
@@ -16,6 +17,15 @@ export function LearnPath() {
   const done = ALL_LESSONS.filter((x) => lessons[x.lesson.id]).length
   const stars = Object.values(lessons).reduce((a, l) => a + l.stars, 0)
   const current = nextLesson(lessons)?.lesson.id
+
+  // Opening Learn brings your next lesson into view (Back returns you to where you'd scrolled instead).
+  useEffect(() => {
+    if (navKind() === 'pop') return
+    const el = document.querySelector('[data-current-lesson]')
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    if (r.top > window.innerHeight * 0.7) window.scrollTo({ top: window.scrollY + r.top - window.innerHeight / 2 + r.height / 2 })
+  }, [])
 
   return (
     <Page title="Learn" subtitle="From your first note to playing with both hands. Go in order, or jump to whatever you need.">
@@ -109,7 +119,7 @@ function LessonNode({ lesson, unit, offset, isCurrent }: { lesson: Lesson; unit:
   const record = useProgress((s) => s.lessons[lesson.id])
   const done = !!record
   return (
-    <div className="relative flex items-center" style={{ transform: `translateX(calc(var(--wig) * ${offset}))` }}>
+    <div className="relative flex items-center" data-current-lesson={isCurrent || undefined} style={{ transform: `translateX(calc(var(--wig) * ${offset}))` }}>
       <motion.div initial={{ opacity: 0, scale: 0.85 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true, margin: '-40px' }} className="relative flex items-center">
       {isCurrent && (
         <motion.div

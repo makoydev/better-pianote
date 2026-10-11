@@ -20,7 +20,7 @@ export function Sidebar({ active }: { active: Tab }) {
   const streak = useProgress(liveStreak)
   const level = levelFor(xp)
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-24 flex-col border-r border-white/6 bg-night-900/70 px-3 py-5 md:flex lg:w-64 lg:px-4">
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-24 flex-col border-r border-white/6 bg-night-900/70 px-3 pb-5 pt-[calc(env(safe-area-inset-top)+1.25rem)] md:flex lg:w-64 lg:px-4">
       <button type="button" onClick={() => go('/')} className="mb-7 flex justify-center lg:justify-start lg:px-2">
         <span className="lg:hidden">
           <Logo compact />
@@ -43,8 +43,10 @@ export function Sidebar({ active }: { active: Tab }) {
         style={{ background: 'linear-gradient(135deg, #ffd66b, #ff8a6b 55%, #ff8fc8)' }}
       >
         <span className="absolute inset-0 animate-shimmer bg-[linear-gradient(110deg,transparent_30%,rgba(255,255,255,.45)_50%,transparent_70%)] bg-[length:200%_100%]" />
-        <Piano size={26} strokeWidth={2.4} className="relative" />
-        <span className="relative hidden text-lg lg:inline">Free Play</span>
+        <span className="relative flex flex-col items-center gap-0.5 lg:flex-row lg:gap-3">
+          <Piano size={26} strokeWidth={2.4} />
+          <span className="text-[0.68rem] leading-none lg:text-lg">Free Play</span>
+        </span>
       </motion.button>
       <div className="mt-auto flex flex-col gap-3">
         <div className="hidden rounded-2xl border border-white/8 bg-night-850 p-3 lg:block">
@@ -72,7 +74,7 @@ function NavButton({ item, active }: { item: (typeof NAV)[number]; active: boole
       type="button"
       onClick={() => go(item.path)}
       aria-current={active ? 'page' : undefined}
-      className={`group relative flex h-14 items-center justify-center gap-3.5 rounded-2xl px-3 text-lg font-extrabold transition-colors lg:justify-start ${
+      className={`group relative flex h-14 flex-col items-center justify-center gap-0.5 rounded-2xl px-1 text-lg font-extrabold transition-colors lg:flex-row lg:justify-start lg:gap-3.5 lg:px-3 ${
         active ? 'text-ink' : 'text-ink-mute hover:bg-white/5 hover:text-ink'
       }`}
     >
@@ -84,14 +86,16 @@ function NavButton({ item, active }: { item: (typeof NAV)[number]; active: boole
         />
       )}
       <I size={26} strokeWidth={2.3} className={`relative ${active ? 'text-gold' : ''}`} />
-      <span className="relative hidden lg:inline">{item.label}</span>
+      {/* On the narrow icon rail (iPad portrait) the label sits small under the icon. */}
+      <span className="relative text-[0.68rem] leading-none lg:text-lg lg:leading-normal">{item.label}</span>
     </button>
   )
 }
 
 /** Bottom tab bar on phones. */
 export function TabBar({ active }: { active: Tab }) {
-  const items = [...NAV.slice(0, 2), { id: 'play' as Tab, label: 'Play', icon: Piano, path: '/play' }, ...NAV.slice(2, 4)]
+  // Home, Learn, Practice, Play, Explore, Songs (Settings is the gear in each page's header).
+  const items = [...NAV.slice(0, 3), { id: 'play' as Tab, label: 'Play', icon: Piano, path: '/play' }, ...NAV.slice(3)]
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-white/8 bg-night-900/95 pb-[env(safe-area-inset-bottom)] md:hidden">
       <div className="mx-auto flex max-w-lg items-stretch justify-around px-2">

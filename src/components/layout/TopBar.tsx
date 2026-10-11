@@ -1,6 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { go } from '../../router'
+import { goBack } from '../../router'
 import { IconButton } from '../ui/Button'
 import { ConnectionPill } from './ConnectionPill'
 
@@ -12,7 +12,7 @@ export function TopBar({
   children,
   center,
 }: {
-  /** Path the back button goes to. */
+  /** Where Back goes if you opened the app on this page (otherwise it returns to the page you came from). */
   back: string
   title?: ReactNode
   subtitle?: ReactNode
@@ -24,7 +24,7 @@ export function TopBar({
   return (
     <header className="sticky top-0 z-20 border-b border-white/6 bg-night-900/85 pt-[env(safe-area-inset-top)]">
       <div className="mx-auto flex h-[4.5rem] max-w-[1600px] items-center gap-3 px-3 sm:px-5">
-        <IconButton icon={ArrowLeft} label="Back" onClick={() => go(back)} />
+        <IconButton icon={ArrowLeft} label="Back" onClick={() => goBack(back)} />
         {center ?? (
           <div className="min-w-0 flex-1">
             {title && <h1 className="truncate font-display text-xl font-bold leading-tight sm:text-2xl">{title}</h1>}

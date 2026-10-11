@@ -61,8 +61,9 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **15. Song results glitches.** Time shows "1:60" (119.6 s); right-hand and both-hands runs share one best;
   accuracy counts a chord as one step but every slip separately. *Where:* `songs/SongResults.tsx`,
   `SongPlayer.tsx`. `S`
-- [ ] **16. Settings and Songs are missing from the nav below 768 px** (iPad mini portrait, Split View): the bottom
+- [x] **16. Settings and Songs are missing from the nav below 768 px** (iPad mini portrait, Split View): the bottom
   tab bar has neither. *Where:* `components/layout/Nav.tsx`, `Page.tsx`. `S`
+  *Done:* the phone tab bar now has Home, Learn, Practice, Play, Explore and Songs, and page headers show a Settings gear below 768 px (`Nav.tsx`, `Page.tsx`). Checked at 700 px.
 - [ ] **17. Accuracy slips.** Circle of Fifths calls i–iv–v the main chords of a minor key (most minor songs use a
   major V); a transposed Jam shows F♭/C♭/B𝄫 and "D♭ minor"; numbered lists in lesson text render as one paragraph.
   *Where:* `widgets/CircleOfFifthsWheel.tsx`, `explore/ProgressionJam.tsx`, `ui/RichText.tsx`. `S`
@@ -81,9 +82,10 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   as Continue for mic users without a pedal. `M`
 - [ ] **21. Remember choices.** Note Rush setup, Rhythm Tap tempo/click, Ear Training level per mode, every Explore
   tool and the song list filter reset on each visit; game preferences aren't in Export. `S`
-- [ ] **22. Keep your place.** Learn always reopens at Unit 1 (no scroll to the current lesson); Songs loses filter and
+- [x] **22. Keep your place.** Learn always reopens at Unit 1 (no scroll to the current lesson); Songs loses filter and
   scroll; Back always goes to a fixed parent page (Chord Trainer opened from Home → Back → Practice).
   *Where:* `App.tsx` (`scrollTo(0,0)`), `TopBar.tsx`, `LearnPath.tsx`. `S`
+  *Done:* Back on full-screen pages returns to the page you came from (`goBack` in `router.ts`, pushState with a depth), main pages remember their scroll for Back/Forward, and Learn opens scrolled to your next lesson. Lesson → next lesson replaces the history entry. Checked: Chord Trainer from Home → Back → Home at the same scroll.
 - [ ] **23. Fit screens to the window.** On a 13" MacBook, lesson pictures, Chord Explorer and Jam push the keyboard
   below the fold, and Start is below the fold on game setup screens (reproduced). Sticky action bar, measured
   heights. `M`
