@@ -1,4 +1,4 @@
-import { ALargeSmall, Ear, Flame, Hand, ListMusic, Pause, Play, RotateCcw, SkipBack, SkipForward, Type, Volume2, X } from 'lucide-react'
+import { ALargeSmall, Check, Ear, Flame, Hand, ListMusic, Pause, Play, RotateCcw, SkipBack, SkipForward, Type, Volume2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MicPrompt } from '../../components/layout/MicPrompt'
@@ -841,30 +841,28 @@ function Player({ song }: { song: Song }) {
             </TogglePill>
           )}
           {song.lh && mode === 'listen' && (
-            <div className="flex items-center gap-2" title="What Listen plays">
-              <span className="text-sm font-extrabold text-ink-mute">Plays</span>
-              <Segmented<ListenPart>
-                size="sm"
+            <label
+              className="flex h-[3.25rem] items-center gap-2 rounded-2xl border border-white/8 bg-night-850 px-3 text-sm font-extrabold"
+              title="What Listen plays (the other hand: the one you're not practising)"
+            >
+              <Volume2 size={18} className="text-ink-mute" aria-hidden />
+              <span className="text-ink-mute">Plays</span>
+              <select
                 value={listenPart === 'other' && hands === 'both' ? 'all' : listenPart}
-                onChange={setListenPart}
-                options={[
-                  { value: 'all', label: 'Both' },
-                  { value: 'rh', label: 'Right' },
-                  { value: 'lh', label: 'Left' },
-                  ...(hands === 'both' ? [] : [{ value: 'other' as const, label: <span title="The hand you’re not practising">Other hand</span> }]),
-                ]}
-              />
-            </div>
+                // Let go of focus, so Space plays and pauses again straight away.
+                onChange={(e) => {
+                  setListenPart(e.target.value as ListenPart)
+                  e.currentTarget.blur()
+                }}
+                className="min-h-11 cursor-pointer rounded-lg bg-night-850 pr-1 text-ink outline-none"
+              >
+                <option value="all">both hands</option>
+                <option value="rh">the right hand</option>
+                <option value="lh">the left hand</option>
+                {hands !== 'both' && <option value="other">the other hand</option>}
+              </select>
+            </label>
           )}
-          <LoopControls
-            song={song}
-            loop={loop}
-            bars={loopBars}
-            onLoop={changeLoop}
-            onBars={changeLoopBars}
-            onAround={() => pickBars(aroundBar(curBar, song.rh.length))}
-            onStartFrom={startFrom}
-          />
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
           {mode === 'wait' ? (
@@ -888,23 +886,34 @@ function Player({ song }: { song: Song }) {
           {mode === 'listen' && (
             <>
               <TempoPresets bpm={bpm} songBpm={song.bpm} onChange={setBpm} />
-              <TogglePill checked={countInOn} onChange={setCountInOn} label="Count-in: a bar of clicks before the music starts">
-                Count-in
-              </TogglePill>
-              <TogglePill checked={metronome} onChange={setMetronome} label="Metronome: clicks while it plays">
-                Metronome
-              </TogglePill>
-              {loop && (
-                <TogglePill checked={speedUp} onChange={setSpeedUp} label="Speed up each loop: 5% faster each time round, up to the song's tempo">
-                  Speed up each loop
-                </TogglePill>
-              )}
+              <span className="flex flex-wrap items-center gap-2">
+                <Chip on={countInOn} onChange={setCountInOn} label="Count-in: a bar of clicks before the music starts">
+                  Count-in
+                </Chip>
+                <Chip on={metronome} onChange={setMetronome} label="Metronome: clicks while it plays">
+                  Metronome
+                </Chip>
+                {loop && (
+                  <Chip on={speedUp} onChange={setSpeedUp} label="Speed up each loop: 5% faster each time round, up to the song's tempo">
+                    Speed up
+                  </Chip>
+                )}
+              </span>
             </>
           )}
+          <LoopControls
+            song={song}
+            loop={loop}
+            bars={loopBars}
+            onLoop={changeLoop}
+            onBars={changeLoopBars}
+            onAround={() => pickBars(aroundBar(curBar, song.rh.length))}
+            onStartFrom={startFrom}
+          />
         </div>
 
         {/* The music: the room left between the controls and the keyboard (lines when two or more fit) */}
-        <div ref={paperRef} className="relative flex min-h-[7.5rem] flex-1 flex-col">
+        <div ref={paperRef} className="relative flex min-h-[6.5rem] flex-1 flex-col">
           <ScoreView
             song={song}
             tl={tl}
@@ -1079,6 +1088,24 @@ function ScoreSizeButton({ size, onChange }: { size: ScoreSize; onChange: (s: Sc
         {size}
       </span>
     </motion.button>
+  )
+}
+
+/** A compact on/off button (Listen's count-in, metronome and speed-up), ticked when on. */
+function Chip({ on, onChange, label, children }: { on: boolean; onChange: (v: boolean) => void; label: string; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      title={label}
+      onClick={() => onChange(!on)}
+      className={`inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm font-extrabold transition-colors ${
+        on ? 'border-gold/60 bg-gold/15 text-gold' : 'border-white/10 bg-night-750 text-ink-soft hover:text-ink'
+      }`}
+    >
+      {on && <Check size={16} strokeWidth={3} aria-hidden />}
+      {children}
+    </button>
   )
 }
 
