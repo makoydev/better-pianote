@@ -1,6 +1,7 @@
 export * from './chord'
 export * from './interval'
 export * from './key'
+export * from './keyfind'
 export * from './note'
 export * from './scale'
 export * from './voicing'
