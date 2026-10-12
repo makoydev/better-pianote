@@ -108,7 +108,7 @@ export function ProgressionJam() {
   const [kbArea, { height: kbH }] = useElementSize<HTMLDivElement>()
   const strip = useRef<HTMLDivElement>(null)
   // Playing along: the chords you've played in this pass (✓), how you came in on the latest, and each pass's score.
-  const judge = useRef(new ChordJudge())
+  const [judge] = useState(() => new ChordJudge())
   const [ticks, setTicks] = useState<{ loop: number; byIndex: Record<number, Played> }>({ loop: 0, byIndex: {} })
   const [lastPlayed, setLastPlayed] = useState<(Played & { id: number }) | null>(null)
   const [loopScore, setLoopScore] = useState<LoopScore | null>(null)
@@ -165,14 +165,14 @@ export function ProgressionJam() {
     const ui = (time: number, fn: () => void) => {
       timers.current = [...timers.current.slice(-40), audio.at(time, fn)]
     }
-    judge.current.reset()
+    judge.reset()
     timedRun.current = true
     setTicks({ loop: 0, byIndex: {} })
     setLastPlayed(null)
     setLoopScore(null)
     /** Score a finished pass once the music gets there (notes up to then still count). */
     const scoreAt = (time: number, loopNo: number) =>
-      ui(time, () => setLoopScore({ loop: loopNo, ...judge.current.score(loopNo), timed: timedRun.current }))
+      ui(time, () => setLoopScore({ loop: loopNo, ...judge.score(loopNo), timed: timedRun.current }))
     const c = new Clock({
       interval: () => 60 / live.current.bpm / m.beat,
       onTick: (i, time) => {
@@ -204,10 +204,11 @@ export function ProgressionJam() {
           const loopNo = Math.floor(chordNo / n)
           if (ci === 0 && loopNo > 0) {
             scoreAt(time, loopNo - 1)
-            ui(time, () => setTicks({ loop: loopNo, byIndex: {} }))
+            // A chord you came in on a moment early already counts for the new pass.
+            ui(time, () => setTicks({ loop: loopNo, byIndex: judge.played(loopNo) }))
           }
-          judge.current.setGrace(earlyGrace(60 / L.bpm))
-          judge.current.add({ loop: loopNo, index: ci, start: time, need: L.needs[ci].need, needMic: L.needs[ci].needMic, tones: L.pcsList[ci] })
+          judge.setGrace(earlyGrace(60 / L.bpm))
+          judge.add({ loop: loopNo, index: ci, start: time, need: L.needs[ci].need, needMic: L.needs[ci].needMic, tones: L.pcsList[ci] })
         }
         for (const h of patternHits(L.pattern, L.voicings[ci], L.basses[ci], L.pcsList[ci], per)) {
           if (h.tick !== t || !(h.part === 'bass' ? L.bassOn : L.chordsOn)) continue
@@ -355,7 +356,7 @@ export function ProgressionJam() {
   useNoteEvents((e) => {
     if (e.type !== 'on' || !playing) return
     const mic = e.source === 'mic'
-    const p = judge.current.note(e.midi, heardTime(e.time) - (mic ? MIC_CHORD_DELAY : 0), heldNow(), { mic, timed: !mic })
+    const p = judge.note(e.midi, heardTime(e.time) - (mic ? MIC_CHORD_DELAY : 0), heldNow(), { mic, timed: !mic })
     if (!p) return
     if (mic) timedRun.current = false
     setTicks((tk) => (tk.loop === p.loop ? { loop: tk.loop, byIndex: { ...tk.byIndex, [p.index]: p } } : tk))

@@ -114,6 +114,8 @@ describe('ticking off chords', () => {
     expect(j.score(0)).toEqual({ played: 3, onTime: 2, total: 4 })
     play([C4, E4, G4], 18)
     expect(j.score(1)).toEqual({ played: 1, onTime: 1, total: 4 })
+    expect(Object.keys(j.played(0))).toEqual(['0', '1', '2'])
+    expect(j.played(1)[0]).toMatchObject({ loop: 1, index: 0, timing: 'on' })
   })
 })
 

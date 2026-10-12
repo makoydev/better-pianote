@@ -102,6 +102,16 @@ export class ChordJudge {
     return played
   }
 
+  /** The chords played so far in a pass, by their place in the progression. */
+  played(loop: number): Record<number, Played> {
+    const out: Record<number, Played> = {}
+    for (const s of this.spans) {
+      const p = this.done.get(s)
+      if (s.loop === loop && p) out[s.index] = p
+    }
+    return out
+  }
+
   /** How a pass through the progression went: chords played, and how many came in on the beat. */
   score(loop: number): { played: number; onTime: number; total: number } {
     const spans = this.spans.filter((s) => s.loop === loop)

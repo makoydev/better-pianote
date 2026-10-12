@@ -66,13 +66,13 @@ export function JamStage({
               initial={{ scale: 1.4, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="font-display text-6xl font-bold leading-tight text-gold sm:text-7xl [@media(min-height:860px)]:text-8xl"
+              className="font-display text-6xl font-bold leading-tight text-gold [@media(min-height:820px)]:sm:text-7xl [@media(min-height:960px)]:sm:text-8xl"
             >
               {pos && pos.beat >= 0 ? pos.beat + 1 : '…'}
             </motion.div>
           ) : (
             <motion.div key={`now-${cur}`} initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -14, opacity: 0 }} transition={{ duration: 0.18 }}>
-              <div className="truncate font-display text-6xl font-bold leading-tight sm:text-7xl [@media(min-height:860px)]:text-8xl">
+              <div className="truncate font-display text-6xl font-bold leading-tight [@media(min-height:820px)]:sm:text-7xl [@media(min-height:960px)]:sm:text-8xl">
                 <MusicText text={chordSymbol(chords[cur])} />
               </div>
               <div className="text-base font-extrabold">
@@ -93,7 +93,7 @@ export function JamStage({
         <div className="text-xs font-extrabold uppercase tracking-widest text-ink-mute">{counting ? 'First' : 'Next'}</div>
         {hasNext || counting ? (
           <motion.div key={`next-${counting ? 0 : next}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <div className="truncate font-display text-4xl font-bold leading-tight text-ink-soft sm:text-5xl">
+            <div className="truncate font-display text-4xl font-bold leading-tight text-ink-soft [@media(min-height:820px)]:sm:text-5xl">
               <MusicText text={chordSymbol(chords[counting ? 0 : next])} />
             </div>
             <div className="text-sm font-extrabold text-ink-mute">
