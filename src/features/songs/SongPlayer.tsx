@@ -1,4 +1,4 @@
-import { ALargeSmall, Ear, Flame, Hand, ListMusic, Minus, Pause, Play, Plus, Repeat, RotateCcw, SkipBack, SkipForward, Type, Volume2, X } from 'lucide-react'
+import { ALargeSmall, Ear, Flame, Hand, ListMusic, Pause, Play, RotateCcw, SkipBack, SkipForward, Type, Volume2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
@@ -27,10 +27,11 @@ import { useSettings } from '../../state/settings'
 import { ScoreView } from './ScoreView'
 import { type SongResult, SongResults } from './SongResults'
 import { TempoPresets, TempoStepper } from './TempoControl'
-import { barLabel, barName, barTitle, countedStraight } from './bars'
+import { LoopControls } from './LoopControls'
+import { barName, barTitle, countedStraight } from './bars'
 import { LISTEN_PARTS, type ListenPart, accompaniment, handFilter, listenHand, otherHand } from './accompany'
 import { type CountIn, type Cue, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
-import { type Run, carryOn, endPass, newRun, stepAt, stepsInBars, tally } from './practice'
+import { type Run, aroundBar, carryOn, endPass, firstStepIn, newRun, runFrom, stepAt, stepsInBars, tally } from './practice'
 import { type Hands, accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
 import { MIN_KEY_WIDTH, SCORE_SIZES, type ScoreSize, keyboardHeight } from './systems'
 import { clampTempo, loopSpeedUp } from './tempo'
@@ -127,6 +128,8 @@ function Player({ song }: { song: Song }) {
   /** XP earned this visit from clean loop passes (capped). */
   const loopXp = useRef(0)
   const run = useRef<Run>(newRun(hands))
+  /** The bar the run started from, when you chose one (Start from this bar). */
+  const [fromBar, setFromBar] = useState<number | undefined>(undefined)
   const sync = () => {
     const r = run.current
     setStepIdx(r.idx)
@@ -134,6 +137,7 @@ function Player({ song }: { song: Song }) {
     setMistakes(r.mistakes)
     setCombo(r.combo)
     setLoops(r.loops)
+    setFromBar(r.fromBar)
   }
 
   // Listen mode (and Practice's "Hear this bar")
@@ -302,7 +306,8 @@ function Player({ song }: { song: Song }) {
     const xp = Math.round(((first ? 20 : 6) + stars * (first ? 5 : 2) + (hands === 'both' ? 10 : 0)) * share)
     prog.addXp(xp)
     const isBest = r.whole && recordSongRun(song.id, hands, Math.round(accuracy * 100))
-    setResult({ stars, accuracy, mistakes: r.mistakes, seconds, xp, isBest, bestCombo: r.best, hands, whole: r.whole })
+    const from = r.fromBar === undefined ? undefined : barName(song, r.fromBar)
+    setResult({ stars, accuracy, mistakes: r.mistakes, seconds, xp, isBest, bestCombo: r.best, hands, whole: r.whole, from })
     setFinished(true)
     if (uiSounds) audio.ui('complete')
     if (stars === 3) celebrate()
@@ -545,7 +550,9 @@ function Player({ song }: { song: Song }) {
   // ---- Notation ----
   const noteById = useMemo(() => new Map(tl.notes.map((n) => [n.id, n])), [tl])
   const cur = mode === 'wait' && !finished ? steps[stepIdx] : undefined
-  const loopFrom = loop ? (tl.bars[loopBars[0]]?.start ?? 0) : 0
+  // Notes before where this stretch of practice began (the loop, or a bar you started from) stay as they are.
+  const startBar = loop ? loopBars[0] : fromBar
+  const loopFrom = startBar === undefined ? 0 : (tl.bars[startBar]?.start ?? 0)
   const listenH = listenHand(listenPart, hands)
   const noteState = (spec: StaffNoteSpec): NoteState | undefined => {
     const n = spec.id === undefined ? undefined : noteById.get(spec.id)
@@ -647,6 +654,28 @@ function Player({ song }: { song: Song }) {
     reset(rangeOf(loop, b)[0])
     setLoopBars(b)
   }
+  /** Bars picked on the music (or "Loop around here"): loop them. */
+  const pickBars = (b: [number, number]) => {
+    reset(rangeOf(true, b)[0])
+    setLoopBars(b)
+    setLoop(true)
+  }
+  /**
+   * Start from this bar: the loop goes off and you play (Listen) or practise from there to the end. The practice
+   * run says where it started and doesn't count as a best.
+   */
+  const startFrom = (bar: number) => {
+    const from = tl.bars[bar]?.start ?? 0
+    stopPlayback()
+    setLoop(false)
+    if (mode === 'wait') {
+      resetRun(runFrom(hands, firstStepIn(allSteps, bar), bar))
+      listenEnded.current = false
+      setListenAt(from)
+      return
+    }
+    startPlayback({ from, lo: 0, hi: tl.total, looping: false, bar: false, count: countInOn ? countIn(song, tl, from) : undefined })
+  }
 
   return (
     // The screen's height, shared out: controls, the music (whatever's left), the keyboard. It only scrolls when
@@ -723,29 +752,15 @@ function Player({ song }: { song: Song }) {
               />
             </div>
           )}
-          <div className="flex items-center gap-2.5 rounded-2xl border border-white/8 bg-night-850 px-3 py-2">
-            <Toggle checked={loop} onChange={changeLoop} label="Loop some bars" />
-            <Repeat size={18} className={loop ? 'text-gold' : 'text-ink-mute'} />
-            {loop ? (
-              <span className="flex items-center gap-1.5 text-sm font-extrabold">
-                <Stepper
-                  label="First bar"
-                  text={barLabel(song, loopBars[0])}
-                  onMinus={() => changeLoopBars([Math.max(0, loopBars[0] - 1), loopBars[1]])}
-                  onPlus={() => changeLoopBars([Math.min(loopBars[1], loopBars[0] + 1), loopBars[1]])}
-                />
-                <span className="text-ink-mute">to</span>
-                <Stepper
-                  label="Last bar"
-                  text={barLabel(song, loopBars[1])}
-                  onMinus={() => changeLoopBars([loopBars[0], Math.max(loopBars[0], loopBars[1] - 1)])}
-                  onPlus={() => changeLoopBars([loopBars[0], Math.min(song.rh.length - 1, loopBars[1] + 1)])}
-                />
-              </span>
-            ) : (
-              <span className="text-sm font-extrabold text-ink-soft">Loop</span>
-            )}
-          </div>
+          <LoopControls
+            song={song}
+            loop={loop}
+            bars={loopBars}
+            onLoop={changeLoop}
+            onBars={changeLoopBars}
+            onAround={() => pickBars(aroundBar(curBar, song.rh.length))}
+            onStartFrom={startFrom}
+          />
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
           {mode === 'wait' ? (
@@ -795,6 +810,8 @@ function Player({ song }: { song: Song }) {
             noteState={noteState}
             eventState={eventState}
             dim={hands === 'lh' ? 'treble' : undefined}
+            loopBars={loop ? loopBars : null}
+            onPickBars={pickBars}
             title={hands === 'both' || !song.lh ? song.title : `${song.title}, ${hands === 'rh' ? 'right' : 'left'} hand`}
             className="paper flex-1 rounded-3xl"
           />
@@ -948,16 +965,6 @@ function TogglePill({ checked, onChange, label, children }: { checked: boolean; 
       <Toggle checked={checked} onChange={onChange} label={label} />
       <span className="text-sm font-extrabold text-ink-soft">{children}</span>
     </label>
-  )
-}
-
-function Stepper({ label, text, onMinus, onPlus }: { label: string; text: string; onMinus: () => void; onPlus: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-1" aria-label={label}>
-      <IconButton icon={Minus} label={`${label} earlier`} size={30} onClick={onMinus} />
-      <span className="min-w-[3.2rem] text-center">{text}</span>
-      <IconButton icon={Plus} label={`${label} later`} size={30} onClick={onPlus} />
-    </span>
   )
 }
 

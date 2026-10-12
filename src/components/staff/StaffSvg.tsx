@@ -27,12 +27,16 @@ export interface StaffSvgProps {
   maxWidth?: number
   /** Fade one staff of a score (e.g. the right hand's while you practise the left). */
   dim?: StaffId
+  /** Shaded stretches behind the music (x ranges): the looped bars, or bars being picked. */
+  bands?: { x0: number; x1: number; kind: 'loop' | 'pick' }[]
 }
+
+const BAND_FILL = { loop: '#ffc857', pick: '#9b8cff' }
 
 const DIMMED = 0.25
 
 /** Draws a laid-out staff (from layoutStaff or layoutScore) as SVG. */
-export function StaffSvg({ layout, ink = '#1f1b33', colored, animate = true, cursor, cursorX, title, noteState, eventState, clip, maxWidth, dim }: StaffSvgProps) {
+export function StaffSvg({ layout, ink = '#1f1b33', colored, animate = true, cursor, cursorX, title, noteState, eventState, clip, maxWidth, dim, bands }: StaffSvgProps) {
   const headColor = (state: NoteState, letter: number, override?: string) =>
     STATE_COLOR[state] ?? override ?? (colored ? letterColor(letter, true) : ink)
   const inView = (x0: number, x1: number) => !clip || (x1 >= clip[0] && x0 <= clip[1])
@@ -132,6 +136,18 @@ export function StaffSvg({ layout, ink = '#1f1b33', colored, animate = true, cur
       style={{ overflow: 'visible' }}
     >
       <g transform={`translate(0 ${layout.offsetY})`} fill={ink}>
+        {bands?.map((b, i) => (
+          <rect
+            key={`band${i}`}
+            x={b.x0}
+            y={-layout.offsetY}
+            width={Math.max(0, b.x1 - b.x0)}
+            height={layout.height}
+            rx={layout.sp * 0.6}
+            fill={BAND_FILL[b.kind]}
+            opacity={b.kind === 'loop' ? 0.2 : 0.28}
+          />
+        ))}
         {layout.staffLines.map((l, i) => (
           <line key={`s${i}`} x1={l.x1} x2={l.x2} y1={l.y1} y2={l.y2} stroke={ink} strokeWidth={l.w} />
         ))}

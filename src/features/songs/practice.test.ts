@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type Song, parseBars } from '../../content/songs'
-import { LOOP_XP, LOOP_XP_MAX, carryOn, endPass, newRun, stepAt, stepsInBars, tally } from './practice'
+import { LOOP_XP, LOOP_XP_MAX, aroundBar, carryOn, endPass, firstStepIn, newRun, runFrom, stepAt, stepsInBars, tally } from './practice'
 import { buildSteps, buildTimeline } from './timeline'
 
 const song = (rh: string, lh: string): Song => ({
@@ -34,6 +34,20 @@ describe('practice runs', () => {
     // Nothing left after the last right-hand note: stay on it (or go round, when looping).
     expect(stepAt(rh, both[6].start, false)).toBe(5)
     expect(stepAt(rh, 9, true)).toBe(0)
+  })
+
+  it('starts from a bar you choose, as a run that says where it started but is not a best', () => {
+    expect(firstStepIn(rh, 1)).toBe(4)
+    expect(firstStepIn(both, 2)).toBe(5)
+    expect(firstStepIn(both, 9)).toBe(6)
+    expect(runFrom('rh', 4, 1)).toMatchObject({ idx: 4, whole: false, fromBar: 1 })
+    // From the first step it's a normal run.
+    expect(runFrom('rh', 0, 0)).toMatchObject({ idx: 0, whole: true })
+    expect(runFrom('rh', 0, 0).fromBar).toBeUndefined()
+    // Loop around here: the bar with one either side, inside the song.
+    expect(aroundBar(5, 16)).toEqual([4, 6])
+    expect(aroundBar(0, 16)).toEqual([0, 1])
+    expect(aroundBar(15, 16)).toEqual([14, 15])
   })
 
   it('keeps only the steps in the looped bars', () => {

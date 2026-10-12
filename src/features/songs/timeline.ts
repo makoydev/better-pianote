@@ -2,6 +2,7 @@ import type { StaffId } from '../../components/staff/layout'
 import type { ScoreBar, ScoreInput, ScoreVoice } from '../../components/staff/score'
 import { type Song, type SongEvent, eventBeats } from '../../content/songs'
 import { type Chord, chordSymbol, midiOf, parseChord, parseNote } from '../../lib/theory'
+import { barLabel, barNumber } from './bars'
 import type { Hands } from './results'
 
 /** A song laid out in time (quarter-note beats), ready for wait mode, playback and drawing. */
@@ -231,12 +232,18 @@ export function signatures(song: Song, bars: number) {
 export function songScoreInput(
   song: Song,
   tl: Timeline,
-  opts: { hands: Hands; bars?: [number, number]; fingers?: boolean },
+  opts: { hands: Hands; bars?: [number, number]; fingers?: boolean; barNumbers?: boolean },
 ): ScoreInput {
   const both = opts.hands !== 'rh' && !!song.lh
   const [b0, b1] = opts.bars ?? [0, tl.bars.length - 1]
   const sigs = signatures(song, tl.bars.length)
-  const bars: ScoreBar[] = tl.bars.slice(b0, b1 + 1).map((b, i) => ({ start: b.start, dur: b.dur, ...sigs[b0 + i] }))
+  const bars: ScoreBar[] = tl.bars.slice(b0, b1 + 1).map((b, i) => ({
+    start: b.start,
+    dur: b.dur,
+    ...sigs[b0 + i],
+    // Numbered as on paper (a pickup has none).
+    ...(opts.barNumbers && barNumber(song, b0 + i) ? { label: barLabel(song, b0 + i) } : {}),
+  }))
   const voices: ScoreVoice[] = []
   tl.voices.forEach((v, vi) => {
     if (!both && v.hand === 'lh') return

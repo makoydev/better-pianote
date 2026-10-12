@@ -27,6 +27,8 @@ export interface Run extends Tally {
   pass: Tally
   /** Practice time before the stretch in progress (time spent in Listen doesn't count). */
   ms: number
+  /** The bar you chose to start from (Start from this bar, Continue), so the results can say "from bar 12". */
+  fromBar?: number
 }
 
 const fresh = (): Tally => ({ notes: 0, mistakes: 0, whole: true })
@@ -61,13 +63,23 @@ export function stepAt(steps: Step[], t: number, looping: boolean): number {
   return i >= 0 ? i : looping ? 0 : Math.max(0, steps.length - 1)
 }
 
-/** A fresh run from step i (starting part-way, it can't count as a best). */
-export function runFrom(hands: Hands, i: number): Run {
+/** A fresh run from step i (starting part-way, it can't count as a best), maybe from a bar you chose. */
+export function runFrom(hands: Hands, i: number, fromBar?: number): Run {
   const r = newRun(hands)
   r.idx = i
   r.whole = r.pass.whole = i === 0
+  if (fromBar !== undefined && i > 0) r.fromBar = fromBar
   return r
 }
+
+/** The first step in bar `bar` or after it (the last step when there's none). */
+export function firstStepIn(steps: Step[], bar: number): number {
+  const i = steps.findIndex((s) => s.bar >= bar)
+  return i >= 0 ? i : Math.max(0, steps.length - 1)
+}
+
+/** "Loop around here": the bar you're in with one either side (the way in and the way out). */
+export const aroundBar = (bar: number, bars: number): [number, number] => [Math.max(0, bar - 1), Math.min(bars - 1, bar + 1)]
 
 /**
  * Where practice carries on from step i after switching modes or hands:

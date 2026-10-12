@@ -58,6 +58,8 @@ export interface ScoreBar {
   dur: number
   keySig: number
   time: [number, number]
+  /** A bar number to show above the bar ("14"). */
+  label?: string
 }
 
 export interface ScoreInput {
@@ -806,6 +808,14 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
   if (chordAt.size) {
     for (const [c, text] of chordAt) extras.texts.push({ x: colHead[c], y: above - 0.3 * sp, text, size: chordSize, kind: 'chord', anchor: 'start' })
     above -= chordSize + 0.4 * sp
+  }
+  // Bar numbers on a row of their own at the top, just after each bar line.
+  if (bars.some((b) => b.label)) {
+    const size = Math.max(10, sp * 0.9)
+    bars.forEach((b, i) => {
+      if (b.label) extras.texts.push({ x: barX[i].x0 + 0.35 * sp, y: above - 0.2 * sp, text: b.label, size, kind: 'text', anchor: 'start' })
+    })
+    above -= size + 0.3 * sp
   }
 
   // ---- Staff lines and bar lines ----

@@ -19,6 +19,8 @@ export interface SongResult {
   hands: Hands
   /** Played from the start without skipping ahead or changing hands (only those runs count as a best). */
   whole: boolean
+  /** Started from a bar you chose ("bar 12"): from there to the end. */
+  from?: string
 }
 
 const TITLES = ['Nice try!', 'You played it!', 'Lovely playing!', 'Perfect!']
@@ -59,8 +61,12 @@ export function SongResults({
               <Trophy size={18} /> New personal best
             </motion.p>
           )}
-          {!result.whole && (
-            <p className="mt-3 text-sm font-semibold text-ink-mute">Not played all the way from the start, so this run doesn’t count as a best.</p>
+          {result.from ? (
+            <p className="mt-3 text-sm font-semibold text-ink-mute">
+              From {result.from} to the end <span className="text-ink-soft">·</span> doesn’t count as a best
+            </p>
+          ) : (
+            !result.whole && <p className="mt-3 text-sm font-semibold text-ink-mute">Not played all the way from the start, so this run doesn’t count as a best.</p>
           )}
           <div className="mt-6 grid w-full grid-cols-3 gap-3">
             <Stat label="Accuracy" value={`${Math.round(result.accuracy * 100)}%`} />
