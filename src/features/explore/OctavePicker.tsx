@@ -1,5 +1,6 @@
 import { motion } from 'motion/react'
 import { MusicText } from '../../components/MusicText'
+import { useElementSize } from '../../hooks/useElementSize'
 import { playNotes } from '../../lib/audio/play'
 
 const WHITE_PCS = [0, 2, 4, 5, 7, 9, 11]
@@ -10,6 +11,9 @@ const BLACK = [
   { pc: 8, after: 4, shift: 0 },
   { pc: 10, after: 5, shift: 0.08 },
 ]
+/** A black key is drawn 62% of a white key wide; its tap area is at least this many px wide. */
+const BLACK_W = 0.62
+const MIN_TAP = 44
 
 /**
  * Pick a note name by tapping a one-octave keyboard. `names(pc)` gives the label for each key;
@@ -30,13 +34,15 @@ export function OctavePicker({
   sound?: boolean
   label?: string
 }) {
+  const [box, { width }] = useElementSize<HTMLDivElement>()
   const W = 100 / 7
+  const whitePx = width / 7
   const pick = (pc: number) => {
     onChange(pc)
     if (sound) playNotes([60 + pc], { dur: 0.8, vel: 0.6 })
   }
   return (
-    <div role="radiogroup" aria-label={label} className="relative w-full select-none" style={{ height }}>
+    <div ref={box} role="radiogroup" aria-label={label} className="relative w-full select-none" style={{ height }}>
       {WHITE_PCS.map((pc, i) => {
         const on = pc === value
         const n = names(pc)
@@ -69,6 +75,10 @@ export function OctavePicker({
       {BLACK.map(({ pc, after, shift }) => {
         const on = pc === value
         const n = names(pc)
+        // The key keeps its real width; the button around it is at least 44px wide, so it's easy to hit on an iPad.
+        const centre = (after + 1 + shift) * W
+        const keyPx = whitePx * BLACK_W
+        const tapPx = Math.max(MIN_TAP, keyPx)
         return (
           <motion.button
             key={pc}
@@ -78,22 +88,29 @@ export function OctavePicker({
             aria-label={n.alt ? `${n.main} or ${n.alt}` : n.main}
             whileTap={{ y: 2 }}
             onClick={() => pick(pc)}
-            className="absolute top-0 z-10 flex flex-col items-center justify-end rounded-b-lg pb-1.5 text-center font-display text-sm font-bold leading-tight transition-colors"
-            style={{
-              left: `${(after + 1) * W - W * 0.31 + shift * W}%`,
-              width: `${W * 0.62}%`,
-              height: '60%',
-              color: on ? '#1f1b33' : '#e9e5ff',
-              background: on ? 'linear-gradient(180deg,#fff0c2,#ffc857)' : 'linear-gradient(180deg,#3a3856,#15142b)',
-              boxShadow: on ? '0 0 20px -2px #ffc857' : '0 4px 0 #06050f, inset 0 1px 0 rgba(255,255,255,.15)',
-            }}
+            className="absolute top-0 z-10 flex justify-center"
+            style={
+              width
+                ? { left: `calc(${centre}% - ${tapPx / 2}px)`, width: tapPx, height: '60%' }
+                : { left: `${centre - (W * BLACK_W) / 2}%`, width: `${W * BLACK_W}%`, height: '60%' }
+            }
           >
-            <MusicText text={n.main} />
-            {n.alt && (
-              <span className="text-[0.7rem] opacity-70">
-                <MusicText text={n.alt} />
-              </span>
-            )}
+            <span
+              className="flex h-full flex-col items-center justify-end rounded-b-lg pb-1.5 text-center font-display text-sm font-bold leading-tight transition-colors"
+              style={{
+                width: width ? keyPx : '100%',
+                color: on ? '#1f1b33' : '#e9e5ff',
+                background: on ? 'linear-gradient(180deg,#fff0c2,#ffc857)' : 'linear-gradient(180deg,#3a3856,#15142b)',
+                boxShadow: on ? '0 0 20px -2px #ffc857' : '0 4px 0 #06050f, inset 0 1px 0 rgba(255,255,255,.15)',
+              }}
+            >
+              <MusicText text={n.main} />
+              {n.alt && (
+                <span className="text-[0.7rem] opacity-70">
+                  <MusicText text={n.alt} />
+                </span>
+              )}
+            </span>
           </motion.button>
         )
       })}
