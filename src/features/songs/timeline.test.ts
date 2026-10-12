@@ -107,6 +107,16 @@ describe('song timeline', () => {
     expect(tl.total).toBe(4)
   })
 
+  it('gives a chord to the first step inside it when the hands you practise rest on its beat', () => {
+    // The right hand rests at the start of each half bar (as in Bach's Prelude in C); the chords start on the rests.
+    const tl = buildTimeline(make('{C}r:8 E4 G4:q {G}r:8 D4 F4:q', 'C3:h G2:h'))
+    const chords = (hands: 'rh' | 'lh' | 'both') => buildSteps(tl, hands).map((s) => s.chord?.symbol ?? '-')
+    expect(chords('rh')).toEqual(['C', '-', 'G', '-'])
+    // Where a hand you practise plays on the beat, the chord stays on that step.
+    expect(chords('both')).toEqual(['C', '-', '-', 'G', '-', '-'])
+    expect(chords('lh')).toEqual(['C', 'G'])
+  })
+
   it('finds chord symbols on any voice', () => {
     const tl = buildTimeline(make([[ev([], 'w')]], [[ev(['C3'], 'w', { chord: 'C' })]]))
     expect(tl.chords.map((c) => [c.start, c.symbol])).toEqual([[0, 'C']])

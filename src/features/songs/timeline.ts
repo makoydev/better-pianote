@@ -200,17 +200,21 @@ export function buildSteps(tl: Timeline, hands: Hands): Step[] {
     addShared(group, n)
     groups.set(k, group)
   }
-  return [...groups.entries()]
+  const steps: Step[] = [...groups.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([, ns]) => {
-      const start = ns[0].start
-      return {
-        start,
-        bar: ns[0].bar,
-        notes: ns.sort((a, b) => (a.hand === b.hand ? a.midi - b.midi : a.hand === 'rh' ? -1 : 1)),
-        chord: tl.chords.find((c) => Math.abs(c.start - start) < EPS),
-      }
-    })
+    .map(([, ns]) => ({
+      start: ns[0].start,
+      bar: ns[0].bar,
+      notes: ns.sort((a, b) => (a.hand === b.hand ? a.midi - b.midi : a.hand === 'rh' ? -1 : 1)),
+    }))
+  // Each chord goes with the first step inside it: usually the one on its beat, but when the hands you practise
+  // rest there (Bach's Prelude in C starts each half bar with a rest in the right hand), the first one after.
+  let i = 0
+  for (const c of tl.chords) {
+    while (i < steps.length && steps[i].start < c.start - EPS) i++
+    if (i < steps.length && steps[i].start < c.start + c.dur - EPS) steps[i].chord = c
+  }
+  return steps
 }
 
 /** Key and time signature in force in each bar. */
