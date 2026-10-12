@@ -10,10 +10,22 @@ describe('lines of music', () => {
   const song = findSong('ode-to-joy')!
   const tl = buildTimeline(song)
   const inputFor = (from: number, to: number) => songScoreInput(song, tl, { hands: 'both', bars: [from, to] })
-  const full = layoutScore(songScoreInput(song, tl, { hands: 'both' }), opts)
+
+  it('squeezes the spacing (as engravers do) to fit more bars on a line', () => {
+    // An iPad held upright: at its natural spacing only one bar of Ode to Joy fits a line after the clef.
+    const width = 743
+    const two = layoutScore(inputFor(0, 1), opts)
+    expect(two.width).toBeGreaterThan(width)
+    const lines = layoutLines(inputFor, tl.bars.length, width, opts)
+    expect(lines[0].to - lines[0].from + 1).toBeGreaterThanOrEqual(2)
+    // Squeezed, but never so the notes collide: still wider than the bare minimum.
+    const squeezed = layoutScore(inputFor(0, 1), { ...opts, spacing: 0.7 })
+    expect(squeezed.width).toBeLessThan(two.width)
+    expect(layoutScore(inputFor(0, 1), { ...opts, spacing: 0.01 }).width).toBeLessThan(squeezed.width)
+  })
 
   it('breaks the music into whole bars that fill the width', () => {
-    const lines = layoutLines(inputFor, full, 800, opts)
+    const lines = layoutLines(inputFor, tl.bars.length, 800, opts)
     expect(lines.length).toBeGreaterThan(2)
     // Every bar once, in order.
     expect(lines.flatMap((l) => Array.from({ length: l.to - l.from + 1 }, (_, k) => l.from + k))).toEqual(tl.bars.map((_, i) => i))
@@ -26,12 +38,12 @@ describe('lines of music', () => {
   })
 
   it('gives a bar too wide for the screen a line of its own', () => {
-    const lines = layoutLines(inputFor, full, 200, opts)
+    const lines = layoutLines(inputFor, tl.bars.length, 200, opts)
     expect(lines.length).toBe(tl.bars.length)
   })
 
   it('fits as many lines as there is room for, each with the tallest one’s room', () => {
-    const lines = layoutLines(inputFor, full, 800, opts)
+    const lines = layoutLines(inputFor, tl.bars.length, 800, opts)
     const tallest = Math.max(...lines.map((l) => l.layout.height))
     expect(linesThatFit(lines, tallest * 2.5)).toBe(2)
     expect(linesThatFit(lines, tallest * 1.9)).toBe(1)

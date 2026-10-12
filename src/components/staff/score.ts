@@ -58,8 +58,9 @@ export interface ScoreBar {
   dur: number
   keySig: number
   time: [number, number]
-  /** A bar number to show above the bar ("14"). */
-  label?: string
+  /** The bar number to show above its bar line ("14"), and which time through it is ("2nd") when repeats are written out. */
+  number?: string
+  pass?: string
 }
 
 export interface ScoreInput {
@@ -88,6 +89,8 @@ export interface ScoreOptions {
   reserveBelow?: number
   /** Extra px added to every column (to fill a fixed width). */
   extraPerSlot?: number
+  /** Scales the room a note gets for its length (1 = natural; less squeezes more bars onto a line, never closer than the notes allow). */
+  spacing?: number
 }
 
 export interface ScoreLayout extends Layout {
@@ -400,7 +403,7 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
     const next = c + 1 < colT.length && colBar[c + 1] === colBar[c] ? colT[c + 1] : bars[colBar[c]].start + bars[colBar[c]].dur
     const dt = Math.max(0.0625, next - t)
     const natural = Math.max(leftExt[c] + rightExt[c] + 1.4 * sp, textW[c] + 0.8 * sp)
-    return Math.max(natural, (2.1 + 2.6 * Math.pow(dt, 0.7)) * sp) + (o.extraPerSlot ?? 0)
+    return Math.max(natural, (2.1 + 2.6 * Math.pow(dt, 0.7)) * sp * (o.spacing ?? 1)) + (o.extraPerSlot ?? 0)
   })
 
   // ---- The gap between the staves fits what hangs below the treble and sticks up from the bass ----
@@ -809,14 +812,16 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
     for (const [c, text] of chordAt) extras.texts.push({ x: colHead[c], y: above - 0.3 * sp, text, size: chordSize, kind: 'chord', anchor: 'start' })
     above -= chordSize + 0.4 * sp
   }
-  // Bar numbers on a row of their own at the top, just after each bar line.
-  if (bars.some((b) => b.label)) {
-    const size = Math.max(10, sp * 0.9)
-    bars.forEach((b, i) => {
-      if (b.label) extras.texts.push({ x: barX[i].x0 + 0.35 * sp, y: above - 0.2 * sp, text: b.label, size, kind: 'text', anchor: 'start' })
-    })
-    above -= size + 0.3 * sp
-  }
+  // Bar numbers just above the staff, centred on the bar line: nothing else is drawn there (a bar's first notes
+  // start well after its bar line), so they need no room of their own. The time through a repeat goes on top.
+  const numSize = Math.max(10, sp * 0.85)
+  const passSize = Math.max(9, sp * 0.7)
+  bars.forEach((b, i) => {
+    if (!b.number) return
+    const y = staffTop[topStaff] - 0.55 * sp
+    extras.texts.push({ x: barX[i].x0, y, text: b.number, size: numSize, kind: 'text', anchor: 'middle' })
+    if (b.pass) extras.texts.push({ x: barX[i].x0, y: y - numSize * 0.95, text: b.pass, size: passSize, kind: 'text', anchor: 'middle' })
+  })
 
   // ---- Staff lines and bar lines ----
   const staffLines: Line[] = []

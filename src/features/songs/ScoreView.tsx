@@ -61,8 +61,8 @@ export function ScoreView(props: ScoreViewProps) {
   const width = Math.max(0, box.width - 2 * PAD_X)
   const height = Math.max(0, box.height - PAD_Y)
   const lines = useMemo(
-    () => (width > 0 ? layoutLines((a, b) => songScoreInput(song, tl, { hands, bars: [a, b], barNumbers: true }), full, width, opts) : []),
-    [song, tl, hands, full, width, opts],
+    () => (width > 0 ? layoutLines((a, b) => songScoreInput(song, tl, { hands, bars: [a, b], barNumbers: true }), tl.bars.length, width, opts) : []),
+    [song, tl, hands, width, opts],
   )
   const shown = linesThatFit(lines, height)
 

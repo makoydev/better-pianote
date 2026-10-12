@@ -21,12 +21,17 @@ export interface ScoreLine {
   layout: ScoreLayout
 }
 
+/** Spacing for a line, loosest first: natural, then squeezed as engravers do (never closer than the notes allow). */
+const SPACINGS = [1, 0.9, 0.8, 0.7]
+
 /**
- * Lay the music out in lines no wider than `width`: whole bars, as many as fit (at least one a line), each line
- * spread out to fill the width (except a short last line). `full` is the whole piece in one line, which gives each
- * bar's natural width; `inputFor` gives the score of a range of bars.
+ * Lay `bars` bars of music out in lines no wider than `width`: whole bars, as many as fit with the spacing squeezed
+ * (at least one a line). Each line then takes the loosest spacing it fits with and is spread out to fill the width,
+ * except a short last line. `inputFor` gives the score of a range of bars.
  */
-export function layoutLines(inputFor: (from: number, to: number) => ScoreInput, full: ScoreLayout, width: number, opts: ScoreOptions): ScoreLine[] {
+export function layoutLines(inputFor: (from: number, to: number) => ScoreInput, bars: number, width: number, opts: ScoreOptions): ScoreLine[] {
+  const tight = { ...opts, spacing: SPACINGS[SPACINGS.length - 1] }
+  const full = layoutScore(inputFor(0, bars - 1), tight)
   const widths = full.barX.map((b) => b.x1 - b.x0)
   const head = full.contentStart + opts.sp
   const lines: ScoreLine[] = []
@@ -35,12 +40,24 @@ export function layoutLines(inputFor: (from: number, to: number) => ScoreInput, 
     let used = head + widths[from]
     while (to + 1 < widths.length && used + widths[to + 1] <= width) used += widths[++to]
     // That was an estimate (signatures move to the start of a line): drop bars while the real thing is too wide.
-    let natural = layoutScore(inputFor(from, to), opts)
-    while (natural.width > width && to > from) natural = layoutScore(inputFor(from, --to), opts)
-    const spare = width - natural.width
+    let input = inputFor(from, to)
+    let laid = layoutScore(input, tight)
+    while (laid.width > width && to > from) {
+      input = inputFor(from, --to)
+      laid = layoutScore(input, tight)
+    }
+    let spacing = tight.spacing
+    for (const s of SPACINGS.slice(0, -1)) {
+      const l = layoutScore(input, { ...opts, spacing: s })
+      if (l.width > width) continue
+      laid = l
+      spacing = s
+      break
+    }
+    const spare = width - laid.width
     const last = to === widths.length - 1
-    const spread = spare > 1 && natural.slots > 0 && (!last || natural.width > width * 0.7)
-    lines.push({ from, to, layout: spread ? layoutScore(inputFor(from, to), { ...opts, extraPerSlot: spare / natural.slots }) : natural })
+    const spread = spare > 1 && laid.slots > 0 && (!last || laid.width > width * 0.7)
+    lines.push({ from, to, layout: spread ? layoutScore(input, { ...opts, spacing, extraPerSlot: spare / laid.slots }) : laid })
     from = to + 1
   }
   return lines

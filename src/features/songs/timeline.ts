@@ -2,7 +2,7 @@ import type { StaffId } from '../../components/staff/layout'
 import type { ScoreBar, ScoreInput, ScoreVoice } from '../../components/staff/score'
 import { type Song, type SongEvent, eventBeats } from '../../content/songs'
 import { type Chord, chordSymbol, midiOf, parseChord, parseNote } from '../../lib/theory'
-import { barLabel, barNumber } from './bars'
+import { barNumber, ordinal } from './bars'
 import type { Hands } from './results'
 
 /** A song laid out in time (quarter-note beats), ready for wait mode, playback and drawing. */
@@ -228,6 +228,13 @@ export function signatures(song: Song, bars: number) {
   })
 }
 
+/** A bar's number for the score ("14", and "2nd" the second time through); nothing for a pickup (or bar -1). */
+function barMark(song: Song, bar: number): Pick<ScoreBar, 'number' | 'pass'> {
+  const n = bar >= 0 ? barNumber(song, bar) : null
+  if (!n) return {}
+  return n.pass > 1 ? { number: n.number, pass: ordinal(n.pass) } : { number: n.number }
+}
+
 /** What the score layout needs to draw a song (or some of its bars). Left hand alone shows both staves. */
 export function songScoreInput(
   song: Song,
@@ -241,8 +248,8 @@ export function songScoreInput(
     start: b.start,
     dur: b.dur,
     ...sigs[b0 + i],
-    // Numbered as on paper (a pickup has none).
-    ...(opts.barNumbers && barNumber(song, b0 + i) ? { label: barLabel(song, b0 + i) } : {}),
+    // Numbered as on paper (a pickup has none), with the time through a written-out repeat.
+    ...barMark(song, opts.barNumbers ? b0 + i : -1),
   }))
   const voices: ScoreVoice[] = []
   tl.voices.forEach((v, vi) => {
