@@ -27,6 +27,8 @@ describe('sorting songs', () => {
   it('recently practised first; songs never played keep their order after them', () => {
     expect(ids(sortSongs([a, b, c], 'recent', { games }))).toEqual(['c', 'a', 'b'])
     expect(ids(sortSongs([b, a, c, song('d')], 'recent', { games: {} }))).toEqual(['b', 'a', 'c', 'd'])
+    // The song you practised last counts too, even before you finish a run.
+    expect(ids(sortSongs([a, b, c], 'recent', { games, last: { id: 'b', title: 'apple', bar: 3, at: 400 } }))).toEqual(['b', 'c', 'a'])
   })
 
   it('by title, by difficulty, or newest import first', () => {

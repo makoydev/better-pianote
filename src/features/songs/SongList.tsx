@@ -76,17 +76,17 @@ export function SongList() {
   const pickFile = () => pickFiles(startImports)
 
   const byId = new Map(entries.map((e) => [e.id, e]))
+  const last = readLastSong(lastPref)
+  const lastSong = last ? (findSong(last.id) ?? byId.get(last.id)?.song) : undefined
+
   const searching = query.trim() !== ''
   const shown = (s: Song) => (filter === 'all' || filter === 'mine' || s.difficulty === filter) && matchesSearch(s, query)
-  const order = (songs: Song[]) => sortSongs(songs, sort, { games, addedAt: (id) => byId.get(id)?.addedAt })
+  const order = (songs: Song[]) => sortSongs(songs, sort, { games, addedAt: (id) => byId.get(id)?.addedAt, last })
   const mine = order(entries.map((e) => e.song).filter(shown))
   const builtIn = filter === 'mine' ? [] : order(SONGS.filter(shown))
   /** "My songs" picked, and nothing imported yet: how to bring songs in. */
   const noSongsYet = filter === 'mine' && !entries.length
   const noMatch = searching && !noSongsYet && !mine.length && !builtIn.length
-
-  const last = readLastSong(lastPref)
-  const lastSong = last ? (findSong(last.id) ?? byId.get(last.id)?.song) : undefined
 
   /** What you can do with one of your own songs (the ⋯ menu on its card). */
   const manage = (song: Song): MenuItem[] => {

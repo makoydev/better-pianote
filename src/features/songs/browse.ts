@@ -28,10 +28,15 @@ export function matchesSearch(song: Song, query: string): boolean {
 
 /**
  * Songs in the chosen order. Songs with nothing to sort by (never practised, or built in when sorting by date
- * added) keep the order they came in, after the others.
+ * added) keep the order they came in, after the others. A finished run dates a song's practice, and so does
+ * the song you practised last (`last`), finished or not.
  */
-export function sortSongs(songs: Song[], sort: SongSort, ctx: { games: Record<string, GameRecord>; addedAt?: (id: string) => number | undefined }): Song[] {
-  const played = (s: Song) => ctx.games[songKey(s.id)]?.lastPlayed ?? 0
+export function sortSongs(
+  songs: Song[],
+  sort: SongSort,
+  ctx: { games: Record<string, GameRecord>; addedAt?: (id: string) => number | undefined; last?: LastSong | null },
+): Song[] {
+  const played = (s: Song) => Math.max(ctx.games[songKey(s.id)]?.lastPlayed ?? 0, ctx.last?.id === s.id ? ctx.last.at : 0)
   const added = (s: Song) => ctx.addedAt?.(s.id) ?? 0
   const by: Record<SongSort, (a: Song, b: Song) => number> = {
     recent: (a, b) => played(b) - played(a),
