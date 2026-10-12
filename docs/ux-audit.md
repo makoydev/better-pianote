@@ -183,12 +183,16 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **52. Mic in songs:** hear multi-note steps as chords; in one-hand mode ignore the other hand; exact octave over
   USB. `M`
 - [ ] **53. Results that point at the problem:** mistakes per bar, "Practise these bars", run history. `M`
-- [ ] **54. Imported songs:** edit title, level and part; replace the file and keep progress (re-import duplicates
+- [x] **54. Imported songs:** edit title, level and part; replace the file and keep progress (re-import duplicates
   today); persistent storage. `S–M`
-- [ ] **55. Song list for a real library:** search, sort by recently practised, keep filter and scroll. `S–M`
+  *Done:* a ⋯ menu on imported songs: Edit (title, composer, level, and the part re-read from the stored file), Replace file (same song, progress kept), Download original file, Remove; re-importing the same file offers "Replace (keep progress)" or "Add as new"; persistent storage is requested after the first import (de6dbbe, 26eadf9, 6d0982a).
+- [x] **55. Song list for a real library:** search, sort by recently practised, keep filter and scroll. `S–M`
+  *Done:* search (title, composer, tags), sort (Recently practised, Title, Difficulty, Recently added) and a compact List view, all remembered; cards show "Practised 2 days ago · 1 run" and per-hands bests; a Continue card for the last song (148ffd6, b53a015, 9e93fa4). Checked: search "bach" shows the Prelude only.
 - [ ] **56. Score details:** original bar numbers for pieces with repeats, next notes shown faintly on the keys, import
   errors that name the bar, drop files on any page. `S–M`
-- [ ] **57. Two-hand versions of the Advanced built-ins** (Minuet, Für Elise and the Prelude are right hand only). `M`
+  *Partly done:* imports that fail list the first problems by bar with a fix, "Which files work?" only shows for files that aren't MusicXML, several files import one after another, the picker filters score files on desktop (0186d44, 454b2e2), and score files dropped on any page go to Songs (App). The bar numbers and next notes are in the song player batch.
+- [x] **57. Two-hand versions of the Advanced built-ins** (Minuet, Für Elise and the Prelude are right hand only). `M`
+  *Done:* Minuet in G gets its left hand, Für Elise its left-hand broken chords, and the Prelude in C both hands as Bach wrote them (half-note bass plus the held second voice), transcribed bar by bar from Mutopia (Bach-Gesellschaft, Breitkopf & Härtel 1888) and checked against the Humdrum Bach-Gesellschaft encoding; every built-in song now passes the importer's song check (345b742). Checked: the Prelude's grand staff.
 
 ## Free Play & Explore
 

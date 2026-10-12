@@ -15,9 +15,10 @@ import { useWakeLock } from './hooks/useWakeLock'
 import { audio } from './lib/audio/engine'
 import { stopDemos } from './lib/audio/play'
 import { stopMetronome } from './features/explore/metronomeEngine'
+import { requestImport } from './features/songs/importRequest'
 import { takeImportMessage } from './lib/backup'
 import { toast } from './lib/fx'
-import { matchPath, navKind, usePath } from './router'
+import { go, matchPath, navKind, usePath } from './router'
 import { useSettings } from './state/settings'
 
 // Screens load on demand so the app starts quickly.
@@ -137,6 +138,29 @@ export function App() {
   // A demo started on one screen shouldn't keep playing over the next (stopped as you leave, before the new
   // screen plays anything of its own).
   useEffect(() => () => stopDemos(), [path])
+  // A score dropped on any page goes to Songs to be imported (instead of the browser opening the file).
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files')
+    const over = (e: DragEvent) => {
+      if (hasFiles(e)) e.preventDefault()
+    }
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      // The Songs page has its own drop zone (and the hand-over ignores files it has already seen).
+      if (path === '/songs') return
+      const files = [...(e.dataTransfer?.files ?? [])]
+      if (!files.length) return
+      requestImport(files)
+      go('/songs')
+    }
+    window.addEventListener('dragover', over)
+    window.addEventListener('drop', drop)
+    return () => {
+      window.removeEventListener('dragover', over)
+      window.removeEventListener('drop', drop)
+    }
+  }, [path])
   // After an import the app reloads: say how it went.
   useEffect(() => {
     const message = takeImportMessage()
