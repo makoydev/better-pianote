@@ -20,6 +20,7 @@ import { MusicText } from '../MusicText'
 import { Piano } from '../piano/Piano'
 import { Staff } from '../staff/Staff'
 import { Button } from '../ui/Button'
+import { useFitKeyboard } from './fit'
 
 /** Pick two notes (tap them, or play them on your keyboard) and see the interval between them. */
 
@@ -56,6 +57,7 @@ function spellPair(a: number, b: number): [Note, Note] {
 export function IntervalLab() {
   const [a, setA] = useState<number | null>(60)
   const [b, setB] = useState<number | null>(64)
+  const [kbRef, kb] = useFitKeyboard(170, { below: 24 })
 
   const pick = (m: number) => {
     if (a === null || (a !== null && b !== null)) {
@@ -83,13 +85,26 @@ export function IntervalLab() {
   const marks: Record<number, { kind: 'root' | 'chord'; label: string }> = {}
   if (a !== null) marks[a] = { kind: 'root', label: '1' }
   if (b !== null && info) marks[b] = { kind: 'chord', label: String(info.num) }
+  const clearButton = (
+    <Button
+      size="sm"
+      variant="ghost"
+      icon={RotateCcw}
+      onClick={() => {
+        setA(null)
+        setB(null)
+      }}
+    >
+      Clear
+    </Button>
+  )
 
   return (
-    <div className="space-y-4">
+    <div className={kb.fit ? 'flex flex-1 flex-col gap-4' : 'space-y-4'}>
       <p className="text-base text-ink-soft">
         Tap two keys, or play two notes on your keyboard. Quick picks start from middle C:
       </p>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {QUICK.map((q) => (
           <motion.button
             key={q.label}
@@ -108,6 +123,8 @@ export function IntervalLab() {
             {q.label}
           </motion.button>
         ))}
+        {/* In a lesson, Clear sits with the quick picks to save a row for the keyboard. */}
+        {kb.fit && clearButton}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
@@ -190,15 +207,10 @@ export function IntervalLab() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Button size="sm" variant="ghost" icon={RotateCcw} onClick={() => {
-            setA(null)
-            setB(null)
-          }}>
-          Clear
-        </Button>
+      {!kb.fit && <div className="flex items-center gap-2">{clearButton}</div>}
+      <div ref={kbRef} className={kb.className} style={kb.style}>
+        <Piano from={60} to={84} mode="toggle" onToggle={pick} marks={marks} height={kb.piano} />
       </div>
-      <Piano from={60} to={84} mode="toggle" onToggle={pick} marks={marks} height={170} />
     </div>
   )
 }

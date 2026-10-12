@@ -1,6 +1,6 @@
 import type { KeyMark, Marks } from '../../components/piano/Piano'
-import type { KeyboardVisual } from '../../content/types'
-import { midiOf, parseNote } from '../../lib/theory'
+import type { KeyboardVisual, Visual } from '../../content/types'
+import { isBlackKey, midiOf, parseNote } from '../../lib/theory'
 
 export const noteMidi = (n: string) => midiOf(parseNote(n))
 
@@ -19,4 +19,21 @@ export function keyboardHeight(from: number, to: number) {
   if (span > 40) return 150
   if (span > 26) return 190
   return 230
+}
+
+/** Staff size for lesson pictures: smaller on short screens, so the whole picture fits. */
+export const pictureSp = (vh: number) => (vh < 720 ? 13 : vh < 880 ? 16 : 20)
+
+/**
+ * Pictures narrow enough to sit beside the text on a wide screen, where they get the full height: a keyboard of up
+ * to 16 white keys (still 34 px a key in half the width), with or without a staff, and the tall grand staff.
+ */
+export function besideText(v: Visual | undefined): boolean {
+  if (!v || v.widget) return false
+  if (v.keyboard) {
+    let whites = 0
+    for (let m = noteMidi(v.keyboard.from); m <= noteMidi(v.keyboard.to); m++) if (!isBlackKey(m)) whites++
+    return whites <= 16
+  }
+  return v.staff?.clef === 'grand'
 }

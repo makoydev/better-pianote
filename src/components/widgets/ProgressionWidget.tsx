@@ -23,6 +23,7 @@ import { type Marks, Piano } from '../piano/Piano'
 import { Button, IconButton } from '../ui/Button'
 import { Segmented } from '../ui/controls'
 import { useMicChords } from '../../lib/input/mic'
+import { useFitKeyboard } from './fit'
 
 /** Plays a chord progression in a key, lighting up each chord; transpose it and play along. */
 
@@ -81,6 +82,7 @@ export function ProgressionWidget({
   const [playing, setPlaying] = useState(false)
   const [current, setCurrent] = useState(0)
   const [matched, setMatched] = useState<number[]>([])
+  const [kbRef, kb] = useFitKeyboard(150)
 
   const key = useMemo(() => safeKey(keyStr), [keyStr])
   const chords = useMemo(() => romans.map((r) => safeRoman(r, key)), [romans, key])
@@ -163,7 +165,7 @@ export function ProgressionWidget({
   const layoutGroup = useId()
   return (
     <LayoutGroup id={layoutGroup}>
-      <div className="space-y-4">
+      <div className={kb.fit ? 'flex flex-1 flex-col gap-4' : 'space-y-4'}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="font-display text-2xl font-bold leading-tight">
             In <MusicText text={keyName(key)} />
@@ -227,7 +229,9 @@ export function ProgressionWidget({
           <span className="text-sm text-ink-mute">Play along: hold the lit-up chord on your keyboard to tick it off.</span>
         </div>
 
-        <Piano from={36} to={84} marks={marks} labels="c" height={150} middleC={false} />
+        <div ref={kbRef} className={kb.className} style={kb.style}>
+          <Piano from={36} to={84} marks={marks} labels="c" height={kb.piano} middleC={false} />
+        </div>
 
         <div>
           <div className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Same progression, another key</div>

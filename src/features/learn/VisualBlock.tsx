@@ -4,20 +4,24 @@ import { useState } from 'react'
 import { type Marks, Piano } from '../../components/piano/Piano'
 import { Staff } from '../../components/staff/Staff'
 import { Paper } from '../../components/ui/Card'
+import { FitContext, useFitKeyboard } from '../../components/widgets/fit'
 import { WidgetView } from '../../components/widgets/WidgetView'
+import { useViewportHeight } from '../../hooks/useViewport'
 import type { AudioClip, KeyboardVisual, StaffVisual, Visual } from '../../content/types'
-import { keyboardHeight, noteMidi, pianoProps } from './visual'
+import { keyboardHeight, noteMidi, pianoProps, pictureSp } from './visual'
 import { playSequence } from '../../lib/audio/play'
 import { type DemoTiming, useDemoLights } from './demoLights'
 
 export function KeyboardView({ k, sparks = true, lit = [] }: { k: KeyboardVisual; sparks?: boolean; lit?: number[] }) {
   const p = pianoProps(k)
+  // Full height for its size, or less in a lesson step that's short of room.
+  const [kbRef, kb] = useFitKeyboard(keyboardHeight(p.from, p.to), { below: 24, room: 40 })
   // Keys a listen clip is playing right now.
   const marks: Marks = { ...p.marks }
   for (const m of lit) if (m >= p.from && m <= p.to) marks[m] = 'chord'
   return (
-    <div className="pt-10">
-      <Piano {...p} marks={marks} sparks={sparks} sparkHeight={120} height={keyboardHeight(p.from, p.to)} />
+    <div ref={kbRef} className={kb.className} style={kb.style}>
+      <Piano {...p} marks={marks} sparks={sparks} sparkHeight={120} height={kb.piano} />
     </div>
   )
 }
@@ -73,15 +77,21 @@ export function AudioButtons({ clips, onPlay }: { clips: AudioClip[]; onPlay?: (
 /**
  * Everything a lesson step can show: widget, staff, keyboard and listen buttons. A listen clip lights its keys on
  * the keyboard as they sound, unless `lights` is off (a quiz, where that would give the answer away).
+ *
+ * `fit`: fill the space the step leaves (the parent is a flex column), shrinking keyboards to fit; `center` sets the
+ * picture in the middle of that space (beside the text) instead of at the top.
  */
-export function VisualBlock({ v, lights = true }: { v: Visual; lights?: boolean }) {
+export function VisualBlock({ v, lights = true, fit = false, center = false }: { v: Visual; lights?: boolean; fit?: boolean; center?: boolean }) {
   const demo = useDemoLights()
+  const vh = useViewportHeight()
   return (
-    <div className="space-y-5">
-      {v.widget && <WidgetView widget={v.widget} />}
-      {v.staff && <StaffView s={v.staff} />}
-      {v.audio && <AudioButtons clips={v.audio} onPlay={lights && v.keyboard ? demo.show : undefined} />}
-      {v.keyboard && <KeyboardView k={v.keyboard} lit={demo.lit} />}
-    </div>
+    <FitContext value={fit}>
+      <div className={fit ? `flex flex-1 flex-col gap-5 ${center ? 'justify-center' : ''}` : 'space-y-5'}>
+        {v.widget && <WidgetView widget={v.widget} />}
+        {v.staff && <StaffView s={v.staff} sp={fit ? pictureSp(vh) : 20} />}
+        {v.audio && <AudioButtons clips={v.audio} onPlay={lights && v.keyboard ? demo.show : undefined} />}
+        {v.keyboard && <KeyboardView k={v.keyboard} lit={demo.lit} />}
+      </div>
+    </FitContext>
   )
 }

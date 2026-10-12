@@ -9,6 +9,7 @@ import { MusicText } from '../MusicText'
 import { type Marks, Piano } from '../piano/Piano'
 import { Staff } from '../staff/Staff'
 import { Button } from '../ui/Button'
+import { useFitKeyboard, useShortScreen } from './fit'
 
 /** Builds a scale one step at a time from its whole/half-step recipe. */
 
@@ -25,6 +26,9 @@ export function StepPattern({ tonic, scale }: { tonic: string; scale: string }) 
   const [bad, setBad] = useState<number | null>(null)
   const timers = useRef<number[]>([])
   const done = shown >= notes.length
+  const [kbRef, kb] = useFitKeyboard(170, { below: 24 })
+  // In a lesson on a short screen the staff gives up a little room so the keyboard stays in view.
+  const short = useShortScreen()
 
   const clearTimers = () => {
     timers.current.forEach((t) => window.clearTimeout(t))
@@ -77,7 +81,7 @@ export function StepPattern({ tonic, scale }: { tonic: string; scale: string }) 
   const label = `${pitchName(tonicNote)} ${type.name.toLowerCase()}`
 
   return (
-    <div className="space-y-4">
+    <div className={kb.fit ? 'flex flex-1 flex-col gap-4' : 'space-y-4'}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 className="font-display text-3xl font-bold capitalize leading-tight">
@@ -151,12 +155,14 @@ export function StepPattern({ tonic, scale }: { tonic: string; scale: string }) 
               : // Not reached yet: a faint natural note, so the sharp or flat appears only when the recipe needs it.
                 { key: `${start}-${i}-g`, notes: [{ ...n, acc: 0 }], dur: 'q' as const, state: 'ghost' as const },
           )}
-          sp={15}
+          sp={kb.fit && short ? 12 : 15}
           minSlot={3.6}
         />
       </div>
 
-      <Piano from={lo} to={hi + 1} marks={marks} labels="marked" height={170} />
+      <div ref={kbRef} className={kb.className} style={kb.style}>
+        <Piano from={lo} to={hi + 1} marks={marks} labels="marked" height={kb.piano} />
+      </div>
 
       <div>
         <div className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Same recipe, another start note</div>

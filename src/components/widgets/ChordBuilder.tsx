@@ -26,6 +26,7 @@ import { Staff } from '../staff/Staff'
 import { Button } from '../ui/Button'
 import { Segmented } from '../ui/controls'
 import { useMicChords } from '../../lib/input/mic'
+import { useFitKeyboard } from './fit'
 
 /** Choose a root and a chord quality and see/hear the chord, or hold a chord on your keyboard to name it. */
 
@@ -57,6 +58,7 @@ export function ChordBuilder({ root = 'C', quality = 'maj' }: { root?: string; q
   })
   const [inversion, setInversion] = useState(0)
   const [heard, setHeard] = useState<string | null>(null)
+  const [kbRef, kb] = useFitKeyboard(170, { below: 24 })
 
   const type = CHORD_TYPE[typeId]
   const chord: Chord = useMemo(() => ({ root: spellRoot(rootPc, type), type }), [rootPc, type])
@@ -111,7 +113,7 @@ export function ChordBuilder({ root = 'C', quality = 'maj' }: { root?: string; q
   const layoutGroup = useId()
   return (
     <LayoutGroup id={layoutGroup}>
-      <div className="space-y-4">
+      <div className={kb.fit ? 'flex flex-1 flex-col gap-4' : 'space-y-4'}>
         <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-start">
           <div className="space-y-2.5">
             <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Root">
@@ -215,7 +217,9 @@ export function ChordBuilder({ root = 'C', quality = 'maj' }: { root?: string; q
             <span>Hold any chord on your keyboard and it shows up here.</span>
           )}
         </div>
-        <Piano from={48} to={84} marks={marks} fingers={fingers} labels="marked" height={170} />
+        <div ref={kbRef} className={kb.className} style={kb.style}>
+          <Piano from={48} to={84} marks={marks} fingers={fingers} labels="marked" height={kb.piano} />
+        </div>
       </div>
     </LayoutGroup>
   )

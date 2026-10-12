@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { mod } from '../../lib/theory'
 import { type Marks, Piano } from '../piano/Piano'
 import { Chips } from '../ui/controls'
+import { useFitKeyboard } from './fit'
 
 type Mode = 'twos' | 'threes' | 'cs' | 'middle'
 
@@ -15,6 +16,7 @@ const MODES: { value: Mode; label: string }[] = [
 /** The whole 61-key CT-S1 (C2–C7), with the patterns that help you find your way. */
 export function KeyboardMap() {
   const [mode, setMode] = useState<Mode>('twos')
+  const [kbRef, kb] = useFitKeyboard(170, { below: 24, room: 64 })
   const marks: Marks = {}
   for (let m = 36; m <= 96; m++) {
     const pc = mod(m, 12)
@@ -24,13 +26,13 @@ export function KeyboardMap() {
   }
   if (mode === 'middle') marks[60] = 'root'
   return (
-    <div className="glass rounded-3xl p-4 sm:p-5">
+    <div className={`glass rounded-3xl p-4 sm:p-5 ${kb.fit ? 'flex flex-1 flex-col' : ''}`}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Chips value={mode} options={MODES} onChange={setMode} />
         <span className="text-sm font-bold text-ink-mute">61 keys · 36 white · 25 black · C2 to C7</span>
       </div>
-      <div className="pt-16">
-        <Piano from={36} to={96} marks={marks} labels="c" octaveLabels height={170} sparks sparkHeight={80} minKeyWidth={22} />
+      <div ref={kbRef} className={kb.className} style={kb.style}>
+        <Piano from={36} to={96} marks={marks} labels="c" octaveLabels height={kb.piano} sparks sparkHeight={80} minKeyWidth={22} />
       </div>
     </div>
   )
