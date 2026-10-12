@@ -1,4 +1,4 @@
-import { Eraser, Hand, Music, Play, Waves } from 'lucide-react'
+import { Compass, Eraser, Hand, Music, Play, Waves } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { MusicText } from '../../components/MusicText'
@@ -23,6 +23,8 @@ import {
   detectChord,
   fromMidi,
   intervalBetween,
+  keyName,
+  keysWithChord,
   noteName,
   pcOf,
   pitchName,
@@ -32,6 +34,7 @@ import { heldMidis, useLive } from '../../state/live'
 import { usePref } from '../../state/prefs'
 import { CHORD_GROUPS, PC_NAMES, chordFormula, lhFingers, lhVoicing, rhFingers, rhVoicing, spellVoicing } from './chordTools'
 import { GuitarCard } from './GuitarCard'
+import { openCircle } from './links'
 import { OctavePicker } from './OctavePicker'
 import { useMicChords } from '../../lib/input/mic'
 
@@ -347,11 +350,49 @@ export function ChordExplorer() {
 
           <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
             <GuitarCard chord={chord} />
+            <KeysWithChord chord={chord} />
             <LiveName picked={build ? picked : []} building={build} onExplore={choose} onClear={() => setPicked([])} />
           </div>
         </section>
       </main>
     </div>
+  )
+}
+
+/** The keys this chord belongs to, with its numeral in each; tap one to see it on the circle of fifths. */
+function KeysWithChord({ chord }: { chord: Chord }) {
+  const keys = useMemo(() => keysWithChord(chord), [chord])
+  return (
+    <Card>
+      <h3 className="mb-3 flex items-center gap-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">
+        <Compass size={18} /> Keys with this chord
+      </h3>
+      {keys.length ? (
+        <div className="flex flex-wrap gap-2">
+          {keys.map((k) => (
+            <motion.button
+              key={keyName(k.key)}
+              type="button"
+              whileTap={{ scale: 0.94 }}
+              onClick={() => openCircle(k.key)}
+              aria-label={`${k.roman} in ${keyName(k.key)}: open it on the circle of fifths`}
+              className="flex min-h-11 min-w-[4.5rem] flex-col items-center justify-center rounded-2xl border border-white/10 bg-night-750 px-3 py-1 transition-colors hover:border-gold/50"
+            >
+              <span className="font-display text-lg font-bold leading-tight text-gold">
+                <MusicText text={k.roman} />
+              </span>
+              <span className="text-xs font-bold text-ink-soft">
+                in <MusicText text={keyName(k.key)} />
+              </span>
+            </motion.button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-ink-mute">
+          No key on the circle has all of its notes, spelled like this. Chords like this one come from harmonic minor (the minor scale with a raised 7th).
+        </p>
+      )}
+    </Card>
   )
 }
 

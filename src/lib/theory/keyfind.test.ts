@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type Chord, type Key, chordSymbol, diatonicChords, keyName, midi, parseChord, parseKey } from './index'
+import { CHORD_TYPES, type Chord, type Key, chordSymbol, diatonicChords, keyName, midi, parseChord, parseKey, spellRoot } from './index'
 import { findKey, keysWithChord, nextChords, rankKeys } from './keyfind'
 
 const chords = (s: string) => s.split(' ').map(parseChord)
@@ -117,8 +117,20 @@ describe('keys with a chord', () => {
     expect(keysWithChord(parseChord('Bbm')).find((k) => k.roman === 'iii')?.index).toBe(6)
   })
 
-  it('finds nothing for chords that need harmonic minor', () => {
+  it('finds nothing only for chords that come from harmonic minor', () => {
     expect(keys('Caug')).toEqual([])
     expect(keys('Cm(maj7)')).toEqual([])
+    // Spelled C E♭ G♭ B𝄫, Cdim7 is vii°7 of D♭ minor, which isn't on the circle (C♯ minor's is B♯dim7).
+    expect(keys('Cdim7')).toEqual([])
+    expect(keys('G#dim7')).toEqual(['vii°7 in A minor'])
+    // The Chord Explorer says so when the list is empty: augmented (III+), minor-major 7th (i(maj7)) and
+    // diminished 7th (vii°7) chords are harmonic minor's.
+    for (const type of CHORD_TYPES) {
+      for (let pc = 0; pc < 12; pc++) {
+        const empty = keysWithChord({ root: spellRoot(pc, type), type }).length === 0
+        if (empty) expect(['aug', 'mMaj7', 'dim7'], `${pc} ${type.id}`).toContain(type.id)
+        if (type.id === 'aug' || type.id === 'mMaj7') expect(empty).toBe(true)
+      }
+    }
   })
 })

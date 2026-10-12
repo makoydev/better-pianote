@@ -1,12 +1,14 @@
-import { Compass, Lightbulb } from 'lucide-react'
+import { Compass, Disc3, Lightbulb, Piano as PianoIcon, Waves } from 'lucide-react'
 import { MusicText } from '../../components/MusicText'
 import { TopBar } from '../../components/layout/TopBar'
 import { type KeyMark, Piano } from '../../components/piano/Piano'
+import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Segmented, Toggle } from '../../components/ui/controls'
 import { CircleOfFifthsWheel, KeyDetails } from '../../components/widgets/CircleOfFifthsWheel'
-import { CIRCLE, type Mode, keyScale, midiOf, pcOf, pitchName } from '../../lib/theory'
+import { CIRCLE, type Key, type Mode, keyScale, midiOf, pcOf, pitchName } from '../../lib/theory'
 import { usePref } from '../../state/prefs'
+import { openFreePlay, openJamInKey, openScale } from './links'
 
 const POSITIONS = CIRCLE.map((_, i) => i)
 
@@ -15,7 +17,8 @@ export function CircleOfFifths() {
   const [mode, setMode] = usePref<Mode>('circle:mode', 'major', ['major', 'minor'])
   const [spin, setSpin] = usePref('circle:spin', true)
   const tonic = mode === 'major' ? CIRCLE[index].major : CIRCLE[index].minor
-  const scale = keyScale({ tonic, mode })
+  const key: Key = { tonic, mode }
+  const scale = keyScale(key)
 
   const marks: Record<number, KeyMark> = {}
   let prev = 59
@@ -88,6 +91,18 @@ export function CircleOfFifths() {
         <section className="flex min-w-0 flex-col gap-5">
           <Card>
             <KeyDetails index={index} mode={mode} />
+            {/* Take the key into the other tools. */}
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-white/8 pt-4">
+              <Button size="md" variant="secondary" icon={Waves} onClick={() => openScale(key)}>
+                Practise this scale
+              </Button>
+              <Button size="md" variant="secondary" icon={Disc3} onClick={() => openJamInKey(key)}>
+                Jam in this key
+              </Button>
+              <Button size="md" variant="secondary" icon={PianoIcon} onClick={() => openFreePlay(key)}>
+                Free Play in this key
+              </Button>
+            </div>
           </Card>
           <Card className="pt-4">
             <div className="mb-3 text-sm font-extrabold uppercase tracking-wider text-ink-mute">
