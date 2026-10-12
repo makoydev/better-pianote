@@ -27,7 +27,11 @@ export function useFitKeyboard(ideal: number, { min = 100, below = 0, room = 0 }
   // At least a little air between the keys and whatever is above them.
   const air = Math.min(room, 12)
   const piano = fit && height > 0 ? Math.round(Math.max(min, Math.min(ideal, height - below - air))) : ideal
-  const style: CSSProperties = fit ? { flex: '1 1 0%', minHeight: min + below + air, maxHeight: ideal + below + room } : { paddingTop: room }
+  // `contain: size` keeps the keyboard out of the area's own size, so when a step is too tall the area drops to
+  // `min` (and the keyboard with it) instead of keeping whatever height the keyboard had.
+  const style: CSSProperties = fit
+    ? { flex: '1 1 0%', minHeight: min + below + air, maxHeight: ideal + below + room, contain: 'size' }
+    : { paddingTop: room }
   return [ref, { fit, piano, style, className: fit ? 'flex flex-col justify-end' : '' }] as const
 }
 
