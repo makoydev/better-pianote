@@ -216,13 +216,16 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 
 ## Free Play & Explore
 
-- [ ] **58. Free Play:** keep the last chord on screen after you let go (reproduced), name pedalled and broken chords,
+- [x] **58. Free Play:** keep the last chord on screen after you let go (reproduced), name pedalled and broken chords,
   a chord chart that scrolls to the newest chord, survives leaving and lets you remove one. `M`
+  *Done:* the last chord stays on screen, faded, with its notes faded on the staff; pedalled and broken chords are named (River Flows' A–E–A–C♯ reads A); the chord chart survives leaving, scrolls to the newest chord, and has tap to hear, × to remove, Undo, Play all, Copy chart and Loop in Jam (7cb4820, 3f50c42). A chord is recorded once however it's spelled (4e3f0f5). Checked: F♯m D A E twice reads vi IV I V in A major, and block chords played quickly no longer add up to Dmaj9 (fixed in the commit that ticks this).
 - [ ] **59. "Save that!"**: keep the last couple of minutes so a good idea isn't lost. `M–L`
-- [ ] **60. Better key detection** (melody notes too, top two guesses, one-tap lock), the key's notes on the keyboard,
+- [x] **60. Better key detection** (melody notes too, top two guesses, one-tap lock), the key's notes on the keyboard,
   "try next" chord suggestions. `M`
-- [ ] **61. Link the tools:** Circle → practise this scale / jam in this key; Chord Explorer → keys containing this
+  *Done:* the key is found from melody and chords (how long notes sound, and this visit's chords only), with the runner-up shown ("A major · or F♯ minor"), a one-tap lock, Show key dots on the keyboard, and Try next chords with numerals (9f8bc59, ffd251d, 38ccbd5). Chords are spelled for the key (7767b4d). Checked in the browser.
+- [x] **61. Link the tools:** Circle → practise this scale / jam in this key; Chord Explorer → keys containing this
   chord; Free Play chord → explore it. `M`
+  *Done:* the Circle of Fifths offers Practise this scale, Jam in this key and Free Play in this key; the Chord Explorer lists the keys a chord belongs to (F♯m: vi in A, ii in E, iii in D, i in F♯ minor, iv in C♯ minor, v in B minor); Free Play has Explore it and Loop in Jam (0fd5547, 3f50c42). Checked: Loop in Jam opens vi–IV–I–V in A.
 - [x] **62. Progression Jam:** save progressions, replace/reorder chords in place, more chords (I7, sus4, slash chords),
   mute the band's chords, 3/4 and 6/8, tick off chords as you play. `M`
   *Done:* Jam: more chips (I7, IV7, sus4, I/3, V/3, II, III) with correct slash spellings and chord-tone bass patterns; tap a card to replace or move it (◀ ▶), step-by-step Undo and an Undo banner when a preset would replace yours; save, load and delete your own progressions; Bass / Chords / Drums toggles; Waltz 3/4, Ballad 6/8 and 2-bar chords; play-along ✓ per chord with an on-the-beat check and a score per loop. Checked: the new chips, and Now/Next with the keyboard fully visible while playing.
@@ -230,8 +233,9 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   *Done:* the metronome's clock moved into `metronomeEngine.ts`, so it keeps clicking when you leave the page; a chip in every header shows the beat and BPM, opens the Metronome and stops it (`MetronomeMini.tsx`). It stops itself in Rhythm Tap and the Jam, which keep their own time. A speed trainer adds +2/4/6/8 BPM every 2/4/8 bars up to a target (remembered). Checked: started on the Metronome page, chip on Scale Explorer, stopped from the chip.
 - [x] **64. Scale practice in time**, over two octaves, hands together. `M`
   *Done:* Scale Explorer practises one or two octaves (scale-book fingerings, tested for all 12 majors and the minors), right, left or both hands on the grand staff, and an optional in-time run with count-in and click that grades every note early/late like Rhythm Tap and saves your best clean tempo per scale.
-- [ ] **65. Guitar shapes for every chord** (20 of 48 basic chords have one; F♯m from River Flows is missing), capo
+- [x] **65. Guitar shapes for every chord** (20 of 48 basic chords have one; F♯m from River Flows is missing), capo
   view. `M`
+  *Done:* every chord type gets guitar shapes: the open chord, then E- and A-shape barres with the fret shown, and capo equivalents ("= Em shape, capo 2"), in the Chord Explorer and behind Free Play's Guitar switch (d95f57c, ffd251d). Tests check every shape note by note. Checked: F♯m shows 244222.
 - [x] **66. Free Play and the tools respect the reading settings** (note names under the staff, key labels), and Free
   Play's on-screen keys are big enough to tap on iPad. *Where:* `play/FreePlay.tsx`, `ChordExplorer.tsx`,
   `ScaleExplorer.tsx`, `CircleOfFifthsWheel.tsx`. `S`

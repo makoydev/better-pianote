@@ -475,8 +475,11 @@ export function FreePlay() {
           </div>
 
           {/* On the staff (the last chord, faded, once you let go) */}
-          <Paper className={`flex items-center transition-opacity ${!sound.all.length && last ? 'opacity-60' : ''}`}>
-            <Staff clef="grand" items={staffItems} sp={short ? 13 : 16} minSlot={6} reserveAbove={reserve} reserveBelow={reserve} animate={false} />
+          <Paper className="flex items-center">
+            {/* The music fades, not the paper: a grey card would look switched off. */}
+            <div className={`w-full transition-opacity ${!sound.all.length && last ? 'opacity-45' : ''}`}>
+              <Staff clef="grand" items={staffItems} sp={short ? 13 : 16} minSlot={6} reserveAbove={reserve} reserveBelow={reserve} animate={false} />
+            </div>
           </Paper>
         </div>
 

@@ -56,6 +56,31 @@ describe('what is sounding', () => {
     expect(chordAt(s, t)).toBe('F♯m')
   })
 
+  it('reads block chords in a row as themselves once you let go (D then A is not Dmaj9)', () => {
+    const s = new Sounding()
+    const block = (notes: string[], t: number, hold = 800) => {
+      for (const n of notes) s.noteOn(midi(n), t)
+      for (const n of notes) s.noteOff(midi(n), t + hold)
+      return t + hold + 1
+    }
+    block(['D4', 'F#4', 'A4'], 0)
+    let t = block(['A4', 'C#5', 'E5'], 1150)
+    expect(s.notes(t)).toEqual(['A4', 'C#5', 'E5'].map(midi))
+    expect(chordAt(s, t)).toBe('A')
+    // Legato, keeping the A both chords share: the D chord's other keys come up just after C♯ and E go down.
+    for (const n of ['D4', 'F#4', 'A4']) s.noteOn(midi(n), 3000)
+    s.noteOn(midi('C#5'), 3820)
+    s.noteOn(midi('E5'), 3830)
+    s.noteOff(midi('D4'), 3880)
+    s.noteOff(midi('F#4'), 3890)
+    for (const n of ['A4', 'C#5', 'E5']) s.noteOff(midi(n), 4500)
+    expect(chordAt(s, 4501)).toBe('A')
+    // Letting go of the 7th of a held Cmaj7 leaves C: the B has stopped sounding.
+    for (const n of ['C4', 'E4', 'G4', 'B4']) s.noteOn(midi(n), 6000)
+    s.noteOff(midi('B4'), 6500)
+    expect(chordAt(s, 6510)).toBe('C')
+  })
+
   it('names a broken chord without the pedal, until you stop playing', () => {
     const s = new Sounding()
     const t = broken(s, ['C3', 'E3', 'G3'], 0)

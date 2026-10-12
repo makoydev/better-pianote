@@ -53,12 +53,24 @@ export class Sounding {
     this.group.push({ midi, on: time, off: null })
     this.held.set(midi, time)
     this.lastOn = time
+    this.settle()
   }
 
   noteOff(midi: number, time: number) {
     this.held.delete(midi)
     const n = this.group.find((x) => x.midi === midi)
     if (n) n.off = time
+    this.settle()
+  }
+
+  /**
+   * Without the pedal, keys held down that make a chord on their own (three or more note names) are the chord:
+   * notes let go of before them have stopped sounding, so they don't add to it. Block chords D then A mustn't read
+   * as Dmaj9 once you let go. (A broken chord holds a key or two at a time, so its notes still add up.)
+   */
+  private settle() {
+    if (this.pedal || new Set([...this.held.keys()].map((m) => mod(m, 12))).size < 3) return
+    this.group = this.group.filter((n) => this.held.has(n.midi))
   }
 
   setPedal(down: boolean) {
