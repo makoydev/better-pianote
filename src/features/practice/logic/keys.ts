@@ -1,5 +1,5 @@
 import { type Key, keyId, keyName, keyShort, keySignature, majorKey, mod, parseKey, pcOf, relativeKey } from '../../../lib/theory'
-import { weightedPick } from '../shared/weak'
+import { drillRound, spread, weightedPick, weightedRound } from '../shared/weak'
 import { shuffle } from './chords'
 
 /** Key Signature Quiz question generators. */
@@ -61,8 +61,20 @@ export function levelKeys(level: KeyLevel): QuizKey[] {
 export const keyItemName = (id: string) => keyShort(parseKey(id))
 
 /**
- * A question about a key: the one `ask` names (a key id), or one picked by `weight` (weak spots come up more
- * often), never on the signature `prev` just showed.
+ * The keys a round asks, in order (ids): every key once while there's room, then more of the ones `weight` says
+ * you're weak on; a drill is mostly the keys you missed. Never the same signature twice in a row: a minor key and its
+ * relative major share one, and the answer's explanation names the other.
+ */
+export function keyPlan(level: KeyLevel, n: number, weight: (k: QuizKey) => number, missed?: string[], rng: () => number = Math.random): string[] {
+  const keys = levelKeys(level)
+  const drilled = missed?.flatMap((id) => keys.find((k) => k.id === id) ?? [])
+  const picks = drilled ? drillRound(drilled, keys, n, weight, (k) => k.id, rng) : weightedRound(keys, n, weight, (k) => k.id, rng)
+  return spread(picks, (k) => String(k.fifths), rng).map((k) => k.id)
+}
+
+/**
+ * A question about a key: the one `ask` names (a key id, from keyPlan), or one picked by `weight` (weak spots come up
+ * more often) that isn't on the signature `prev` just showed.
  */
 export function makeKeyQuestion(
   level: KeyLevel,
@@ -90,14 +102,17 @@ export function makeKeyQuestion(
 
 /**
  * The option a keynote you play names, by pitch: any octave, and F♯ and G♭ are the same key. When two options share
- * the keynote (F♯ and G♭ major, with 6 or 7 sharps or flats), it's the right one if either is, otherwise the first.
+ * the keynote (F♯ and G♭ major, with 6 or 7 sharps or flats), it's the right one if either is; otherwise it's a wrong
+ * answer, counted as the one nearer the answer on the circle (B rather than C♭ when the answer is F♯).
  * Null when it's none of the options.
  */
 export function playedOption(q: KeyQuestion, midi: number): number | null {
   const minor = q.key.mode === 'minor'
   const hits = q.options.flatMap((o, i) => (pcOf(keyFor(o.fifths, minor).tonic) === mod(midi, 12) ? [i] : []))
   if (!hits.length) return null
-  return hits.includes(q.answer) ? q.answer : hits[0]
+  if (hits.includes(q.answer)) return q.answer
+  const away = (i: number) => Math.abs(q.options[i].fifths - q.fifths)
+  return hits.reduce((a, b) => (away(b) < away(a) ? b : a))
 }
 
 export function describeSignature(fifths: number): string {

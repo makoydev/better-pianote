@@ -31,6 +31,7 @@ import {
   isCorrect,
   keyHint,
   keyboardRange,
+  levelDetail,
   makeRound,
   multiplier,
   nameMatches,
@@ -74,7 +75,6 @@ interface Result {
 
 const ROUND_MS = 60_000
 const SP = 20
-const LEVEL_INFO = LEVELS.map((l) => ({ id: String(l.level), name: l.title, description: l.detail }))
 
 export function NoteRush() {
   const [phase, setPhase] = useState<Phase>('setup')
@@ -115,7 +115,7 @@ export function NoteRush() {
               blurb="60 seconds. Read each note and play it, or name it. Streaks build your multiplier."
               gameId={`note-rush:${rushGroup(clef, key)}`}
               metric="score"
-              levels={LEVEL_INFO}
+              levels={LEVELS.map((l) => ({ id: String(l.level), name: l.title, description: levelDetail(l.level, key) }))}
               level={String(level)}
               onLevel={(id) => setLevel(Number(id) as RushLevel)}
               onStart={() => start()}

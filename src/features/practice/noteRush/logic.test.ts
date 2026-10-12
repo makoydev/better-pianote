@@ -8,6 +8,7 @@ import {
   isCorrect,
   keyHint,
   keyboardRange,
+  levelDetail,
   makeRound,
   multiplier,
   nameMatches,
@@ -188,6 +189,15 @@ describe('note rush key signatures', () => {
     expect(rushGroup('treble', 0)).toBe('treble')
     expect(rushGroup('treble', 1)).toBe('treble:G')
     expect(rushGroup('bass', -2)).toBe('bass:Bb')
+  })
+
+  it('describes levels as they are in the key', () => {
+    expect(levelDetail(1, 0)).toBe('Middle C, treble G, bass F and friends')
+    // In D major there's no middle C to find, so the level doesn't promise one.
+    expect(levelDetail(1, 2)).toBe('The landmark lines and spaces, in D major')
+    expect(levelDetail(2, 2)).toBe('The five notes from C up, in D major: C♯ D E F♯ G')
+    expect(levelDetail(2, -2)).toBe('The five notes from C up, in B♭ major: C D E♭ F G')
+    expect(levelDetail(4, 1)).toBe('Notes above and below the staff, in G major')
   })
 
   it('says what the key signature does', () => {

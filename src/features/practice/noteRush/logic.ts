@@ -151,6 +151,22 @@ export function rushGroup(clef: RushClef, key: number): string {
   return key ? `${clef}:${keyId(majorKey(key))}` : clef
 }
 
+/**
+ * A level's description for the setup. With a key signature the notes follow it, so it says so (Landmarks in
+ * D major has C♯ where middle C would be).
+ */
+export function levelDetail(level: RushLevel, key = 0): string {
+  const detail = LEVELS[level - 1].detail
+  if (!key) return detail
+  const inKey = keyName(majorKey(key))
+  if (level === 1) return `The landmark lines and spaces, in ${inKey}`
+  if (level === 2) {
+    const five = rushChoices('treble', 2, key).map((c) => prettyName(c.name).replace(/\d+$/, ''))
+    return `The five notes from C up, in ${inKey}: ${five.join(' ')}`
+  }
+  return `${detail}, in ${inKey}`
+}
+
 /** "G major: every F is F♯." */
 export function keyHint(key: number): string {
   const sig = keySignature(key)

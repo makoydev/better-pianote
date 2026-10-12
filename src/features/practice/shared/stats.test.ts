@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { type RoundRecord, itemStats, trendText, usePracticeStats, weigher } from './stats'
+import { type RoundRecord, itemStats, resetPracticeStats, trendText, usePracticeStats, weigher } from './stats'
 import { weakest } from './weak'
 
 describe('practice stats', () => {
-  beforeEach(() => usePracticeStats.setState({ items: {}, history: {} }))
+  beforeEach(resetPracticeStats)
 
   it('keeps each game’s items apart and weighs the weak ones up', () => {
     const { recordAnswers } = usePracticeStats.getState()
@@ -27,6 +27,13 @@ describe('practice stats', () => {
   it('ignores an empty round', () => {
     usePracticeStats.getState().recordAnswers('ear', [])
     expect(usePracticeStats.getState().items).toEqual({})
+  })
+
+  it('forgets everything on a reset', () => {
+    usePracticeStats.getState().recordAnswers('ear', [{ id: 'quality:min', missed: true }])
+    usePracticeStats.getState().addRound('ear:quality-mm', { at: 1, score: 500, accuracy: 50 })
+    resetPracticeStats()
+    expect(usePracticeStats.getState()).toMatchObject({ items: {}, history: {} })
   })
 })
 

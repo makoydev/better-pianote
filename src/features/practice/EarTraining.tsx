@@ -354,7 +354,7 @@ export function EarTraining() {
                         chord: false,
                         ask: `Play the top note, above ${bothNames(question.low)}, or tap an answer.`,
                         stray: `Play a note above ${bothNames(question.low)}, at most an octave higher.`,
-                        read: (notes, latest) => readPlayed(question, notes, latest, []),
+                        read: (notes, latest) => readPlayed(question, notes, latest, parts.interval.semis.map(String)),
                       }
                     : undefined
                 }
@@ -535,7 +535,10 @@ function ChoiceQuestion({
       selectedRef.current = []
       setSelected([])
       choose(r.id)
-    } else if ('stray' in r) setHeard({ text: byPlaying.stray, tone: 'info', id: `stray${notes.join('-')}` })
+    } else if ('stray' in r) {
+      const text = r.said ? `That’s ${/^[aeiou]/.test(r.said) ? 'an' : 'a'} ${r.said}: not one of these.` : byPlaying.stray
+      setHeard({ text, tone: 'info', id: `stray${latest}-${notes.join('-')}` })
+    }
     else if (byPlaying.chord) setHeard({ text: `${r.partial} of ${r.of} notes… keep going.`, tone: 'neutral', id: `part${r.partial}` })
     else setHeard({ text: 'Now the top note.', tone: 'neutral', id: 'top' })
   }

@@ -183,8 +183,11 @@ export function earItemName(id: string): string {
   return kind === 'quality' ? (QUALITY_LABEL[v] ?? v) : intervalName(Number(v))
 }
 
-/** What notes played on the keys say: an answer (an option id, or another one you played), or not yet. */
-export type Played = { id: string } | { partial: number; of: number } | { stray: true }
+/**
+ * What notes played on the keys say: an answer (an option id), not finished yet, or not one of the choices (with
+ * what it was, when that's worth saying: "minor 3rd").
+ */
+export type Played = { id: string } | { partial: number; of: number } | { stray: true; said?: string }
 
 /** The pairs a missing 5th can't tell apart: a minor chord without its 5th could be diminished, a major one augmented. */
 const SAME_THIRD: Record<string, string> = { min: 'dim', dim: 'min', maj: 'aug', aug: 'maj' }
@@ -192,8 +195,8 @@ const SAME_THIRD: Record<string, string> = { min: 'dim', dim: 'min', maj: 'aug',
 /**
  * Read what you play as an answer.
  *
- * - Intervals: the newest note, as half steps above the low note (1 to 12). The low note itself just starts you off;
- *   notes below it or more than an octave above aren't an answer.
+ * - Intervals: the newest note, as half steps above the low note, when that's one of the choices. The low note itself
+ *   just starts you off; other intervals, notes below it or more than an octave above aren't an answer.
  * - Chords: the notes sounding together, as a chord on the question's root (any octave, any order, any inversion).
  *   Through the mic a missing 5th is forgiven (see micHearsChord), unless it could then be either of two choices.
  *   A chord that's no choice at all (a diminished one when only major and minor are offered) is a slip, not an answer.
@@ -202,7 +205,8 @@ export function readPlayed(q: QualityQ | IntervalQ, notes: number[], latest: num
   if (q.kind === 'interval') {
     const d = latest - q.low
     if (d === 0) return { partial: 1, of: 2 }
-    return d >= 1 && d <= 12 ? { id: String(d) } : { stray: true }
+    if (d < 1 || d > 12) return { stray: true }
+    return options.includes(String(d)) ? { id: String(d) } : { stray: true, said: intervalName(d).toLowerCase() }
   }
   const root = fromMidi(q.root)
   const chords = options.map((id) => ({ id, chord: { root, type: CHORD_TYPE[id] } }))

@@ -48,6 +48,11 @@ export const usePracticeStats = create<PracticeStats>()(
   ),
 )
 
+/** Forget every weak spot and round history, e.g. when progress is reset. */
+export function resetPracticeStats() {
+  usePracticeStats.setState({ items: {}, history: {} })
+}
+
 const NONE: Record<string, ItemStat> = {}
 const NO_ROUNDS: RoundRecord[] = []
 

@@ -22,6 +22,7 @@ import {
   describeSignature,
   explainKey,
   keyItemName,
+  keyPlan,
   levelKeys,
   makeKeyQuestion,
   playedOption,
@@ -29,7 +30,7 @@ import {
 import { FeedbackLine, GameMain, Hud, MissList, ResultsCard, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame, remember, sfx, starsFor, store } from './shared/finish'
 import { useItemStats, usePracticeStats, weigher } from './shared/stats'
-import { type ItemAnswer, drillRound, msSince, weakest, weightedRound } from './shared/weak'
+import { type ItemAnswer, msSince, weakest } from './shared/weak'
 
 const ROUND = 10
 
@@ -63,12 +64,9 @@ export function KeyQuiz() {
   const start = (missed?: string[], lv: KeyLevel = level) => {
     store('key-quiz-mode', mode)
     store('key-quiz-level', lv.id)
-    // Every key once while there's room, then more of the ones you miss or are slow on; a drill is mostly the misses.
-    const keys = levelKeys(lv)
-    const weak = weigher('key-quiz', keys.map((k) => k.id))
-    const weight = (k: QuizKey) => k.chance * weak(k.id)
-    const drilled = missed?.flatMap((id) => keys.find((k) => k.id === id) ?? [])
-    plan.current = (drilled ? drillRound(drilled, keys, ROUND, weight, (k) => k.id) : weightedRound(keys, ROUND, weight, (k) => k.id)).map((k) => k.id)
+    // Keys you miss or are slow on come up more often; a drill is mostly the ones you just missed.
+    const weak = weigher('key-quiz', levelKeys(lv).map((k) => k.id))
+    plan.current = keyPlan(lv, ROUND, (k: QuizKey) => k.chance * weak(k.id), missed)
     setDrill(!!missed)
     tally.current = { answered: 0, clean: 0, score: 0, streak: 0, best: 0, misses: [], answers: [] }
     setQuestion(makeKeyQuestion(lv, null, Math.random, { ask: plan.current[0] }))

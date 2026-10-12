@@ -21,7 +21,7 @@ import {
   readPlayed,
   rightOption,
 } from './ear'
-import { KEY_LEVELS, describeKeyMiss, keyItemName, levelKeys, makeKeyQuestion, playedOption } from './keys'
+import { KEY_LEVELS, describeKeyMiss, keyItemName, keyPlan, levelKeys, makeKeyQuestion, playedOption } from './keys'
 import { RHYTHM_LEVELS, countLabel, makePattern, onsetBeats, patternToStaff, scoreTaps, tempoBand, timingTendency } from './rhythm'
 
 const m = (...names: string[]) => names.map(midi)
@@ -185,14 +185,21 @@ describe('ear training', () => {
   })
   it('reads a played interval from its top note', () => {
     const q: IntervalQ = { kind: 'interval', low: midi('G3'), semis: 9, harmonic: false }
+    const all = INTERVAL_LEVELS[2].semis.map(String)
     // The low note just starts you off; the top note is the answer, right or wrong.
-    expect(readPlayed(q, [], midi('G3'), [])).toEqual({ partial: 1, of: 2 })
-    expect(readPlayed(q, [], midi('E4'), [])).toEqual({ id: '9' })
-    expect(readPlayed(q, [], midi('F4'), [])).toEqual({ id: '10' })
-    expect(readPlayed(q, [], midi('G4'), [])).toEqual({ id: '12' })
+    expect(readPlayed(q, [], midi('G3'), all)).toEqual({ partial: 1, of: 2 })
+    expect(readPlayed(q, [], midi('E4'), all)).toEqual({ id: '9' })
+    expect(readPlayed(q, [], midi('F4'), all)).toEqual({ id: '10' })
+    expect(readPlayed(q, [], midi('G4'), all)).toEqual({ id: '12' })
     // Below the low note, or more than an octave above it: not an answer.
-    expect(readPlayed(q, [], midi('E3'), [])).toEqual({ stray: true })
-    expect(readPlayed(q, [], midi('E5'), [])).toEqual({ stray: true })
+    expect(readPlayed(q, [], midi('E3'), all)).toEqual({ stray: true })
+    expect(readPlayed(q, [], midi('E5'), all)).toEqual({ stray: true })
+    // An interval that isn't one of the choices is a slip, not an answer (like a chord that isn't on offer).
+    const thirds = INTERVAL_LEVELS[1].semis.map(String)
+    expect(readPlayed(q, [], midi('E4'), thirds)).toEqual({ id: '9' })
+    expect(readPlayed(q, [], midi('C4'), thirds)).toEqual({ stray: true, said: 'perfect 4th' })
+    expect(readPlayed(q, [], midi('D4'), thirds)).toEqual({ stray: true, said: 'perfect 5th' })
+    expect(readPlayed(q, [], midi('G4'), thirds)).toEqual({ stray: true, said: 'octave' })
   })
   it('reads a played chord on the root, in any voicing', () => {
     const q: QualityQ = { kind: 'quality', root: midi('C#3'), type: CHORD_TYPE.min }
@@ -286,10 +293,31 @@ describe('key quiz', () => {
     expect(playedOption(q, midi('Gb4'))).toBe(1)
     const flat = { ...q, fifths: -6, key: parseKey('Gb'), answer: 0 }
     expect(playedOption(flat, midi('F#3'))).toBe(0)
-    // Neither is right: it counts as a wrong answer (the first of the two).
+    // Neither is right: it's a wrong answer, counted as the one nearer the answer on the circle (F♯ for B major).
     const b = { ...q, fifths: 5, key: parseKey('B'), answer: 2 }
-    expect(playedOption(b, midi('F#3'))).toBe(0)
+    expect(playedOption(b, midi('F#3'))).toBe(1)
     expect(playedOption(b, midi('B2'))).toBe(2)
+    // F♯ major asked, with B and C♭ both offered: playing that key says B major.
+    const fSharp = { fifths: 6, key: parseKey('F#'), options: [{ label: 'C♭ major', fifths: -7 }, { label: 'B major', fifths: 5 }, { label: 'F♯ major', fifths: 6 }], answer: 2 }
+    expect(playedOption(fSharp, midi('B3'))).toBe(1)
+  })
+  it('never asks the same signature twice in a row', () => {
+    for (const level of KEY_LEVELS) {
+      for (let s = 1; s < 40; s++) {
+        const plan = keyPlan(level, 10, (k) => k.chance, undefined, seeded(s))
+        expect(plan).toHaveLength(10)
+        const sigs = plan.map((id) => levelKeys(level).find((k) => k.id === id)!.fifths)
+        for (let i = 1; i < sigs.length; i++) expect(sigs[i]).not.toBe(sigs[i - 1])
+      }
+    }
+    // A drill too: mostly the keys you missed, still never one signature twice running.
+    const minor = KEY_LEVELS[3]
+    for (let s = 1; s < 40; s++) {
+      const plan = keyPlan(minor, 10, (k) => k.chance, ['Am', 'Bbm'], seeded(s))
+      expect(plan.filter((id) => id === 'Am' || id === 'Bbm')).toHaveLength(6)
+      const sigs = plan.map((id) => levelKeys(minor).find((k) => k.id === id)!.fifths)
+      for (let i = 1; i < sigs.length; i++) expect(sigs[i]).not.toBe(sigs[i - 1])
+    }
   })
   it('reads a minor key’s keynote as the minor tonic', () => {
     const q = makeKeyQuestion(KEY_LEVELS[3], null, seeded(2), { ask: 'F#m' })
