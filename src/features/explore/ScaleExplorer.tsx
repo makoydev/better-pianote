@@ -4,24 +4,31 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { MusicText } from '../../components/MusicText'
 import { TopBar } from '../../components/layout/TopBar'
 import { type KeyMark, Piano } from '../../components/piano/Piano'
-import { type NoteState, Staff, type StaffItem } from '../../components/staff/Staff'
+import type { NoteState, StaffNoteSpec } from '../../components/staff/Staff'
+import { ScoreStaff } from '../../components/staff/ScoreStaff'
 import { Button } from '../../components/ui/Button'
 import { Card, Paper } from '../../components/ui/Card'
 import { Segmented } from '../../components/ui/controls'
+import { useHandsFree } from '../../hooks/useHandsFree'
 import { audio } from '../../lib/audio/engine'
 import { playSequence } from '../../lib/audio/play'
 import { noteColor } from '../../lib/colors'
+import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
 import { burst } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
-import { SCALE_TYPE, SCALE_TYPES, keyFifths, midiOf, mod, parseNote, pcOf, pitchName, scaleFingering, scaleNotes, stepPattern } from '../../lib/theory'
+import { SCALE_TYPE, SCALE_TYPES, keyFifths, midiOf, mod, parseNote, pcOf, pitchName, stepPattern } from '../../lib/theory'
 import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 import { OctavePicker } from './OctavePicker'
+import { type Hands, type Octaves, runScore, scaleRun, stepOfId } from './scales'
 
 const MAJOR_TONICS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
 const MINOR_TONICS = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B']
 const TONIC_PCS = MAJOR_TONICS.map((_, pc) => pc)
 const SCALE_IDS = SCALE_TYPES.map((s) => s.id)
+const HANDS: Hands[] = ['rh', 'lh', 'both']
+const OCTAVES: Octaves[] = [1, 2]
+const HAND_WORDS: Record<Hands, string> = { rh: 'Right hand', lh: 'Left hand', both: 'Hands together' }
 const MINORISH = new Set(['minor', 'harmonic-minor', 'melodic-minor', 'minor-pentatonic', 'blues', 'dorian'])
 const KEY_SIG_MODE: Record<string, 'major' | 'minor'> = { major: 'major', minor: 'minor', 'harmonic-minor': 'minor', 'melodic-minor': 'minor' }
 
@@ -32,13 +39,16 @@ interface Practice {
   mistakes: number
   done: boolean
   wrongAt: number | null
+  /** Keys played so far for this note: hands together need one per hand. */
+  got: number[]
 }
 
 export function ScaleExplorer() {
   const [pc, setPc] = usePref('scale:tonic', 0, TONIC_PCS)
   const [typeId, setTypeId] = usePref('scale:type', 'major', SCALE_IDS)
-  const [hand, setHand] = usePref<'rh' | 'lh'>('scale:hand', 'rh', ['rh', 'lh'])
+  const [hand, setHand] = usePref<Hands>('scale:hand', 'rh', HANDS)
   const [upDown, setUpDown] = usePref('scale:up-down', true)
+  const [octaves, setOctaves] = usePref<Octaves>('scale:octaves', 1, OCTAVES)
   const [playIdx, setPlayIdx] = useState<number | null>(null)
   const [practice, setPractice] = useState<Practice | null>(null)
   const timers = useRef<number[]>([])
@@ -46,22 +56,27 @@ export function ScaleExplorer() {
   const addXp = useProgress((s) => s.addXp)
 
   const type = SCALE_TYPE[typeId]
-  const oct = hand === 'rh' ? 4 : 3
-  const tonic = useMemo(() => parseNote(tonicName(pc, typeId) + oct), [pc, typeId, oct])
-  const notes = useMemo(() => scaleNotes(tonic, type), [tonic, type])
-  const midis = useMemo(() => notes.map(midiOf), [notes])
-  const steps = useMemo(() => stepPattern(type), [type])
-  const fingering = scaleFingering(tonic, type)
-  const fingers = fingering ? (hand === 'rh' ? fingering.rh : fingering.lh) : null
+  // The tonic's name; scaleRun picks the octaves each hand plays in.
+  const tonic = useMemo(() => parseNote(`${tonicName(pc, typeId)}4`), [pc, typeId])
+  const run = useMemo(() => scaleRun(tonic, type, hand, octaves, upDown), [tonic, type, hand, octaves, upDown])
+  const { steps, fingering } = run
+  // The scale going up, as the chips show it (both hands play the same names).
+  const upNotes = hand === 'lh' ? run.lh : run.rh
+  const pattern = useMemo(() => {
+    const one = stepPattern(type)
+    return octaves === 2 ? [...one, ...one] : one
+  }, [type, octaves])
   const keyMode = KEY_SIG_MODE[typeId]
   const keySig = keyMode ? keyFifths({ tonic, mode: keyMode }) : 0
   const title = `${pitchName(tonic)} ${type.name.toLowerCase()}`
+  const score = useMemo(() => runScore(steps, keySig), [steps, keySig])
 
-  // Up (and back down) as one list of positions into `notes`.
-  const order = useMemo(() => {
-    const up = notes.map((_, i) => i)
-    return upDown ? [...up, ...up.slice(0, -1).reverse()] : up
-  }, [notes, upDown])
+  // Enough keyboard for both hands: from the C below the lowest note, at least two octaves.
+  const allMidis = [...run.rh, ...run.lh].map(midiOf)
+  const lo = Math.min(...allMidis)
+  const hi = Math.max(...allMidis)
+  const from = lo - mod(lo, 12)
+  const to = Math.max(from + 24, hi + mod(12 - mod(hi, 12), 12))
 
   const clearTimers = () => {
     timers.current.forEach((t) => window.clearTimeout(t))
@@ -70,45 +85,56 @@ export function ScaleExplorer() {
   useEffect(() => clearTimers, [])
 
   /** Changing the scale stops any playback or practice run. */
-  const change = <T,>(set: (v: T) => void) => (v: T) => {
-    clearTimers()
-    setPlayIdx(null)
-    setPractice(null)
-    set(v)
-  }
+  const change =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      clearTimers()
+      setPlayIdx(null)
+      setPractice(null)
+      set(v)
+    }
 
   const play = () => {
     clearTimers()
     setPractice(null)
     const gap = 0.36
     playSequence(
-      order.map((i) => midis[i]),
+      steps.map((s) => [s.rh?.midi, s.lh?.midi].filter((m): m is number => m !== undefined)),
       { gap, dur: 0.6 },
     )
-    order.forEach((_, k) => timers.current.push(window.setTimeout(() => setPlayIdx(k), k * gap * 1000 + 30)))
-    timers.current.push(window.setTimeout(() => setPlayIdx(null), order.length * gap * 1000 + 400))
+    steps.forEach((_, k) => timers.current.push(window.setTimeout(() => setPlayIdx(k), k * gap * 1000 + 30)))
+    timers.current.push(window.setTimeout(() => setPlayIdx(null), steps.length * gap * 1000 + 400))
   }
 
   const startPractice = () => {
     clearTimers()
     setPlayIdx(null)
-    setPractice({ idx: 0, mistakes: 0, done: false, wrongAt: null })
+    setPractice({ idx: 0, mistakes: 0, done: false, wrongAt: null, got: [] })
   }
+  const running = !!practice && !practice.done
+  const stopPractice = () => setPractice(null)
 
   useNoteEvents((e) => {
     if (e.type !== 'on' || !practice || practice.done) return
-    const target = midis[order[practice.idx]]
-    if (mod(e.midi, 12) === mod(target, 12)) {
-      const idx = practice.idx + 1
-      if (idx >= order.length) {
-        setPractice({ ...practice, idx, done: true, wrongAt: null })
-        audio.ui('complete')
-        burst(scoreRef.current, { count: 70 })
-        addXp(practice.mistakes === 0 ? 10 : 5)
-      } else setPractice({ ...practice, idx, wrongAt: null })
-    } else {
+    const step = steps[practice.idx]
+    if (mod(e.midi, 12) !== pcOf((step.rh ?? step.lh)!.note)) {
       setPractice({ ...practice, mistakes: practice.mistakes + 1, wrongAt: e.midi })
+      return
     }
+    // Hands together need a key from each hand; the mic hears them as one note.
+    const need = hand === 'both' && e.source !== 'mic' ? 2 : 1
+    const got = practice.got.includes(e.midi) ? practice.got : [...practice.got, e.midi]
+    if (got.length < need) {
+      setPractice({ ...practice, got, wrongAt: null })
+      return
+    }
+    const idx = practice.idx + 1
+    if (idx >= steps.length) {
+      setPractice({ ...practice, idx, done: true, wrongAt: null, got: [] })
+      audio.ui('complete')
+      burst(scoreRef.current, { count: 70 })
+      addXp(practice.mistakes === 0 ? 10 : 5)
+    } else setPractice({ ...practice, idx, wrongAt: null, got: [] })
   })
 
   // Clear the red flash on a wrong key after a moment.
@@ -118,30 +144,39 @@ export function ScaleExplorer() {
     return () => window.clearTimeout(t)
   }, [practice?.wrongAt])
 
-  const current = practice && !practice.done ? order[practice.idx] : playIdx !== null ? order[playIdx] : null
+  // Space starts and stops a run (letter keys play notes on the computer keyboard, so they're left alone).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || !isPlainKey(e) || isTypingTarget(e.target) || isButtonTarget(e.target)) return
+      e.preventDefault()
+      if (running) stopPractice()
+      else startPractice()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+  // Enter, a deliberate pedal tap or the top C starts one (and starts it again after a run).
+  useHandsFree(running ? null : startPractice)
+
+  const stepIdx = running ? practice.idx : playIdx
+  const cur = stepIdx !== null ? steps[stepIdx] : null
 
   const marks: Record<number, KeyMark> = {}
-  notes.forEach((n, i) => {
-    const m = midis[i]
-    marks[m] = { kind: pcOf(n) === pcOf(tonic) ? 'root' : 'scale', label: pitchName(n) }
-  })
-  if (current !== null) marks[midis[current]] = { kind: practice ? 'target' : 'chord', label: pitchName(notes[current]) }
-  if (practice?.wrongAt != null && !(practice.wrongAt in marks)) marks[practice.wrongAt] = { kind: 'bad' }
-  else if (practice?.wrongAt != null) marks[practice.wrongAt] = { ...(marks[practice.wrongAt] as KeyMark), kind: 'bad' }
+  for (const n of [...run.rh, ...run.lh]) marks[midiOf(n)] = { kind: pcOf(n) === pcOf(tonic) ? 'root' : 'scale', label: pitchName(n) }
+  for (const h of [cur?.rh, cur?.lh]) if (h) marks[h.midi] = { kind: practice ? 'target' : 'chord', label: pitchName(h.note) }
+  if (practice?.wrongAt != null) marks[practice.wrongAt] = { ...marks[practice.wrongAt], kind: 'bad' }
 
+  // Fingers on the keys. Two hands share keys in places, so then only the note being played shows its fingers.
   const pianoFingers: Record<number, number> = {}
-  if (fingers) midis.forEach((m, i) => (pianoFingers[m] = fingers[i]))
+  if (fingering && hand !== 'both') upNotes.forEach((n, i) => (pianoFingers[midiOf(n)] = fingering[hand][i]))
+  if (fingering && hand === 'both') for (const h of [cur?.rh, cur?.lh]) if (h?.finger) pianoFingers[h.midi] = h.finger
 
-  const items: StaffItem[] = useMemo(
-    () =>
-      order.map((i, k) => {
-        let state: NoteState = 'normal'
-        if (practice) state = k < practice.idx ? 'correct' : k === practice.idx && !practice.done ? 'active' : 'normal'
-        else if (playIdx !== null) state = k === playIdx ? 'active' : 'normal'
-        return { key: `${k}`, notes: [{ note: notes[i], finger: fingers?.[i] }], dur: 'q' as const, state }
-      }),
-    [order, notes, fingers, practice, playIdx],
-  )
+  const noteState = (spec: StaffNoteSpec): NoteState | undefined => {
+    if (spec.id === undefined) return undefined
+    const k = stepOfId(spec.id)
+    if (practice) return k < practice.idx ? 'correct' : k === practice.idx && !practice.done ? 'active' : 'normal'
+    return k === playIdx ? 'active' : 'normal'
+  }
 
   return (
     <div className="min-h-dvh pb-10">
@@ -178,8 +213,21 @@ export function ScaleExplorer() {
                 value={hand}
                 onChange={change(setHand)}
                 options={[
-                  { value: 'rh', label: 'Right hand' },
-                  { value: 'lh', label: 'Left hand' },
+                  { value: 'rh', label: 'Right' },
+                  { value: 'lh', label: 'Left' },
+                  { value: 'both', label: 'Both' },
+                ]}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <h2 className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Range</h2>
+              <Segmented
+                value={octaves}
+                onChange={change(setOctaves)}
+                options={[
+                  { value: 1, label: '1 octave' },
+                  { value: 2, label: '2 octaves' },
                 ]}
                 className="w-full"
               />
@@ -214,8 +262,8 @@ export function ScaleExplorer() {
                 <Button icon={upDown ? ArrowUpDown : Play} onClick={play}>
                   Listen
                 </Button>
-                {practice && !practice.done ? (
-                  <Button variant="secondary" icon={Square} onClick={() => setPractice(null)}>
+                {running ? (
+                  <Button variant="secondary" icon={Square} onClick={stopPractice}>
                     Stop
                   </Button>
                 ) : (
@@ -227,17 +275,17 @@ export function ScaleExplorer() {
             </div>
 
             <div className="relative mt-5 flex flex-wrap items-center gap-1">
-              {notes.map((n, i) => {
+              {upNotes.map((n, i) => {
                 const c = noteColor(pcOf(n))
-                const lit = current === i
+                const lit = cur?.pos === i
                 return (
                   <div key={`${title}-${i}`} className="flex items-center gap-1">
                     {i > 0 && (
                       <span
-                        className={`rounded-lg px-1.5 py-0.5 text-xs font-extrabold ${steps[i - 1] === 'H' ? 'bg-coral/20 text-coral' : steps[i - 1] === 'W' ? 'bg-teal/15 text-teal' : 'bg-violet/20 text-violet'}`}
-                        title={steps[i - 1] === 'H' ? 'Half step' : steps[i - 1] === 'W' ? 'Whole step' : 'Step and a half'}
+                        className={`rounded-lg px-1.5 py-0.5 text-xs font-extrabold ${pattern[i - 1] === 'H' ? 'bg-coral/20 text-coral' : pattern[i - 1] === 'W' ? 'bg-teal/15 text-teal' : 'bg-violet/20 text-violet'}`}
+                        title={pattern[i - 1] === 'H' ? 'Half step' : pattern[i - 1] === 'W' ? 'Whole step' : 'Step and a half'}
                       >
-                        {steps[i - 1] === 'W+H' ? '1½' : steps[i - 1]}
+                        {pattern[i - 1] === 'W+H' ? '1½' : pattern[i - 1]}
                       </span>
                     )}
                     <motion.span
@@ -248,7 +296,13 @@ export function ScaleExplorer() {
                       style={{ color: c, borderColor: `${c}66`, background: lit ? `${c}38` : `${c}14` }}
                     >
                       <MusicText text={pitchName(n)} />
-                      {fingers && <span className="font-sans text-xs font-extrabold text-ink-mute">{fingers[i]}</span>}
+                      {fingering && hand !== 'both' && <span className="font-sans text-xs font-extrabold text-ink-mute">{fingering[hand][i]}</span>}
+                      {fingering && hand === 'both' && (
+                        <span className="flex flex-col items-center font-sans text-xs font-extrabold leading-tight text-ink-mute">
+                          <span>{fingering.rh[i]}</span>
+                          <span>{fingering.lh[i]}</span>
+                        </span>
+                      )}
                     </motion.span>
                   </div>
                 )
@@ -256,14 +310,17 @@ export function ScaleExplorer() {
             </div>
             <p className="relative mt-3 text-sm text-ink-mute">
               <b className="text-teal">W</b> = whole step (2 keys), <b className="text-coral">H</b> = half step (next key)
-              {steps.includes('W+H') && (
+              {pattern.includes('W+H') && (
                 <>
                   , <b className="text-violet">1½</b> = three half steps
                 </>
               )}
               .{' '}
-              {fingers ? (
-                <>Small numbers are {hand === 'rh' ? 'right' : 'left'}-hand fingers.</>
+              {fingering ? (
+                <>
+                  {hand === 'both' ? 'Small numbers are fingers: right hand above, left hand below.' : `Small numbers are ${hand === 'rh' ? 'right' : 'left'}-hand fingers.`}
+                  {octaves === 2 && ' Over two octaves the pattern carries on from the middle note.'}
+                </>
               ) : (
                 <>No standard fingering here: keep your thumb off the black keys and cross under after 3 or 4 notes.</>
               )}
@@ -274,7 +331,11 @@ export function ScaleExplorer() {
             <div ref={scoreRef} className="mb-3 flex min-h-11 flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm font-extrabold text-ink-mute">
                 <Hand size={18} />
-                {practice ? 'Play each lit note on your keyboard (any octave)' : `${hand === 'rh' ? 'Right' : 'Left'} hand, ${upDown ? 'up and back down' : 'going up'}`}
+                {running
+                  ? hand === 'both'
+                    ? 'Play each lit note with both hands (any octave)'
+                    : 'Play each lit note on your keyboard (any octave)'
+                  : `${HAND_WORDS[hand]}, ${upDown ? 'up and back down' : 'going up'}${octaves === 2 ? ', two octaves' : ''}`}
               </div>
               <AnimatePresence mode="wait">
                 {practice && (
@@ -296,7 +357,7 @@ export function ScaleExplorer() {
                       </>
                     ) : (
                       <span className="rounded-full bg-white/6 px-3 py-1.5 text-sm font-extrabold text-ink-soft">
-                        {practice.idx}/{order.length} · {practice.mistakes} slip{practice.mistakes === 1 ? '' : 's'}
+                        {practice.idx}/{steps.length} · {practice.mistakes} slip{practice.mistakes === 1 ? '' : 's'}
                       </span>
                     )}
                   </motion.div>
@@ -304,11 +365,11 @@ export function ScaleExplorer() {
               </AnimatePresence>
             </div>
             {/* Names only on the scale's keys, spelled for the scale: the content here, not reading help. */}
-            <Piano from={hand === 'rh' ? 60 : 48} to={hand === 'rh' ? 84 : 72} marks={marks} fingers={pianoFingers} labels="marked" sparks sparkHeight={90} height={190} octaveLabels />
+            <Piano from={from} to={to} marks={marks} fingers={pianoFingers} labels="marked" sparks sparkHeight={90} height={190} minKeyWidth={26} octaveLabels />
           </Card>
 
           <Paper>
-            <Staff clef={hand === 'rh' ? 'treble' : 'bass'} keySig={keySig} items={items} sp={18} minSlot={3.4} fingers />
+            <ScoreStaff input={score} fit sp={18} minSp={7} noteState={noteState} title={`${title}, ${HAND_WORDS[hand].toLowerCase()}`} />
             <p className="mt-1 text-center text-sm font-bold text-paper-ink/60">
               {keyMode ? (
                 <>
