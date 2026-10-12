@@ -157,7 +157,8 @@ export const GUITAR_SHAPES: Record<string, GuitarShape> = {
   A5: { frets: 'x022xx' },
 }
 
-const TUNING = [40, 45, 50, 55, 59, 64]
+/** Standard tuning, low E to high E: E2 A2 D3 G3 B3 E4. */
+export const TUNING = [40, 45, 50, 55, 59, 64]
 
 /** MIDI notes a guitar shape sounds (open strings E2 A2 D3 G3 B3 E4). */
 export function shapeMidis(frets: string): number[] {

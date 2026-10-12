@@ -1,4 +1,4 @@
-import { Eraser, Guitar, Hand, Music, Play, Sparkles, Waves } from 'lucide-react'
+import { Eraser, Hand, Music, Play, Sparkles, Waves } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { MusicText } from '../../components/MusicText'
@@ -27,8 +27,8 @@ import {
 } from '../../lib/theory'
 import { heldMidis, useLive } from '../../state/live'
 import { usePref } from '../../state/prefs'
-import { CHORD_GROUPS, GUITAR_SHAPES, PC_NAMES, chordFormula, lhFingers, lhVoicing, rhFingers, rhVoicing, spellVoicing } from './chordTools'
-import { GuitarDiagram } from './GuitarDiagram'
+import { CHORD_GROUPS, PC_NAMES, chordFormula, lhFingers, lhVoicing, rhFingers, rhVoicing, spellVoicing } from './chordTools'
+import { GuitarCard } from './GuitarCard'
 import { OctavePicker } from './OctavePicker'
 import { useMicChords } from '../../lib/input/mic'
 
@@ -59,7 +59,6 @@ export function ChordExplorer() {
   const rhNotes = useMemo(() => spellVoicing(chord, rh), [chord, rh])
   const lhNotes = useMemo(() => spellVoicing(chord, lh), [chord, lh])
   const formula = useMemo(() => chordFormula(chord), [chord])
-  const guitar = GUITAR_SHAPES[symbol]
   const bassName = pitchName(rhNotes[0])
   // With the left hand on the root, a right-hand inversion is still the plain chord.
   const shown = inv > 0 && hands === 'rh' ? `${symbol}/${bassName}` : symbol
@@ -317,27 +316,9 @@ export function ChordExplorer() {
             <Paper className="flex items-center">
               <Staff clef={hands === 'both' ? 'grand' : 'treble'} items={staffItems} sp={18} reserveAbove={3} reserveBelow={3} />
             </Paper>
-            {guitar ? (
-              <Card className="flex items-center gap-5">
-                <GuitarDiagram shape={guitar} size={128} />
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-wider text-teal">
-                    <Guitar size={18} /> On guitar
-                  </div>
-                  <p className="mt-1 text-ink-soft">
-                    Same chord as your{' '}
-                    <b className="text-ink">
-                      {guitar.barre ? 'barre' : 'open'} <MusicText text={symbol} />
-                    </b>{' '}
-                    shape. Same notes; the piano just lays them out in a line.
-                  </p>
-                </div>
-              </Card>
-            ) : (
-              live
-            )}
+            <GuitarCard chord={chord} />
           </div>
-          {guitar && live}
+          {live}
         </section>
       </main>
     </div>
