@@ -180,9 +180,9 @@ export function ProgressionWidget({
               ]}
             />
             <div className="flex items-center gap-1.5">
-              <IconButton icon={Minus} label="Slower" size={40} onClick={() => changeBpm(bpm - 5)} />
+              <IconButton icon={Minus} label="Slower" size={44} onClick={() => changeBpm(bpm - 5)} />
               <span className="w-16 text-center text-sm font-extrabold text-ink-soft">{bpm} BPM</span>
-              <IconButton icon={Plus} label="Faster" size={40} onClick={() => changeBpm(bpm + 5)} />
+              <IconButton icon={Plus} label="Faster" size={44} onClick={() => changeBpm(bpm + 5)} />
             </div>
           </div>
         </div>

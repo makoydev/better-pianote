@@ -9,7 +9,9 @@ export function ExplainStepView({ step }: { step: ExplainStep }) {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
       <div className="max-w-3xl">
-        <h2 className="font-display text-3xl font-bold leading-tight sm:text-[2.6rem]">{step.title}</h2>
+        <h2 tabIndex={-1} data-step-heading className="font-display text-3xl font-bold leading-tight outline-none sm:text-[2.6rem]">
+          {step.title}
+        </h2>
         <RichText text={step.body} className="mt-4 text-[1.2rem] leading-relaxed text-ink-soft" />
       </div>
       {step.visual && (
@@ -31,7 +33,9 @@ export function WidgetStepView({ step }: { step: WidgetStep }) {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
       <div className="max-w-3xl">
-        <h2 className="font-display text-3xl font-bold leading-tight sm:text-[2.6rem]">{step.title}</h2>
+        <h2 tabIndex={-1} data-step-heading className="font-display text-3xl font-bold leading-tight outline-none sm:text-[2.6rem]">
+          {step.title}
+        </h2>
         {step.body && <RichText text={step.body} className="mt-4 text-[1.2rem] leading-relaxed text-ink-soft" />}
       </div>
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>

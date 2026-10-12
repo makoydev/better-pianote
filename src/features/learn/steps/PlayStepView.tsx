@@ -234,7 +234,11 @@ export function PlayStepView({
     <div className="flex min-h-full flex-1 flex-col gap-4">
       <div className="text-center">
         {step.title && <div className="mb-1 text-sm font-extrabold uppercase tracking-[0.18em] text-gold">{step.title}</div>}
-        <h2 className={`mx-auto max-w-3xl font-display font-bold leading-tight ${vh < 720 ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl'}`}>
+        <h2
+          tabIndex={-1}
+          data-step-heading
+          className={`mx-auto max-w-3xl font-display font-bold leading-tight outline-none ${vh < 720 ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl'}`}
+        >
           <RichText text={step.prompt} />
         </h2>
         {step.body && <RichText text={step.body} className="mx-auto mt-2 max-w-2xl text-lg text-ink-soft" />}

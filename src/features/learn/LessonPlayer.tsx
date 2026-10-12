@@ -209,6 +209,7 @@ export function LessonPlayer({ lessonId }: { lessonId: string }) {
             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
             className="flex min-h-full flex-1 flex-col"
           >
+            <FocusHeading />
             {step.kind === 'explain' && <ExplainStepView step={step} />}
             {step.kind === 'widget' && <WidgetStepView step={step} />}
             {step.kind === 'play' && (
@@ -245,6 +246,15 @@ export function LessonPlayer({ lessonId }: { lessonId: string }) {
       </footer>
     </div>
   )
+}
+
+/** Screen readers follow along: a new step moves focus to its heading (the step views mark it data-step-heading). */
+function FocusHeading() {
+  const ref = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    ref.current?.parentElement?.querySelector<HTMLElement>('[data-step-heading]')?.focus({ preventScroll: true })
+  }, [])
+  return <span ref={ref} hidden />
 }
 
 function LessonComplete({ result, unitColor, onReplay, pedal }: { result: Result; unitColor: string; onReplay: () => void; pedal: boolean }) {

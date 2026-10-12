@@ -118,53 +118,59 @@ function Connector({ from, to, color, lit }: { from: number; to: number; color: 
 function LessonNode({ lesson, unit, offset, isCurrent }: { lesson: Lesson; unit: Unit; offset: number; isCurrent: boolean }) {
   const record = useProgress((s) => s.lessons[lesson.id])
   const done = !!record
+  const status = done ? `done, ${record.stars} of 3 stars` : isCurrent ? 'up next' : ''
   return (
-    <div className="relative flex items-center" data-current-lesson={isCurrent || undefined} style={{ transform: `translateX(calc(var(--wig) * ${offset}))` }}>
-      <motion.div initial={{ opacity: 0, scale: 0.85 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true, margin: '-40px' }} className="relative flex items-center">
-      {isCurrent && (
-        <motion.div
-          className="absolute -top-11 left-[2.6rem] z-10 -translate-x-1/2 rounded-xl px-3 py-1.5 text-sm font-extrabold text-night-900 shadow-lg"
-          style={{ background: unit.color }}
-          animate={{ y: [0, -5, 0] }}
-          transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-        >
-          {done ? 'Again?' : 'Start'}
-          <span className="absolute left-1/2 top-full -translate-x-1/2 border-x-[7px] border-t-[7px] border-x-transparent" style={{ borderTopColor: unit.color }} />
-        </motion.div>
-      )}
-      <motion.button
-        type="button"
-        onClick={() => go(`/learn/${lesson.id}`)}
-        whileHover={{ scale: 1.06 }}
-        whileTap={{ scale: 0.94 }}
-        aria-label={`${lesson.title}${done ? ' (done)' : ''}`}
-        className="relative flex size-[5.2rem] shrink-0 items-center justify-center rounded-full"
-        style={{
-          background: done ? `linear-gradient(150deg, ${unit.color}, ${unit.color}aa)` : isCurrent ? '#282752' : '#201f45',
-          boxShadow: done ? `0 7px 0 ${unit.color}66, 0 0 30px -6px ${unit.color}` : isCurrent ? `0 7px 0 #100f27, 0 0 0 4px ${unit.color}` : '0 7px 0 #100f27',
-          color: done ? '#0d0c24' : isCurrent ? unit.color : '#938fbb',
-        }}
-      >
-        {isCurrent && <span className="absolute inset-0 animate-pulse-ring rounded-full" style={{ boxShadow: `0 0 0 3px ${unit.color}` }} />}
-        <Icon name={lesson.icon} size={34} />
-        {done && (
-          <span className="absolute -right-1 -top-1 flex size-7 items-center justify-center rounded-full border-2 border-night-900 bg-good text-night-900">
-            <Check size={16} strokeWidth={3.5} />
-          </span>
-        )}
-      </motion.button>
-      </motion.div>
+    <div className="relative" data-current-lesson={isCurrent || undefined} style={{ transform: `translateX(calc(var(--wig) * ${offset}))` }}>
+      {/* One button for the circle and the text, so each lesson is a single tab stop. */}
       <button
         type="button"
         onClick={() => go(`/learn/${lesson.id}`)}
-        className="ml-4 w-[min(16rem,calc(100vw-9rem))] text-left sm:absolute sm:left-full sm:top-1/2 sm:w-64 sm:-translate-y-1/2"
+        aria-label={`${lesson.title}: ${lesson.subtitle}${status ? `. ${status}` : ''}`}
+        className="group relative flex items-center text-left outline-none"
       >
-        <div className={`text-lg font-extrabold leading-tight ${done || isCurrent ? 'text-ink' : 'text-ink-soft'}`}>{lesson.title}</div>
-        <div className="text-sm leading-snug text-ink-mute">{lesson.subtitle}</div>
-        <div className="mt-1 flex items-center gap-2 text-xs font-bold text-ink-mute">
-          <Clock size={13} /> {lesson.minutes} min
-          {record && <Stars value={record.stars} size={15} />}
-        </div>
+        <motion.span
+          initial={{ opacity: 0, scale: 0.85 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          viewport={{ once: true, margin: '-40px' }}
+          className="relative flex shrink-0 items-center"
+        >
+          {isCurrent && (
+            <motion.span
+              aria-hidden
+              className="absolute -top-11 left-[2.6rem] z-10 -translate-x-1/2 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm font-extrabold text-night-900 shadow-lg"
+              style={{ background: unit.color }}
+              animate={{ y: [0, -5, 0] }}
+              transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              {done ? 'Again?' : 'Start'}
+              <span className="absolute left-1/2 top-full -translate-x-1/2 border-x-[7px] border-t-[7px] border-x-transparent" style={{ borderTopColor: unit.color }} />
+            </motion.span>
+          )}
+          <span
+            className="relative flex size-[5.2rem] items-center justify-center rounded-full transition-transform duration-150 group-hover:scale-[1.06] group-active:scale-[0.94] group-focus-visible:outline-3 group-focus-visible:outline-offset-4 group-focus-visible:outline-gold"
+            style={{
+              background: done ? `linear-gradient(150deg, ${unit.color}, ${unit.color}aa)` : isCurrent ? '#282752' : '#201f45',
+              boxShadow: done ? `0 7px 0 ${unit.color}66, 0 0 30px -6px ${unit.color}` : isCurrent ? `0 7px 0 #100f27, 0 0 0 4px ${unit.color}` : '0 7px 0 #100f27',
+              color: done ? '#0d0c24' : isCurrent ? unit.color : '#938fbb',
+            }}
+          >
+            {isCurrent && <span className="absolute inset-0 animate-pulse-ring rounded-full" style={{ boxShadow: `0 0 0 3px ${unit.color}` }} />}
+            <Icon name={lesson.icon} size={34} />
+            {done && (
+              <span className="absolute -right-1 -top-1 flex size-7 items-center justify-center rounded-full border-2 border-night-900 bg-good text-night-900">
+                <Check size={16} strokeWidth={3.5} />
+              </span>
+            )}
+          </span>
+        </motion.span>
+        <span className="ml-4 block w-[min(16rem,calc(100vw-9rem))] sm:absolute sm:left-full sm:top-1/2 sm:w-64 sm:-translate-y-1/2">
+          <span className={`block text-lg font-extrabold leading-tight group-hover:text-ink ${done || isCurrent ? 'text-ink' : 'text-ink-soft'}`}>{lesson.title}</span>
+          <span className="block text-sm leading-snug text-ink-mute">{lesson.subtitle}</span>
+          <span className="mt-1 flex items-center gap-2 text-xs font-bold text-ink-mute">
+            <Clock size={13} /> {lesson.minutes} min
+            {record && <Stars value={record.stars} size={15} />}
+          </span>
+        </span>
       </button>
     </div>
   )

@@ -71,10 +71,13 @@ export function QuizStepView({
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  // Three options share one row (a pair plus an orphan looks unfinished); long ones stack instead.
+  const cols = step.options.length === 3 ? (step.options.some((o) => o.length > 22) ? '' : 'sm:grid-cols-3') : 'sm:grid-cols-2'
+
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <div className="text-center">
-        <h2 className="font-display text-3xl font-bold leading-tight sm:text-4xl">
+        <h2 tabIndex={-1} data-step-heading className="font-display text-3xl font-bold leading-tight outline-none sm:text-4xl">
           <RichText text={step.question} />
         </h2>
         {step.body && <RichText text={step.body} className="mt-2 text-lg text-ink-soft" />}
@@ -87,7 +90,7 @@ export function QuizStepView({
         </div>
       )}
       {step.visual && <VisualBlock v={step.visual} />}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className={`grid gap-3 ${cols}`}>
         {order.map((i, place) => {
           const o = step.options[i]
           const isRight = solved && i === step.answer
