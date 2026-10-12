@@ -113,11 +113,12 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [x] **24. Work offline.** No service worker: the iPad app needs the network on every cold launch and re-downloads
   the 2 MB piano. Precache the shell and samples, show "New version – Reload". `M`
   *Done:* a service worker (written at build time by `vite.config.ts` from `scripts/service-worker.js`) keeps the whole build on the device: 132 files, 3.8 MB including the piano. A new build installs in the background and "A new version of Tonic is ready · Reload" lets you switch when you like (`lib/offline.ts`, `UpdateBanner.tsx`). Checked with the production build: installed, updated through the banner, and loaded with the server stopped.
-- [ ] **25. Put the mic first on iPad.** The connect sheet opens on a disabled USB button saying "try Chrome or Edge".
+- [x] **25. Put the mic first on iPad.** The connect sheet opens on a disabled USB button saying "try Chrome or Edge".
   Mic first when Web MIDI is missing, an inline "Start listening" on play steps, a "Heard: C4" readout, headphones
   mode. `S–M`
   *Partly done:* play steps show `MicPrompt`: "Playing on your keyboard? Start listening" when there's no USB keyboard, then "Heard: E4" with a level bar.
   *Partly done:* on an iPad the connect sheet leads with the microphone (USB and Bluetooth tucked under "On a Mac or PC"), the header pill reads "Use mic" and one tap starts it, and Home offers "Play your keyboard through the mic". Games and songs get `MicPrompt` in their batches.
+  *Done:* games (Note Rush, Chord Trainer, Echo) and the song player show the mic prompt too. All parts done.
 - [x] **26. Celebrate level-ups and the daily goal when they happen**, and show goal progress on results screens.
   *Where:* `state/progress.ts`, `XpToaster.tsx`, results screens. `S`
   *Partly done:* level-ups and the daily goal pop a toast with sound and confetti the moment they happen (`progress.ts` → `Toaster.tsx`); a goal bar (`GoalProgress`) is on the lesson complete screen. Games and song results get it once those batches are merged.
@@ -156,16 +157,20 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 
 ## Practice
 
-- [ ] **37. Track weak spots** (notes, chords, intervals, keys you miss or are slow on), ask about them more often,
+- [x] **37. Track weak spots** (notes, chords, intervals, keys you miss or are slow on), ask about them more often,
   "Drill these" on results. `M`
+  *Done:* games track every note, chord, interval and key you answer (miss rate, usual time) in `tonic-practice-stats`, lean the next rounds toward weak and slow items (capped, still varied), show "Weakest: …" on setups and "Drill these" on results.
 - [x] **38. Show what you missed in Ear Training and Key Quiz**, with tap-to-hear. `S`
   *Done:* Ear Training and Key Quiz results list "What you missed" (e.g. "Major 6th → you said minor 7th"); tapping an Ear Training miss plays both the way the question was asked, and option replays after a harmonic question are harmonic now (2040e5d).
 - [x] **39. Pause and Skip in Note Rush** (auto-pause when the app is hidden); don't save near-empty rounds. `S`
   *Done:* Pause button and auto-pause when the app is hidden (any key, tap or note resumes), Skip (button or Space) counts as missed, and a round with nothing right isn't saved (e0a349b). Checked in the browser.
-- [ ] **40. Results that lead somewhere:** history per game, "Next level →" after 3★, a per-level "New best" badge. `S–M`
-- [ ] **41. Answer Ear Training and Key Quiz by playing.** `M`
-- [ ] **42. Note Rush on the shared game parts** (SetupCard/ResultsCard/finishGame), a tighter keyboard range (bigger
+- [x] **40. Results that lead somewhere:** history per game, "Next level →" after 3★, a per-level "New best" badge. `S–M`
+  *Done:* each level keeps its last 20 rounds with a sparkline and "62% → 88% this week", 3★ makes "Next level →" the main button, Rhythm Tap offers a faster tempo, and "New level best!" shows.
+- [x] **41. Answer Ear Training and Key Quiz by playing.** `M`
+  *Done:* "Answer by playing" in Ear Training (the top note of an interval, the chord on the marked root) and Key Quiz (the keynote; F♯/G♭ twins handled).
+- [x] **42. Note Rush on the shared game parts** (SetupCard/ResultsCard/finishGame), a tighter keyboard range (bigger
   keys; Bass level 4 starts below the CT-S1), optional key signatures. `M`
+  *Done:* Note Rush runs on the shared setup/results, its keyboard spans just the notes (within C2–C7), and it has key signatures (None, G, D, F, B♭) with correct spellings. Checked: G major's sharp on the staff.
 - [x] **43. Rhythm Tap insights:** "you rush by ~25 ms", first-try score, bests per tempo, bigger Next/Try again
   buttons. `S`
   *Done:* results say "You rush/drag by about N ms" or "Right on time", show the first-try score next to the best-of-retries one, bests are kept per tempo band, and Next/Try again are large buttons (8bc72a9).

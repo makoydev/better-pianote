@@ -8,6 +8,8 @@ import { audio } from '../../lib/audio/engine'
 import { type Backup, canUndoImport, exportBackup, lastBackupAt, readBackup, undoImport } from '../../lib/backup'
 import { openShortcuts } from '../../lib/shortcuts'
 import { useProgress } from '../../state/progress'
+import { resetPracticeStats } from '../practice/shared/stats'
+import { useSongRuns } from '../songs/history'
 import { ImportPreview } from './ImportPreview'
 import { type KeyLabels, type Naming, type UiScale, useSettings } from '../../state/settings'
 
@@ -174,6 +176,9 @@ export function Settings() {
                   return
                 }
                 useProgress.getState().resetAll()
+                // Scores live in a few places: the games' trends and weak spots, and each song's run history.
+                resetPracticeStats()
+                useSongRuns.setState({ runs: {} })
                 setConfirmReset(false)
               }}
             >

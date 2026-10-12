@@ -88,6 +88,7 @@ export function Chips<T extends string | number>({
           <motion.button
             key={String(o.value)}
             type="button"
+            aria-pressed={active}
             whileTap={{ scale: 0.94 }}
             onClick={() => onChange(o.value)}
             className={`min-h-11 rounded-2xl border px-4 text-base font-extrabold transition-colors ${
