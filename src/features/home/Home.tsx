@@ -12,6 +12,7 @@ import { startMic } from '../../lib/input/mic'
 import { levelFor } from '../../lib/levels'
 import { go } from '../../router'
 import { useLive } from '../../state/live'
+import { usePrefs } from '../../state/prefs'
 import { liveStreak, todayXp, useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 
@@ -33,6 +34,7 @@ export function Home() {
   const midi = useLive((s) => s.midi)
   const devices = useLive((s) => s.midiDevices)
   const mic = useLive((s) => s.mic)
+  const lastSong = useLastSong()
   const [connectOpen, setConnectOpen] = useState(false)
   const level = levelFor(xp)
   const next = nextLesson(lessons)
@@ -108,6 +110,29 @@ export function Home() {
                 {started ? 'Continue' : 'Start'} <ArrowRight size={24} strokeWidth={2.6} />
               </span>
             </div>
+          </motion.button>
+        )}
+
+        {/* The song you were practising, from the bar you stopped at */}
+        {lastSong && (
+          <motion.button
+            variants={item}
+            type="button"
+            onClick={() => go(`/songs/${encodeURIComponent(lastSong.id)}`)}
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.99 }}
+            className="glass flex w-full flex-wrap items-center gap-4 rounded-3xl p-5 text-left"
+          >
+            <span className="flex size-14 items-center justify-center rounded-2xl bg-teal/15 text-teal">
+              <ListMusic size={28} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-extrabold uppercase tracking-[0.18em] text-teal">Keep practising</span>
+              <span className="block truncate text-lg font-extrabold">
+                {lastSong.title} <span className="font-bold text-ink-mute">· from bar {lastSong.bar}</span>
+              </span>
+            </span>
+            <ArrowRight size={24} className="text-ink-mute" />
           </motion.button>
         )}
 
@@ -208,4 +233,16 @@ function MiniKeys({ color }: { color: string }) {
       ))}
     </div>
   )
+}
+
+/**
+ * The song you practised last ("songs:last", written by the song player), if it was in the last two weeks.
+ * Validated, since it's saved data.
+ */
+function useLastSong(): { id: string; title: string; bar: number } | null {
+  const v = usePrefs((p) => p.values['songs:last']) as { id?: unknown; title?: unknown; bar?: unknown; at?: unknown } | undefined
+  const [openedAt] = useState(() => Date.now())
+  if (!v || typeof v !== 'object' || typeof v.id !== 'string' || typeof v.title !== 'string') return null
+  if (typeof v.at !== 'number' || openedAt - v.at > 14 * 864e5) return null
+  return { id: v.id, title: v.title, bar: typeof v.bar === 'number' && v.bar >= 1 ? Math.round(v.bar) : 1 }
 }

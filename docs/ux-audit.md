@@ -173,6 +173,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **47. Left-hand-only practice**, and an option for the app to play the other hand. `M`
 - [ ] **48. Remember hands, loop, tempo and last bar per song** ("Continue from bar 37"); loop practice counts toward
   the streak. `S–M`
+  *Partly done:* Home shows "Keep practising: <song> · from bar N" for the song you practised in the last two weeks (reads `songs:last`). The player side comes with the song player batch.
 - [x] **49. Better tempo control:** −/+ and % presets instead of the ~80 px slider, count-in, metronome, speed up each
   loop, tempo remembered per song. *Where:* `SongPlayer.tsx`. `S`
   *Done:* −/+ buttons in 5% steps, presets 50/60/75/90/100% ("♩ = 72 · 75%"), Count-in and Metronome toggles, Speed up each loop, tempo saved per song (bb96fec). Checked: 75% preset and the count-in.
