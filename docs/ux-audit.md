@@ -259,12 +259,13 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [x] **71. iPad polish:** padding under the status bar, no double-tap zoom on buttons, keyboards scroll to the lit
   keys, labels under the sidebar icons in portrait. iPad check. `S`
   *Done:* safe-area padding on pages and the sidebar plus a dark strip behind the status bar, `touch-action: manipulation` and no long-press callout on buttons, wide keyboards scroll to the lit keys, labels under the sidebar icons on the iPad-portrait icon rail. Checked at 900 px; still worth a look on the iPad itself.
-- [ ] **72. Accessibility and touch sweep:** controls under 44 px, ✓/✗ alongside red/green, focus in dialogs,
+- [x] **72. Accessibility and touch sweep:** controls under 44 px, ✓/✗ alongside red/green, focus in dialogs,
   screen-reader announcements, Do-Re-Mi naming everywhere. `S–M`
   *Partly done:* shared controls: switches, small toggles and small buttons are 44 px, the dialog close button 48 px, dialogs take focus, keep Tab inside and give it back, and lesson note chips follow the Do Re Mi setting (`lib/naming.ts`).
   *Partly done:* screen readers hear chord names once ("F sharp m", not the drawn letters too: `MusicText`), every Settings switch row toggles from its text, and the compact connection pill has a spoken label. Screen-specific sizes and ✓/✗ cues come with the area batches.
   *Partly done:* the Jam's transpose buttons are 48 px and its × 44 px; the octave picker's black keys have a 44 px tap area.
   *Partly done:* single notes follow the Do Re Mi setting in Free Play, the mic readout ("Heard: Mi4") and the lesson labs too (this commit), on top of lessons, songs and the keyboard and staff labels. Games (Ear Training, Chord Trainer, Note Rush) and the Explore tools still name notes with letters; whether chord symbols and key names should follow it (Rem, Sol7, Mi♭ major) is still to decide. Games show ✓/✗ with screen-reader text, every game choice is a radio or has aria-pressed, and the shared chips too (43a9a14).
+  *Done:* the owner chose to keep chord names, key names and game answers (Ear Training, Chord Trainer, Note Rush, the Explore tools) in letters, so Do Re Mi covers single notes: the keyboard, the staff, lessons, songs, Free Play, the mic readout and the lesson labs. The Note names setting now says so.
 - [x] **73. Performance:** with the mic on, hidden connect sheets re-render 25 times a second; pause the animated
   background on full-screen pages. `S`
   *Done:* the connect sheet's live parts only exist while it's open (no more hidden re-renders 25×/s), and the background lights hold still on full-screen pages (`Aurora calm`).

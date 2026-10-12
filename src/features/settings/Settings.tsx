@@ -72,7 +72,7 @@ export function Settings() {
           </Row>
           <ToggleRow label="Keep the screen on while practising" hint="Lessons, games, songs and tools. Your hands are on the keys, not the screen." checked={s.keepAwake} onChange={(v) => set({ keepAwake: v })} />
           <ToggleRow label="Note names under the staff" hint="Training wheels for reading. Turn off when you're ready." checked={s.staffLabels} onChange={(v) => set({ staffLabels: v })} />
-          <Row label="Note names">
+          <Row label="Note names" hint="Single notes on the keyboard, the staff, lessons and songs. Chord and key names (Dm, G major) and game answers stay in letters.">
             <Segmented<Naming>
               value={s.naming}
               onChange={(v) => set({ naming: v })}
