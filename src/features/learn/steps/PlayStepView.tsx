@@ -19,6 +19,7 @@ import { micHearsNotes } from '../../../lib/input/micMatch'
 import { isBlackKey, mod } from '../../../lib/theory'
 import { useLive } from '../../../state/live'
 import { useSettings } from '../../../state/settings'
+import { useDemoLights } from '../demoLights'
 import { chordMessage, wrongNoteMessage } from '../feedback'
 import { chordMatches, chordStatus, feedNote, inChord, initialMatch, targetMidis, wrongOctave } from '../match'
 import { StaffView } from '../VisualBlock'
@@ -84,6 +85,8 @@ export function PlayStepView({
   const p = pianoProps(k)
   const targets = useMemo(() => targetMidis(t), [t])
   const showHint = !solved && (wrong >= 2 || hintAsked)
+  // "Show me" lights each key as it sounds.
+  const demo = useDemoLights()
   // Through the mic, chord steps listen for whole chords.
   useMicChords(t.type === 'chord')
 
@@ -196,6 +199,11 @@ export function PlayStepView({
     } else targets.forEach((x) => markPc(x, kind))
   }
   if (t.type === 'set') state.found.forEach((i) => visible(targets[i]) && (marks[targets[i]] = 'good'))
+  // The demo's keys, as they sound (the same key in another octave when the written one isn't shown).
+  for (const m of demo.lit) {
+    if (visible(m)) marks[m] = 'chord'
+    else for (let x = p.from; x <= p.to; x++) if (mod(x, 12) === mod(m, 12)) marks[x] = 'chord'
+  }
   selected.forEach((m) => (marks[m] = inChord(t, m) ? 'selected' : 'bad'))
   for (const [m, kind] of Object.entries(flash)) marks[Number(m)] = kind
   if (solved && t.type === 'chord') targets.forEach((m) => visible(m) && (marks[m] = 'good'))
@@ -225,9 +233,16 @@ export function PlayStepView({
     // Asking for help costs one slip; hearing it again is free.
     if (!hintAsked) onMistake(1)
     setHintAsked(true)
-    if (t.type === 'chord') playNotes(targets, { dur: 1.6, strum: 0.04 })
-    else if (t.type === 'note') playNotes([targets[0]])
-    else playSequence(targets, { gap: 0.45 })
+    if (t.type === 'chord') {
+      playNotes(targets, { dur: 1.6, strum: 0.04 })
+      demo.show([targets], { gap: 0, dur: 1.6, strum: 0.04 })
+    } else if (t.type === 'note') {
+      playNotes([targets[0]], { dur: 1.4 })
+      demo.show([targets[0]], { gap: 0, dur: 1.4 })
+    } else {
+      playSequence(targets, { gap: 0.45 })
+      demo.show(targets, { gap: 0.45, dur: 0.45 * 1.5 })
+    }
   }
 
   return (

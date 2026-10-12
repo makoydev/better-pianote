@@ -153,7 +153,7 @@ export function QuizStepView({
           </Button>
         </div>
       )}
-      {step.visual && <VisualBlock v={step.visual} />}
+      {step.visual && <VisualBlock v={step.visual} lights={false} />}
       <div className={`grid gap-3 ${cols}`}>
         {order.map((i, place) => {
           const o = step.options[i]
