@@ -41,7 +41,7 @@ import {
   rushStars,
 } from './noteRush/logic'
 import { tapeLayout } from './noteRush/tape'
-import { DrillButton, GameMain, ResultsCard, SetupCard } from './shared/GameParts'
+import { DrillButton, GameMain, ResultsCard, type ResultsAction, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame } from './shared/finish'
 import { useItemStats, usePracticeStats, weigher } from './shared/stats'
 import { type ItemAnswer, drillWeight, weakest } from './shared/weak'
@@ -114,6 +114,7 @@ export function NoteRush() {
               title="Note Rush"
               blurb="60 seconds. Read each note and play it, or name it. Streaks build your multiplier."
               gameId={`note-rush:${rushGroup(clef, key)}`}
+              metric="score"
               levels={LEVEL_INFO}
               level={String(level)}
               onLevel={(id) => setLevel(Number(id) as RushLevel)}
@@ -138,7 +139,26 @@ export function NoteRush() {
         )}
         {phase === 'results' && result && (
           <GameMain>
-            <Results result={result} clef={clef} onAgain={() => start()} onDrill={start} onSetup={() => setPhase('setup')} />
+            <Results
+              result={result}
+              clef={clef}
+              historyKey={result.drill ? undefined : `note-rush:${rushGroup(clef, key)}:${level}`}
+              // Three stars: on to the next level, straight away.
+              next={
+                result.stars === 3 && !result.drill && level < 5
+                  ? {
+                      label: `Next level: ${LEVELS[level].title}`,
+                      onClick: () => {
+                        setLevel((level + 1) as RushLevel)
+                        start()
+                      },
+                    }
+                  : undefined
+              }
+              onAgain={() => start()}
+              onDrill={start}
+              onSetup={() => setPhase('setup')}
+            />
           </GameMain>
         )}
       </div>
@@ -306,7 +326,8 @@ function Round({ config, drill, onFinish }: { config: Config; drill: string[] | 
     // A round with nothing right isn't saved: no best or last score, no XP (so no streak either), no weak spots.
     // Otherwise it records "note-rush" and "note-rush:<clef>[:<key>]:<level>" (a drill only the first), with XP on
     // the same scale as the other games.
-    const saved = correct > 0 ? finishGame('note-rush', drill ? null : `${rushGroup(config.clef, config.key)}:${config.level}`, score, stars) : null
+    const accuracy = (correct / Math.max(1, correct + wrong)) * 100
+    const saved = correct > 0 ? finishGame('note-rush', drill ? null : `${rushGroup(config.clef, config.key)}:${config.level}`, score, stars, { accuracy }) : null
     if (saved) {
       // The note on screen when time ran out counts too if you'd already missed it.
       if (slipped.current && current) answers.current.push({ id: rushItemId(current), missed: true })
@@ -692,12 +713,16 @@ function missLabel(id: string, clef: RushClef): string {
 function Results({
   result,
   clef,
+  historyKey,
+  next,
   onAgain,
   onDrill,
   onSetup,
 }: {
   result: Result
   clef: RushClef
+  historyKey?: string
+  next?: ResultsAction
   onAgain: () => void
   onDrill: (ids: string[]) => void
   onSetup: () => void
@@ -721,6 +746,9 @@ function Results({
       ]}
       onAgain={onAgain}
       onSetup={onSetup}
+      next={next}
+      historyKey={historyKey}
+      metric="score"
     >
       {missed.length > 0 && (
         <div className="mt-6">

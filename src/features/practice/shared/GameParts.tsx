@@ -1,4 +1,4 @@
-import { ArrowLeft, Crosshair, Flame, type LucideIcon, Play, RotateCcw, SlidersHorizontal, Trophy, Volume2, Zap } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Crosshair, Flame, type LucideIcon, Play, RotateCcw, SlidersHorizontal, Trophy, Volume2, Zap } from 'lucide-react'
 import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'motion/react'
 import { type ReactNode, useEffect } from 'react'
 import { MusicText } from '../../../components/MusicText'
@@ -10,6 +10,7 @@ import { go } from '../../../router'
 import { useProgress } from '../../../state/progress'
 import type { FinishResult } from './finish'
 import { useKeysFit } from './fit'
+import { type RoundRecord, trendText, useHistory } from './stats'
 
 /**
  * Page frame for a game: centred column under the top bar. With `fill` it's at least as tall as the screen, so a
@@ -44,6 +45,8 @@ export function SetupCard({
   children,
   startLabel = 'Start',
   weakest,
+  trendKey,
+  metric = 'accuracy',
 }: {
   icon: LucideIcon
   from: string
@@ -59,9 +62,13 @@ export function SetupCard({
   startLabel?: string
   /** Your weakest items at this level, by name ("A3", "B♭m"). */
   weakest?: string[]
+  /** Where the chosen level's recent rounds are kept, when it isn't "<gameId>:<level>". */
+  trendKey?: string
+  metric?: Metric
 }) {
   const games = useProgress((s) => s.games)
   const index = Math.max(0, levels.findIndex((l) => l.id === level))
+  const rounds = useHistory(trendKey ?? `${gameId}:${level}`)
   return (
     <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-5">
       <div className="glass relative overflow-hidden rounded-3xl p-5 sm:p-7">
@@ -132,6 +139,7 @@ export function SetupCard({
             <span className="block truncate text-lg font-extrabold leading-tight">
               <MusicText text={levels[index]?.name ?? ''} />
             </span>
+            <Trend rounds={rounds} metric={metric} className="mt-0.5 text-sm font-bold text-ink-soft" />
           </span>
           <Button size="xl" icon={Play} onClick={onStart} className="sm:min-w-56">
             {startLabel}
@@ -139,6 +147,55 @@ export function SetupCard({
         </div>
       </div>
     </motion.section>
+  )
+}
+
+/**
+ * Your last rounds on a level as a small line, oldest on the left, the latest a gold dot. A recessive line on
+ * purpose: the text next to it carries the numbers (and so does the label, for screen readers).
+ */
+function Sparkline({ rounds, metric }: { rounds: RoundRecord[]; metric: Metric }) {
+  const W = 84
+  const H = 26
+  const pad = 5
+  const values = rounds.map((r) => (metric === 'accuracy' ? r.accuracy : r.score))
+  const lo0 = Math.min(...values)
+  const hi0 = Math.max(...values)
+  // At least 40 points of accuracy (or 40% of the best score) tall, so a small wobble doesn't look like a big swing.
+  const minSpan = metric === 'accuracy' ? 40 : 0.4 * hi0
+  const lo = Math.max(0, Math.min(lo0, hi0 - minSpan))
+  const hi = Math.max(hi0, lo + minSpan) || 1
+  const x = (i: number) => pad + (i * (W - 2 * pad)) / Math.max(1, values.length - 1)
+  const y = (v: number) => pad + (1 - (v - lo) / (hi - lo)) * (H - 2 * pad)
+  const shown = (r: RoundRecord) => (metric === 'accuracy' ? `${r.accuracy}%` : `${r.score.toLocaleString()} points`)
+  const day = (r: RoundRecord) => new Date(r.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const last = values.length - 1
+  const step = (W - 2 * pad) / Math.max(1, last)
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Your last ${values.length} rounds: ${rounds.map(shown).join(', ')}`} className="shrink-0 overflow-visible">
+      <polyline points={values.map((v, i) => `${x(i)},${y(v)}`).join(' ')} fill="none" stroke="#938fbb" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={x(last)} cy={y(values[last])} r={4} fill="#ffc857" stroke="#191838" strokeWidth={2} />
+      {/* Hover any round to see its day and result. */}
+      {rounds.map((r, i) => (
+        <rect key={i} x={x(i) - step / 2} y={0} width={step} height={H} fill="transparent">
+          <title>{`${day(r)}: ${shown(r)}`}</title>
+        </rect>
+      ))}
+    </svg>
+  )
+}
+
+export type Metric = 'accuracy' | 'score'
+
+/** How a level has gone lately: "62% → 88% this week", with the sparkline once there are two rounds. */
+export function Trend({ rounds, metric = 'accuracy', min = 1, className = '' }: { rounds: RoundRecord[]; metric?: Metric; min?: number; className?: string }) {
+  const text = rounds.length >= min ? trendText(rounds, metric) : null
+  if (!text) return null
+  return (
+    <span className={`flex min-w-0 items-center gap-2 ${className}`}>
+      {rounds.length >= 2 && <Sparkline rounds={rounds} metric={metric} />}
+      <span className="min-w-0 truncate">{text}</span>
+    </span>
   )
 }
 
@@ -205,7 +262,17 @@ export function CountUp({ value, duration = 0.6 }: { value: number; duration?: n
   return <motion.span>{rounded}</motion.span>
 }
 
-/** End-of-round summary. */
+/** A results button besides Play again: "Next level: Ledger lines", "Try at 86 BPM". */
+export interface ResultsAction {
+  label: string
+  icon?: LucideIcon
+  onClick: () => void
+}
+
+/**
+ * End-of-round summary. `next` (after three stars: the next level) becomes the main button instead of Play again;
+ * `more` adds other ways on. `historyKey` shows how the level has gone lately.
+ */
 export function ResultsCard({
   title,
   score,
@@ -216,6 +283,10 @@ export function ResultsCard({
   stats,
   onAgain,
   onSetup,
+  next,
+  more = [],
+  historyKey,
+  metric = 'accuracy',
   children,
 }: {
   title: string
@@ -228,8 +299,15 @@ export function ResultsCard({
   stats: { label: string; value: ReactNode }[]
   onAgain: () => void
   onSetup: () => void
+  next?: ResultsAction
+  more?: ResultsAction[]
+  historyKey?: string
+  metric?: Metric
   children?: ReactNode
 }) {
+  const rounds = useHistory(historyKey ?? '')
+  // A best for this level only: beating your own earlier score here (the first round on a level has nothing to beat).
+  const levelBest = !!result && !result.isBest && result.levelBest && result.levelPrevBest > 0
   return (
     <motion.section
       initial={{ opacity: 0, scale: 0.94, y: 20 }}
@@ -257,6 +335,16 @@ export function ResultsCard({
             <Trophy size={16} /> New best!
           </motion.span>
         )}
+        {levelBest && (
+          <motion.span
+            initial={{ scale: 0 }}
+            animate={{ scale: [0, 1.25, 1] }}
+            transition={{ delay: 0.9 }}
+            className="flex items-center gap-1.5 rounded-full bg-gold px-3.5 py-1 font-extrabold text-night-900"
+          >
+            <Trophy size={16} /> New level best!
+          </motion.span>
+        )}
         {result && (
           <span className="flex items-center gap-1 rounded-full bg-white/8 px-3.5 py-1 font-extrabold text-ink-soft">
             <Zap size={16} className="fill-gold text-gold" /> +{result.xp} XP
@@ -271,12 +359,24 @@ export function ResultsCard({
           </div>
         ))}
       </dl>
+      {/* Only once there's something to compare with. */}
+      <Trend rounds={rounds} metric={metric} min={2} className="mt-4 justify-center text-base font-bold text-ink-soft" />
       {children}
       <GoalProgress className="mx-auto mt-5" />
       <div className="mt-7 flex flex-wrap justify-center gap-3">
-        <Button size="lg" icon={RotateCcw} onClick={onAgain}>
+        {next && (
+          <Button size="lg" iconRight={next.icon ?? ArrowRight} onClick={next.onClick}>
+            <MusicText text={next.label} />
+          </Button>
+        )}
+        <Button size="lg" variant={next ? 'secondary' : 'primary'} icon={RotateCcw} onClick={onAgain}>
           Play again
         </Button>
+        {more.map((a) => (
+          <Button key={a.label} size="lg" variant="secondary" icon={a.icon} onClick={a.onClick}>
+            <MusicText text={a.label} />
+          </Button>
+        ))}
         <Button size="lg" variant="secondary" icon={SlidersHorizontal} onClick={onSetup}>
           Change level
         </Button>

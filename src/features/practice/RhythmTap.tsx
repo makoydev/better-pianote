@@ -1,4 +1,4 @@
-import { Drum, Hand, Play, RotateCcw, SkipForward, Trophy, Volume2 } from 'lucide-react'
+import { Drum, Gauge, Hand, Play, RotateCcw, SkipForward, Trophy, Volume2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
@@ -17,6 +17,7 @@ import {
   type NoteResult,
   RHYTHM_LEVELS,
   type RNote,
+  type RhythmLevel,
   makePattern,
   onsetBeats,
   patternToStaff,
@@ -24,10 +25,12 @@ import {
   tempoBand,
   timingTendency,
 } from './logic/rhythm'
-import { GameMain, Hud, ResultsCard, SetupCard } from './shared/GameParts'
+import { GameMain, Hud, ResultsCard, type ResultsAction, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame, remember, sfx, starsFor, store } from './shared/finish'
 
 const PATTERNS = 5
+const MIN_BPM = 50
+const MAX_BPM = 120
 const BARS = 2
 const BEATS = BARS * 4
 const LEVEL_IDS = RHYTHM_LEVELS.map((l) => l.id)
@@ -63,7 +66,7 @@ export function RhythmTap() {
   const level = RHYTHM_LEVELS.find((l) => l.id === levelId) ?? RHYTHM_LEVELS[0]
   // Tempo and click are remembered. Until you pick a tempo yourself (0 = never), each level uses its own.
   const [savedBpm, setBpm] = usePref('rhythm:bpm', 0)
-  const bpm = savedBpm ? Math.min(120, Math.max(50, savedBpm)) : level.bpm
+  const bpm = savedBpm ? Math.min(MAX_BPM, Math.max(MIN_BPM, savedBpm)) : level.bpm
   const [clickOn, setClickOn] = usePref('rhythm:click', true)
   const [patterns, setPatterns] = useState<RNote[][]>([])
   const [done, setDone] = useState<PatternResult[]>([])
@@ -72,9 +75,9 @@ export function RhythmTap() {
   // The computer keyboard belongs to tapping here (Space), not to playing notes.
   useEffect(() => pauseComputerKeys(), [])
 
-  const start = () => {
-    store('rhythm-level', level.id)
-    setPatterns(Array.from({ length: PATTERNS }, () => makePattern(level, BARS)))
+  const start = (lv: RhythmLevel = level) => {
+    store('rhythm-level', lv.id)
+    setPatterns(Array.from({ length: PATTERNS }, () => makePattern(lv, BARS)))
     setDone([])
     setFinish(null)
     setPhase('play')
@@ -85,19 +88,38 @@ export function RhythmTap() {
   const firstAvg = average(done.map((d) => d.first))
   const stars = starsFor(avg / 100, 0.85, 0.65)
   const tendency = timingTendency(done.flatMap((d) => d.errors))
+  // Bests and recent rounds are kept per tempo band ("rhythm:l1:mid"), so 92% at 50 BPM isn't the same as at 110.
+  const bandKey = `${level.id}:${tempoBand(bpm).id}`
+  const nextLevel = RHYTHM_LEVELS[RHYTHM_LEVELS.indexOf(level) + 1]
+  const faster = Math.min(MAX_BPM, bpm + 6)
 
   const onDone = (r: PatternResult) => {
     const all = [...done, r]
     setDone(all)
     if (all.length >= PATTERNS) {
       const final = average(all.map((d) => d.best))
-      // Bests are kept per tempo band ("rhythm:l1:mid"), so 92% at 50 BPM isn't the same record as 92% at 110 BPM.
-      setFinish(finishGame('rhythm', `${level.id}:${tempoBand(bpm).id}`, final, starsFor(final / 100, 0.85, 0.65)))
+      setFinish(finishGame('rhythm', bandKey, final, starsFor(final / 100, 0.85, 0.65), { accuracy: final, bpm }))
       // The level's best at any tempo, which the level cards show (records from before tempo bands live here too).
       useProgress.getState().recordGame(`rhythm:${level.id}`, final)
       setPhase('done')
     }
   }
+
+  const nextUp = (lv: RhythmLevel) => {
+    setLevelId(lv.id)
+    start(lv)
+  }
+  const tryFaster: ResultsAction | undefined =
+    faster > bpm
+      ? {
+          label: `Try at ${faster} BPM`,
+          icon: Gauge,
+          onClick: () => {
+            setBpm(faster)
+            start()
+          },
+        }
+      : undefined
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -119,7 +141,8 @@ export function RhythmTap() {
             levels={RHYTHM_LEVELS}
             level={level.id}
             onLevel={setLevelId}
-            onStart={start}
+            onStart={() => start()}
+            trendKey={`rhythm:${bandKey}`}
           >
             <TempoControls levelId={level.id} bpm={bpm} setBpm={setBpm} clickOn={clickOn} setClickOn={setClickOn} />
           </SetupCard>
@@ -145,7 +168,11 @@ export function RhythmTap() {
               { label: 'Tempo', value: `${bpm} BPM` },
               { label: 'Level', value: level.name },
             ]}
-            onAgain={start}
+            historyKey={`rhythm:${bandKey}`}
+            // Three stars: the next level, or the same rhythms a little faster.
+            next={stars === 3 ? (nextLevel ? { label: `Next level: ${nextLevel.name}`, onClick: () => nextUp(nextLevel) } : tryFaster) : undefined}
+            more={stars === 3 && nextLevel && tryFaster ? [tryFaster] : []}
+            onAgain={() => start()}
             onSetup={() => setPhase('setup')}
           >
             {tendency && (
@@ -188,7 +215,7 @@ function TempoControls({
           <span className="w-28 shrink-0 font-extrabold">
             Tempo <span className="block text-2xl text-gold">{bpm} BPM</span>
           </span>
-          <Slider value={bpm} min={50} max={120} step={2} onChange={setBpm} label="Tempo" />
+          <Slider value={bpm} min={MIN_BPM} max={MAX_BPM} step={2} onChange={setBpm} label="Tempo" />
         </label>
         <label className="flex items-center gap-3 font-bold text-ink-soft">
           <Toggle checked={clickOn} onChange={setClickOn} label="Metronome while tapping" />

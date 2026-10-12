@@ -16,7 +16,7 @@ import { useMicChords } from '../../lib/input/mic'
 import { micHearsChord } from '../../lib/input/micMatch'
 import { type Chord, chordSymbol, fromMidi, midiOf, mod, noteName, pcOf, pitchName, voicedChord } from '../../lib/theory'
 import { useLive } from '../../state/live'
-import { TRAINER_LEVELS, chordLabel, chordRecipe, inversionIndex, matchChord, pickRound } from './logic/chords'
+import { TRAINER_LEVELS, type TrainerLevel, chordLabel, chordRecipe, inversionIndex, matchChord, pickRound } from './logic/chords'
 import { DrillButton, FeedbackLine, GameMain, Hud, KeysCard, ResultsCard, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame, remember, sfx, starsFor, store } from './shared/finish'
 import { useItemStats, usePracticeStats, weigher } from './shared/stats'
@@ -47,9 +47,9 @@ export function ChordTrainer() {
   const [drill, setDrill] = useState(false)
   const stats = useItemStats('chord-trainer')
 
-  const start = (missed?: Chord[]) => {
-    store('chord-trainer-level', level.id)
-    const pool = level.pool()
+  const start = (missed?: Chord[], lv: TrainerLevel = level) => {
+    store('chord-trainer-level', lv.id)
+    const pool = lv.pool()
     // Chords you miss or are slow on come up more often; a drill is mostly the ones you just missed.
     const weak = weigher('chord-trainer', pool.map(chordSymbol))
     const weight = (c: Chord) => weak(chordSymbol(c))
@@ -69,8 +69,9 @@ export function ChordTrainer() {
     setResults(all)
     if (all.length >= ROUND) {
       const total = all.reduce((s, x) => s + x.points, 0)
-      const stars = starsFor(all.filter(isClean).length / all.length)
-      setFinish(finishGame('chord-trainer', drill ? null : level.id, total, stars))
+      const clean = all.filter(isClean).length
+      const stars = starsFor(clean / all.length)
+      setFinish(finishGame('chord-trainer', drill ? null : level.id, total, stars, { accuracy: (clean / all.length) * 100 }))
       usePracticeStats
         .getState()
         .recordAnswers('chord-trainer', all.map((x) => ({ id: chordSymbol(x.chord), missed: !isClean(x), ms: isClean(x) ? x.seconds * 1000 : undefined })))
@@ -79,6 +80,8 @@ export function ChordTrainer() {
   }
 
   const missed = results.filter((r) => !isClean(r)).map((r) => r.chord)
+  const stars = starsFor(results.filter(isClean).length / ROUND)
+  const nextLevel = TRAINER_LEVELS[TRAINER_LEVELS.indexOf(level) + 1]
 
   return (
     <div className="flex h-dvh flex-col">
@@ -116,10 +119,23 @@ export function ChordTrainer() {
         {phase === 'done' && (
           <GameMain>
             <ResultsCard
-              title={drill ? 'Drill done!' : starsFor(results.filter(isClean).length / ROUND) === 3 ? 'Chord master!' : 'Round complete'}
+              title={drill ? 'Drill done!' : stars === 3 ? 'Chord master!' : 'Round complete'}
               score={score}
-              stars={starsFor(results.filter(isClean).length / ROUND)}
+              stars={stars}
               result={finish}
+              historyKey={drill ? undefined : `chord-trainer:${level.id}`}
+              // Three stars: on to the next level, straight away.
+              next={
+                stars === 3 && !drill && nextLevel
+                  ? {
+                      label: `Next level: ${nextLevel.name}`,
+                      onClick: () => {
+                        setLevelId(nextLevel.id)
+                        start(undefined, nextLevel)
+                      },
+                    }
+                  : undefined
+              }
               stats={[
                 { label: 'Clean', value: `${results.filter(isClean).length}/${ROUND}` },
                 { label: 'Avg time', value: `${(results.reduce((s, r) => s + r.seconds, 0) / ROUND).toFixed(1)}s` },

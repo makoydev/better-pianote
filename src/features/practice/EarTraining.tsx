@@ -58,6 +58,15 @@ function firstLevel(mode: EarMode): string {
   return remember('ear-level', ids[0], ids)
 }
 
+/** A level's question settings per mode, and the items it keeps weak spots on. */
+function levelParts(mode: EarMode, levelId: string) {
+  const lid = levelId.slice(mode.length + 1)
+  const quality = QUALITY_LEVELS.find((l) => l.id === lid) ?? QUALITY_LEVELS[0]
+  const interval = INTERVAL_LEVELS.find((l) => l.id === lid) ?? INTERVAL_LEVELS[0]
+  const echo = ECHO_LEVELS.find((l) => l.id === lid) ?? ECHO_LEVELS[0]
+  return { quality, interval, echo, itemIds: mode === 'quality' ? earItemIds(quality) : mode === 'interval' ? earItemIds(interval) : [] }
+}
+
 /** What a question reports when it's answered (the game adds the question itself). */
 type Answer = Omit<EarOutcome, 'question'>
 
@@ -121,26 +130,23 @@ export function EarTraining() {
   const [drill, setDrill] = useState(false)
   const stats = useItemStats('ear')
 
-  const lid = level.id.slice(mode.length + 1)
-  const qualityLevel = QUALITY_LEVELS.find((l) => l.id === lid) ?? QUALITY_LEVELS[0]
-  const intervalLevel = INTERVAL_LEVELS.find((l) => l.id === lid) ?? INTERVAL_LEVELS[0]
-  const echoLevel = ECHO_LEVELS.find((l) => l.id === lid) ?? ECHO_LEVELS[0]
-  const itemIds = mode === 'quality' ? earItemIds(qualityLevel) : mode === 'interval' ? earItemIds(intervalLevel) : []
+  const parts = levelParts(mode, level.id)
 
-  const makeQuestion = (prev: EarQuestion | null, i: number): EarQuestion => {
+  const makeQuestion = (prev: EarQuestion | null, i: number, levelId = level.id): EarQuestion => {
+    const { quality, interval, echo, itemIds } = levelParts(mode, levelId)
     const planned = plan.current?.[i]
-    if (mode === 'echo') return typeof planned === 'object' ? planned : makeEcho(echoLevel)
+    if (mode === 'echo') return typeof planned === 'object' ? planned : makeEcho(echo)
     // A drill asks what it planned; otherwise weak spots come up more often.
     const weight = typeof planned === 'string' ? (id: string) => (id === planned ? 1 : 0) : weigher('ear', itemIds)
-    if (mode === 'quality') return makeQuality(qualityLevel, prev?.kind === 'quality' ? prev : null, Math.random, weight)
-    return makeInterval(intervalLevel, prev?.kind === 'interval' ? prev : null, Math.random, weight)
+    if (mode === 'quality') return makeQuality(quality, prev?.kind === 'quality' ? prev : null, Math.random, weight)
+    return makeInterval(interval, prev?.kind === 'interval' ? prev : null, Math.random, weight)
   }
 
-  const start = (drillPlan: (string | EchoQ)[] | null = null) => {
+  const start = (drillPlan: (string | EchoQ)[] | null = null, levelId = level.id) => {
     plan.current = drillPlan
     setDrill(!!drillPlan)
     tally.current = { outcomes: [], score: 0, streak: 0, best: 0 }
-    setQuestion(makeQuestion(null, 0))
+    setQuestion(makeQuestion(null, 0, levelId))
     setQIndex(0)
     setOutcomes([])
     setScore(0)
@@ -154,12 +160,12 @@ export function EarTraining() {
   const drillMissed = () => {
     const missed = outcomes.filter((o) => !o.clean).map((o) => o.question)
     if (mode === 'echo') {
-      const fresh = Array.from({ length: ROUND }, () => makeEcho(echoLevel))
+      const fresh = Array.from({ length: ROUND }, () => makeEcho(parts.echo))
       return start(drillRound(missed as EchoQ[], fresh, ROUND, () => 1, (q) => q.notes.join('-')))
     }
     const ids = missed.flatMap((q) => earItemId(q) ?? [])
     // With two or four answers, a strict back-and-forth would give it away, so repeats are allowed.
-    start(drillRound(ids, itemIds, ROUND, weigher('ear', itemIds), (id) => id, Math.random, mode === 'quality'))
+    start(drillRound(ids, parts.itemIds, ROUND, weigher('ear', parts.itemIds), (id) => id, Math.random, mode === 'quality'))
   }
 
   const answered = (o: EarOutcome) => {
@@ -178,7 +184,7 @@ export function EarTraining() {
     const t = tally.current
     if (t.outcomes.length >= ROUND) {
       const clean = t.outcomes.filter((o) => o.clean).length
-      setFinish(finishGame('ear', drill ? null : level.id, t.score, starsFor(clean / ROUND, 0.9, 0.7)))
+      setFinish(finishGame('ear', drill ? null : level.id, t.score, starsFor(clean / ROUND, 0.9, 0.7), { accuracy: (clean / ROUND) * 100 }))
       usePracticeStats.getState().recordAnswers(
         'ear',
         t.outcomes.flatMap((o) => {
@@ -195,6 +201,8 @@ export function EarTraining() {
 
   const modeInfo = MODES.find((m) => m.id === mode)!
   const clean = outcomes.filter((o) => o.clean).length
+  const stars = starsFor(clean / ROUND, 0.9, 0.7)
+  const nextLevel = levels[levels.findIndex((l) => l.id === level.id) + 1]
 
   return (
     <div className="flex h-dvh flex-col">
@@ -218,7 +226,7 @@ export function EarTraining() {
               level={level.id}
               onLevel={setLevelId}
               onStart={() => start()}
-              weakest={weakest(stats, itemIds).map(earItemName)}
+              weakest={weakest(stats, parts.itemIds).map(earItemName)}
             >
               <div className="grid gap-3 sm:grid-cols-3">
                 {MODES.map((m) => {
@@ -295,13 +303,26 @@ export function EarTraining() {
             <ResultsCard
               title={drill ? 'Drill done!' : clean >= 9 ? 'Golden ears!' : clean >= 7 ? 'Great listening!' : 'Round complete'}
               score={score}
-              stars={starsFor(clean / ROUND, 0.9, 0.7)}
+              stars={stars}
               result={finish}
               stats={[
                 { label: 'First try', value: `${clean}/${ROUND}` },
                 { label: 'Correct', value: `${outcomes.filter((o) => o.correct).length}/${ROUND}` },
                 { label: 'Best streak', value: bestStreak },
               ]}
+              historyKey={drill ? undefined : `ear:${level.id}`}
+              // Three stars: on to the next level of this kind, straight away.
+              next={
+                stars === 3 && !drill && nextLevel
+                  ? {
+                      label: `Next level: ${nextLevel.name}`,
+                      onClick: () => {
+                        setLevelId(nextLevel.id)
+                        start(null, nextLevel.id)
+                      },
+                    }
+                  : undefined
+              }
               onAgain={() => start()}
               onSetup={() => setPhase('setup')}
             >

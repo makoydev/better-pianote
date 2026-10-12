@@ -10,6 +10,7 @@ import { burst } from '../../lib/fx'
 import { keyId, keyName } from '../../lib/theory'
 import {
   KEY_LEVELS,
+  type KeyLevel,
   type KeyMode,
   type KeyQuestion,
   type QuizKey,
@@ -51,19 +52,19 @@ export function KeyQuiz() {
   // A drill of keys you missed (not a level record).
   const [drill, setDrill] = useState(false)
   const stats = useItemStats('key-quiz')
-  const keys = levelKeys(level)
 
-  const start = (missed?: string[]) => {
+  const start = (missed?: string[], lv: KeyLevel = level) => {
     store('key-quiz-mode', mode)
-    store('key-quiz-level', level.id)
+    store('key-quiz-level', lv.id)
     // Every key once while there's room, then more of the ones you miss or are slow on; a drill is mostly the misses.
+    const keys = levelKeys(lv)
     const weak = weigher('key-quiz', keys.map((k) => k.id))
     const weight = (k: QuizKey) => k.chance * weak(k.id)
     const drilled = missed?.flatMap((id) => keys.find((k) => k.id === id) ?? [])
     plan.current = (drilled ? drillRound(drilled, keys, ROUND, weight, (k) => k.id) : weightedRound(keys, ROUND, weight, (k) => k.id)).map((k) => k.id)
     setDrill(!!missed)
     tally.current = { answered: 0, clean: 0, score: 0, streak: 0, best: 0, misses: [], answers: [] }
-    setQuestion(makeKeyQuestion(level, null, Math.random, { ask: plan.current[0] }))
+    setQuestion(makeKeyQuestion(lv, null, Math.random, { ask: plan.current[0] }))
     setQIndex(0)
     setScore(0)
     setStreak(0)
@@ -89,7 +90,7 @@ export function KeyQuiz() {
   const next = () => {
     const t = tally.current
     if (t.answered >= ROUND) {
-      setFinish(finishGame('key-quiz', drill ? null : level.id, t.score, starsFor(t.clean / ROUND, 0.9, 0.7)))
+      setFinish(finishGame('key-quiz', drill ? null : level.id, t.score, starsFor(t.clean / ROUND, 0.9, 0.7), { accuracy: (t.clean / ROUND) * 100 }))
       usePracticeStats.getState().recordAnswers('key-quiz', t.answers)
       setSummary({ clean: t.clean, best: t.best, misses: t.misses })
       setPhase('done')
@@ -98,6 +99,10 @@ export function KeyQuiz() {
     setQuestion((q) => makeKeyQuestion(level, q?.fifths ?? null, Math.random, { ask: plan.current[t.answered] }))
     setQIndex(t.answered)
   }
+
+  const weak = weakest(stats, levelKeys(level).map((k) => k.id)).map(keyItemName)
+  const stars = starsFor(summary.clean / ROUND, 0.9, 0.7)
+  const nextLevel = KEY_LEVELS[KEY_LEVELS.indexOf(level) + 1]
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -115,7 +120,7 @@ export function KeyQuiz() {
             level={level.id}
             onLevel={setLevelId}
             onStart={() => start()}
-            weakest={weakest(stats, keys.map((k) => k.id)).map(keyItemName)}
+            weakest={weak}
           >
             <div className="glass flex flex-wrap items-center justify-between gap-4 rounded-3xl p-5">
               <span className="text-lg font-extrabold">Question type</span>
@@ -142,13 +147,26 @@ export function KeyQuiz() {
           <ResultsCard
             title={drill ? 'Drill done!' : summary.clean >= 9 ? 'Key master!' : 'Round complete'}
             score={score}
-            stars={starsFor(summary.clean / ROUND, 0.9, 0.7)}
+            stars={stars}
             result={finish}
             stats={[
               { label: 'Correct', value: `${summary.clean}/${ROUND}` },
               { label: 'Best streak', value: summary.best },
               { label: 'Mode', value: mode === 'name' ? 'Name it' : 'Find it' },
             ]}
+            historyKey={drill ? undefined : `key-quiz:${level.id}`}
+            // Three stars: on to the next level, straight away.
+            next={
+              stars === 3 && !drill && nextLevel
+                ? {
+                    label: `Next level: ${nextLevel.name}`,
+                    onClick: () => {
+                      setLevelId(nextLevel.id)
+                      start(undefined, nextLevel)
+                    },
+                  }
+                : undefined
+            }
             onAgain={() => start()}
             onSetup={() => setPhase('setup')}
           >

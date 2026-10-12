@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { itemStats, usePracticeStats, weigher } from './stats'
+import { type RoundRecord, itemStats, trendText, usePracticeStats, weigher } from './stats'
 import { weakest } from './weak'
 
 describe('practice stats', () => {
-  beforeEach(() => usePracticeStats.setState({ items: {} }))
+  beforeEach(() => usePracticeStats.setState({ items: {}, history: {} }))
 
   it('keeps each game’s items apart and weighs the weak ones up', () => {
     const { recordAnswers } = usePracticeStats.getState()
@@ -27,5 +27,23 @@ describe('practice stats', () => {
   it('ignores an empty round', () => {
     usePracticeStats.getState().recordAnswers('ear', [])
     expect(usePracticeStats.getState().items).toEqual({})
+  })
+})
+
+describe('trend', () => {
+  const day = 864e5
+  const now = 100 * day
+  const round = (daysAgo: number, accuracy: number, score = accuracy * 10): RoundRecord => ({ at: now - daysAgo * day, score, accuracy })
+
+  it('compares the first round this week with the latest', () => {
+    expect(trendText([round(20, 40), round(6, 62), round(3, 70), round(0, 88)], 'accuracy', now)).toBe('62% → 88% this week')
+    expect(trendText([round(2, 42), round(0, 61)], 'score', now)).toBe('420 → 610 points this week')
+  })
+
+  it('falls back to your last round, or says there’s only one', () => {
+    expect(trendText([round(30, 62), round(9, 88)], 'accuracy', now)).toBe('62% → 88% since your last round')
+    expect(trendText([round(30, 62), round(0, 88)], 'accuracy', now)).toBe('62% → 88% since your last round')
+    expect(trendText([round(1, 72)], 'accuracy', now)).toBe('Last round: 72%')
+    expect(trendText([], 'accuracy', now)).toBeNull()
   })
 })
