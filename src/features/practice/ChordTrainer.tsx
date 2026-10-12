@@ -7,6 +7,7 @@ import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
 import { Staff } from '../../components/staff/Staff'
 import { Button } from '../../components/ui/Button'
+import { useSpaceKey } from '../../components/widgets/fit'
 import { Paper } from '../../components/ui/Card'
 import { useViewportHeight } from '../../hooks/useViewport'
 import { playNotes } from '../../lib/audio/play'
@@ -273,11 +274,14 @@ function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) =
     setProgress(0)
   }
 
+  const hear = () => playNotes(voicingMidis, { dur: 1.6, strum: 0.04 })
   const hint = () => {
     setHinted(true)
     sfx('tap')
-    playNotes(voicingMidis, { dur: 1.6, strum: 0.04 })
+    hear()
   }
+  // Once it's shown, Space hears it again (before that, the chord is the question).
+  useSpaceKey(revealed ? hear : null, true)
 
   const skip = () => {
     setHinted(true)
@@ -374,7 +378,7 @@ function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) =
               </Button>
             )}
             {revealed && (
-              <Button variant="secondary" size="md" icon={Volume2} onClick={() => playNotes(voicingMidis, { dur: 1.6, strum: 0.04 })}>
+              <Button variant="secondary" size="md" icon={Volume2} onClick={hear}>
                 Hear it
               </Button>
             )}

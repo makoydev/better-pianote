@@ -36,13 +36,14 @@ export function useFitKeyboard(ideal: number, { min = 100, below = 0, room = 0 }
 }
 
 /**
- * Space runs a widget's main action (Play, Play loop, hear it again), in a lesson step only. A focused button keeps
- * Space for itself, and so do sliders and radio groups. Pass null while there's nothing to run.
+ * Space runs a widget's main action (Play, Play loop, hear it again), in a lesson step only (or anywhere, for a
+ * screen of its own like a game). A focused button keeps Space for itself, and so do sliders and radio groups.
+ * Pass null while there's nothing to run.
  */
-export function useSpaceKey(action: (() => void) | null | undefined) {
+export function useSpaceKey(action: (() => void) | null | undefined, anywhere = false) {
   const inStep = useContext(InStep)
   const run = useEffectEvent(() => action?.())
-  const on = inStep && !!action
+  const on = (inStep || anywhere) && !!action
   useEffect(() => {
     if (!on) return
     const onKey = (e: KeyboardEvent) => {

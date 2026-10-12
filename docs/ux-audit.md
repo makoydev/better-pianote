@@ -92,11 +92,12 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [x] **19. Keep the screen awake while practising** (Wake Lock on full-screen pages, re-acquired on
   `visibilitychange`). On iPad a sleeping screen also kills the mic. *Where:* new hook, `App.tsx`. `S`
   *Done:* `useWakeLock` holds a screen wake lock on full-screen pages and takes it again when the page becomes visible; Settings → Display has "Keep the screen on while practising" (on by default).
-- [ ] **20. Hands-free controls everywhere.** One scheme (pedal tap, Enter, Space) for Start, Next, Play again and Hear
+- [x] **20. Hands-free controls everywhere.** One scheme (pedal tap, Enter, Space) for Start, Next, Play again and Hear
   it again in games, songs, tools and the lesson complete screen. A shortcut sheet (`?`), and a spare key (top C7)
   as Continue for mic users without a pedal. `M`
   *Partly done:* the shared pieces: `useHandsFree(action)` runs a screen's main action on Enter, a deliberate pedal tap (`lib/input/pedalTap.ts`) or the top C (C7, a setting, on by default); `?` opens a shortcut sheet (also in Settings). Lessons use it; the other screens are wired in the area batches.
   *Partly done:* the Jam (Space starts/stops; Enter, a pedal tap or top C start it but never stop it mid-song) and Scale Explorer (Space and the hands-free scheme start a run).
+  *Done:* one scheme everywhere: Enter, a pedal tap or the top C (C7) run the main button (Start, Next, Play again, Continue) in lessons, every game, the song player and the Jam, Scale Explorer and Chord Explorer; Space plays, pauses or hears it again in lessons, songs, tools, Ear Training and Chord Trainer (this commit); `?` opens the shortcut sheet. Checked: Space replays an Ear Training question.
 - [x] **21. Remember choices.** Note Rush setup, Rhythm Tap tempo/click, Ear Training level per mode, every Explore
   tool and the song list filter reset on each visit; game preferences aren't in Export. `S`
   *Partly done:* Note Rush, Rhythm Tap and Ear Training (4108ba9) and Free Play plus every Explore tool (981ab3b) remember their choices in the prefs store, which Export carries (e688569). The song list filter comes with the Songs batch.

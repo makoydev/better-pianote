@@ -8,6 +8,7 @@ import { type Marks, Piano } from '../../components/piano/Piano'
 import { Button } from '../../components/ui/Button'
 import { Toggle } from '../../components/ui/controls'
 import { useHandsFree } from '../../hooks/useHandsFree'
+import { useSpaceKey } from '../../components/widgets/fit'
 import { playNotes } from '../../lib/audio/play'
 import { burst } from '../../lib/fx'
 import { heldNow, useNoteEvents } from '../../lib/input/bus'
@@ -430,6 +431,8 @@ function usePlayback(play: () => number | void, autoKey: string) {
     timer.current = window.setTimeout(() => setPlaying(false), Math.max(800, Number(secs) * 1000))
   }
   const autoPlay = useEffectEvent(run)
+  // Space hears it again, like the big button.
+  useSpaceKey(run, true)
   useEffect(() => {
     // Play each new question once it appears (the cleanup cancels the duplicate in dev strict mode).
     const t = window.setTimeout(autoPlay, 350)
