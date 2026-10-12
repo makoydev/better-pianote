@@ -324,7 +324,7 @@ function ContinueCard({ song, bar, at }: { song: Song; bar: number; at: number }
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-extrabold uppercase tracking-wider text-gold">Continue</span>
         <span className="block font-display text-2xl font-bold leading-tight [overflow-wrap:anywhere]">
-          {song.title} <span className="font-sans text-lg font-extrabold text-ink-soft">{continueFrom(song, bar)}</span>
+          {song.title} <span className="font-sans text-lg font-extrabold text-ink-soft">{continueFrom(bar)}</span>
         </span>
         <span className="block text-sm font-semibold text-ink-mute">Practised {agoText(at)}</span>
       </span>

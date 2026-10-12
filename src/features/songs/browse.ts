@@ -81,7 +81,10 @@ export function bestsText(games: Record<string, GameRecord>, id: string): string
   return best > 0 ? `Best ${best}%` : null
 }
 
-/** Where you left off: the player keeps this as "songs:last" (`bar` counts from 0, like the song's bars). */
+/**
+ * Where you left off: the player keeps this as "songs:last". `bar` is the bar number as the player shows it
+ * (1-based, as printed on imported scores; the pickup counts as 1).
+ */
 export interface LastSong {
   id: string
   title: string
@@ -99,12 +102,8 @@ export function readLastSong(v: unknown): LastSong | null {
   return { id, title, bar, at }
 }
 
-/** "from bar 12", numbered like the player numbers bars (a pickup isn't bar 1), or "from the start". */
-export function continueFrom(song: Pick<Song, 'pickup' | 'rh'>, bar: number): string {
-  const b = Math.min(bar, song.rh.length - 1)
-  const first = song.pickup ? 1 : 0
-  return b <= first ? 'from the start' : `from bar ${song.pickup ? b : b + 1}`
-}
+/** "from bar 12", or "from the start" for bar 1 (and the pickup before it). */
+export const continueFrom = (bar: number): string => (bar <= 1 ? 'from the start' : `from bar ${bar}`)
 
 /** Cards fade in one after another, but a long library shouldn't keep you waiting. */
 export const fadeDelay = (index: number) => Math.min(index, 8) * 0.04

@@ -76,15 +76,10 @@ describe('continue where you left off', () => {
     }
   })
 
-  it('names the bar the way the player does', () => {
-    const twinkle = findSong('twinkle')!
-    expect(continueFrom(twinkle, 0)).toBe('from the start')
-    expect(continueFrom(twinkle, 4)).toBe('from bar 5')
-    // Amazing Grace starts with a pickup: its bar 1 comes after it.
-    const grace = findSong('amazing-grace')!
-    expect(continueFrom(grace, 1)).toBe('from the start')
-    expect(continueFrom(grace, 5)).toBe('from bar 5')
-    expect(continueFrom(twinkle, 999)).toBe(`from bar ${twinkle.rh.length}`)
+  it('says the bar as the player showed it (bar 1 and the pickup are the start)', () => {
+    expect(continueFrom(1)).toBe('from the start')
+    expect(continueFrom(0)).toBe('from the start')
+    expect(continueFrom(14)).toBe('from bar 14')
   })
 
   it('cards fade in quickly however long the list', () => {
