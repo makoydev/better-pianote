@@ -1,4 +1,4 @@
-import { ArrowRight, Hash } from 'lucide-react'
+import { ArrowRight, Check, Hash, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { type ReactNode, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
@@ -218,14 +218,15 @@ function OptionButton({
   children: ReactNode
   label?: string
 }) {
+  const verdict = state === 'right' ? 'right answer' : state === 'wrong' ? 'wrong' : null
   return (
     <motion.button
       type="button"
-      aria-label={label}
+      aria-label={label && (verdict ? `${label} (${verdict})` : label)}
       onClick={onClick}
       whileTap={state === 'idle' ? { scale: 0.96 } : undefined}
       animate={state === 'wrong' ? { x: [0, -8, 8, -5, 5, 0] } : state === 'right' ? { scale: [1, 1.05, 1] } : {}}
-      className={`flex min-h-20 items-center justify-center rounded-2xl border-2 p-3 transition-colors ${
+      className={`relative flex min-h-20 items-center justify-center rounded-2xl border-2 p-3 transition-colors ${
         state === 'right'
           ? 'border-good bg-good/18 text-good'
           : state === 'wrong'
@@ -236,6 +237,16 @@ function OptionButton({
       }`}
     >
       {children}
+      {/* A tick or cross as well as the colour, so right and wrong don't rely on colour alone. */}
+      {verdict && (
+        <span
+          aria-hidden
+          className={`absolute -right-2 -top-2 flex size-8 items-center justify-center rounded-full text-night-900 shadow-lg ${state === 'right' ? 'bg-good' : 'bg-bad'}`}
+        >
+          {state === 'right' ? <Check size={18} strokeWidth={3.5} /> : <X size={18} strokeWidth={3.5} />}
+        </span>
+      )}
+      {verdict && !label && <span className="sr-only">({verdict})</span>}
     </motion.button>
   )
 }

@@ -1,6 +1,7 @@
 import { Check, Eraser, Layers, Lightbulb, SkipForward, Volume2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { MicPrompt } from '../../components/layout/MicPrompt'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
@@ -379,7 +380,7 @@ function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) =
           )}
         </Paper>
       </div>
-      <KeysCard>
+      <KeysCard top={<MicPrompt />}>
         {(fit) => <Piano from={48} to={84} mode="toggle" onToggle={toggle} marks={marks} sparks sparkHeight={fit.sparks} labels="c" height={fit.keys} />}
       </KeysCard>
     </>

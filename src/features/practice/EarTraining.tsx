@@ -1,6 +1,7 @@
-import { ArrowRight, Ear, Music2, Repeat, Smile, Volume2 } from 'lucide-react'
+import { ArrowRight, Check, Ear, Music2, Repeat, Smile, Volume2, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { type ReactNode, type RefObject, useEffect, useEffectEvent, useRef, useState } from 'react'
+import { MicPrompt } from '../../components/layout/MicPrompt'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
@@ -395,7 +396,13 @@ function ChoiceQuestion({
                       : 'border-white/10 bg-night-750 text-ink hover:border-white/30'
               }`}
             >
-              {o.label}
+              {/* A tick or cross as well as the colour, so right and wrong don't rely on colour alone. */}
+              <span className="inline-flex items-center justify-center gap-2">
+                {isAnswer && <Check size={22} strokeWidth={3} aria-hidden />}
+                {isWrong && <X size={22} strokeWidth={3} aria-hidden />}
+                {o.label}
+                {(isAnswer || isWrong) && <span className="sr-only">{isAnswer ? '(right answer)' : '(wrong)'}</span>}
+              </span>
               {result && (isAnswer || isWrong) && (
                 <span className="mt-0.5 flex items-center justify-center gap-1 text-xs font-bold opacity-80">
                   <Volume2 size={13} /> tap to hear
@@ -532,7 +539,9 @@ function EchoQuestion({ q, onAnswer, onNext }: { q: EchoQ; onAnswer: (a: Answer)
           </Button>
         )}
       </QuestionCard>
-      <KeysCard>{(fit) => <Piano from={48} to={84} marks={marks} sparks sparkHeight={fit.sparks} labels="c" height={fit.keys} />}</KeysCard>
+      <KeysCard top={<MicPrompt />}>
+        {(fit) => <Piano from={48} to={84} marks={marks} sparks sparkHeight={fit.sparks} labels="c" height={fit.keys} />}
+      </KeysCard>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { Flame, Hand, Keyboard, Pause, Play, SkipForward, Timer, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { MicPrompt } from '../../components/layout/MicPrompt'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
@@ -516,8 +517,11 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
       {config.mode === 'name' ? (
         <NameButtons accidentals={accidentals} acc={acc} setAcc={setAcc} onPick={(letter) => answer(nameMatches(current, letter, acc))} />
       ) : (
-        <div ref={kbArea} className="flex min-h-[150px] flex-1 flex-col justify-end">
-          <Piano from={lo} to={hi} marks={marks} labels="c" sparks sparkHeight={Math.max(30, Math.min(80, kbH - kbHeight - 26))} height={kbHeight} />
+        <div className="flex min-h-[200px] flex-1 flex-col gap-2">
+          <MicPrompt />
+          <div ref={kbArea} className="flex min-h-0 flex-1 flex-col justify-end">
+            <Piano from={lo} to={hi} marks={marks} labels="c" sparks sparkHeight={Math.max(30, Math.min(80, kbH - kbHeight - 26))} height={kbHeight} />
+          </div>
         </div>
       )}
 
