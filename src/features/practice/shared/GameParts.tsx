@@ -9,10 +9,18 @@ import { ProgressBar, Stars } from '../../../components/ui/progress'
 import { go } from '../../../router'
 import { useProgress } from '../../../state/progress'
 import type { FinishResult } from './finish'
+import { useKeysFit } from './fit'
 
-/** Page frame for a game: centred column under the top bar. */
-export function GameMain({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
-  return <main className={`mx-auto flex w-full flex-1 flex-col gap-5 px-3 pb-8 pt-4 sm:px-6 ${wide ? 'max-w-6xl' : 'max-w-4xl'}`}>{children}</main>
+/**
+ * Page frame for a game: centred column under the top bar. With `fill` it's at least as tall as the screen, so a
+ * keyboard at the bottom can take whatever height is left (see useKeysFit).
+ */
+export function GameMain({ children, wide = false, fill = false }: { children: ReactNode; wide?: boolean; fill?: boolean }) {
+  return (
+    <main className={`mx-auto flex w-full flex-1 flex-col px-3 pt-4 sm:px-6 ${fill ? 'min-h-full gap-4 pb-4' : 'gap-5 pb-8'} ${wide ? 'max-w-6xl' : 'max-w-4xl'}`}>
+      {children}
+    </main>
+  )
 }
 
 export interface LevelInfo {
@@ -50,6 +58,7 @@ export function SetupCard({
   startLabel?: string
 }) {
   const games = useProgress((s) => s.games)
+  const index = Math.max(0, levels.findIndex((l) => l.id === level))
   return (
     <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-5">
       <div className="glass relative overflow-hidden rounded-3xl p-5 sm:p-7">
@@ -105,12 +114,37 @@ export function SetupCard({
           })}
         </div>
       </div>
-      <div className="flex justify-center pt-1">
-        <Button size="xl" icon={Play} onClick={onStart} className="min-w-64">
-          {startLabel}
-        </Button>
+      {/* Start stays in view however many levels there are (a 13" laptop screen shows only some of them). */}
+      <div className="sticky bottom-0 z-10 -mt-2 bg-linear-to-t from-night-900 from-40% to-transparent pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-4">
+        <div className="glass flex items-center gap-4 rounded-3xl p-3 pl-5 shadow-[0_-14px_36px_-16px_rgba(0,0,0,.8)]">
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-extrabold uppercase tracking-wider text-ink-mute">Level {index + 1}</span>
+            <span className="block truncate text-lg font-extrabold leading-tight">
+              <MusicText text={levels[index]?.name ?? ''} />
+            </span>
+          </span>
+          <Button size="xl" icon={Play} onClick={onStart} className="sm:min-w-56">
+            {startLabel}
+          </Button>
+        </div>
       </div>
     </motion.section>
+  )
+}
+
+/**
+ * A card at the bottom of a play screen whose keyboard takes the height that's left (inside a `fill` GameMain).
+ * `top` sits above the keys, e.g. the mic prompt.
+ */
+export function KeysCard({ top, max = 200, children }: { top?: ReactNode; max?: number; children: (fit: { keys: number; sparks: number }) => ReactNode }) {
+  const { ref, keys, sparks } = useKeysFit(max)
+  return (
+    <div className="glass flex min-h-[200px] flex-1 flex-col gap-2 rounded-3xl px-2 pb-2 pt-3 sm:px-4">
+      {top}
+      <div ref={ref} className="flex min-h-0 flex-1 flex-col justify-end">
+        {children({ keys, sparks })}
+      </div>
+    </div>
   )
 }
 
@@ -311,11 +345,14 @@ export function MissList({ misses }: { misses: Miss[] }) {
   )
 }
 
-/** One line of feedback with a fixed height, so the layout doesn't jump. */
-export function FeedbackLine({ tone, children, id }: { tone: 'neutral' | 'good' | 'bad' | 'info'; children: ReactNode; id: string | number }) {
+/**
+ * One line of feedback with a fixed height, so the layout doesn't jump. `start`: left-aligned from the `sm` width
+ * up, for cards that put their text beside a button.
+ */
+export function FeedbackLine({ tone, children, id, start = false }: { tone: 'neutral' | 'good' | 'bad' | 'info'; children: ReactNode; id: string | number; start?: boolean }) {
   const color = tone === 'good' ? 'text-good' : tone === 'bad' ? 'text-bad' : tone === 'info' ? 'text-gold' : 'text-ink-soft'
   return (
-    <div className="flex min-h-[2.25rem] items-center justify-center text-center" aria-live="polite">
+    <div className={`flex min-h-[2.25rem] items-center justify-center text-center ${start ? 'sm:justify-start sm:text-left' : ''}`} aria-live="polite">
       <AnimatePresence mode="wait">
         <motion.p
           key={id}

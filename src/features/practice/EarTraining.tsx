@@ -1,6 +1,6 @@
 import { ArrowRight, Ear, Music2, Repeat, Smile, Volume2 } from 'lucide-react'
 import { motion } from 'motion/react'
-import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from 'react'
+import { type ReactNode, type RefObject, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
@@ -30,7 +30,7 @@ import {
   rightOption,
   samePitchClass,
 } from './logic/ear'
-import { FeedbackLine, GameMain, Hud, type Miss, MissList, ResultsCard, SetupCard } from './shared/GameParts'
+import { FeedbackLine, GameMain, Hud, KeysCard, type Miss, MissList, ResultsCard, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame, remember, sfx, starsFor } from './shared/finish'
 
 const ROUND = 10
@@ -158,111 +158,114 @@ export function EarTraining() {
   const clean = outcomes.filter((o) => o.clean).length
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex h-dvh flex-col">
       <TopBar back="/practice" title="Ear Training" subtitle={phase === 'setup' ? 'Train the ear you already have' : `${modeInfo.title} · ${level.name}`} />
-      {phase === 'setup' && (
-        <GameMain>
-          <SetupCard
-            icon={Ear}
-            from="#3ee6c8"
-            to="#5cc8ff"
-            title="Ear Training"
-            blurb="You already play by ear, so this is where you shine. Put names to the sounds you know."
-            gameId="ear"
-            levels={levels}
-            level={level.id}
-            onLevel={setLevelId}
-            onStart={start}
-          >
-            <div className="grid gap-3 sm:grid-cols-3">
-              {MODES.map((m) => {
-                const I = m.icon
-                const active = m.id === mode
-                return (
-                  <motion.button
-                    key={m.id}
-                    type="button"
-                    whileTap={{ scale: 0.97 }}
-                    onClick={() => setMode(m.id)}
-                    aria-pressed={active}
-                    className={`flex flex-col items-start gap-2 rounded-3xl border p-5 text-left transition-colors ${
-                      active ? 'border-gold/70 bg-gold/12' : 'border-white/8 bg-night-800/80 hover:border-white/20'
-                    }`}
-                  >
-                    <span className="flex size-12 items-center justify-center rounded-2xl text-night-900" style={{ background: `linear-gradient(140deg, ${m.from}, ${m.to})` }}>
-                      <I size={26} />
-                    </span>
-                    <span className="text-xl font-extrabold">{m.title}</span>
-                    <span className="text-sm text-ink-mute">{m.blurb}</span>
-                  </motion.button>
-                )
-              })}
-            </div>
-          </SetupCard>
-        </GameMain>
-      )}
-      {phase === 'play' && question && (
-        <GameMain wide={mode === 'echo'}>
-          <Hud step={qIndex} total={ROUND} score={score} streak={streak} />
-          {question.kind === 'quality' && (
-            <ChoiceQuestion
-              key={qIndex}
-              title="Major or minor?"
-              prompt="Is this chord happy, sad… or something stranger?"
-              play={() => playAs(question, qualityNotes(question))}
-              options={(level.id.endsWith('mm') ? ['maj', 'min'] : ['maj', 'min', 'dim', 'aug']).map((id) => ({ id, label: QUALITY_LABEL[id] }))}
-              answer={rightOption(question)}
-              hear={(id) => playAs(question, optionNotes(question, id))}
-              reveal={() => (
-                <MusicText text={`${pitchName(fromMidi(question.root))} ${QUALITY_LABEL[question.type.id].toLowerCase()}`} />
-              )}
-              onAnswer={(a) => answered({ ...a, question })}
-              onNext={next}
-            />
-          )}
-          {question.kind === 'interval' && (
-            <ChoiceQuestion
-              key={qIndex}
-              title="Name the interval"
-              prompt={question.harmonic ? 'Two notes played together. How far apart?' : 'Two notes, low then high. How far apart?'}
-              play={() => playAs(question, optionNotes(question, rightOption(question)))}
-              options={INTERVAL_LEVELS.find((l) => level.id.endsWith(l.id))!.semis.map((s) => ({ id: String(s), label: intervalName(s) }))}
-              answer={rightOption(question)}
-              // Played the way the question was: together for a harmonic interval.
-              hear={(id) => playAs(question, optionNotes(question, id))}
-              reveal={() => (
-                <span>
-                  {intervalName(question.semis)} · {question.semis} half step{question.semis > 1 ? 's' : ''}
-                  {intervalCue(question.semis) && <span className="mt-1 block text-base font-bold text-ink-soft">Like {intervalCue(question.semis)}</span>}
-                </span>
-              )}
-              keyboard={{ from: 48, to: 84, marks: { [question.low]: { kind: 'root', label: pitchName(fromMidi(question.low)) }, [question.low + question.semis]: { kind: 'chord', label: pitchName(fromMidi(question.low + question.semis)) } } }}
-              onAnswer={(a) => answered({ ...a, question })}
-              onNext={next}
-            />
-          )}
-          {question.kind === 'echo' && <EchoQuestion key={qIndex} q={question} onAnswer={(a) => answered({ ...a, question })} onNext={next} />}
-        </GameMain>
-      )}
-      {phase === 'done' && (
-        <GameMain>
-          <ResultsCard
-            title={clean >= 9 ? 'Golden ears!' : clean >= 7 ? 'Great listening!' : 'Round complete'}
-            score={score}
-            stars={starsFor(clean / ROUND, 0.9, 0.7)}
-            result={finish}
-            stats={[
-              { label: 'First try', value: `${clean}/${ROUND}` },
-              { label: 'Correct', value: `${outcomes.filter((o) => o.correct).length}/${ROUND}` },
-              { label: 'Best streak', value: bestStreak },
-            ]}
-            onAgain={start}
-            onSetup={() => setPhase('setup')}
-          >
-            <MissList misses={outcomes.filter((o) => !o.clean).map(toMiss)} />
-          </ResultsCard>
-        </GameMain>
-      )}
+      {/* A keyboard takes the height that's left, so the page only scrolls on very short screens. */}
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
+        {phase === 'setup' && (
+          <GameMain>
+            <SetupCard
+              icon={Ear}
+              from="#3ee6c8"
+              to="#5cc8ff"
+              title="Ear Training"
+              blurb="You already play by ear, so this is where you shine. Put names to the sounds you know."
+              gameId="ear"
+              levels={levels}
+              level={level.id}
+              onLevel={setLevelId}
+              onStart={start}
+            >
+              <div className="grid gap-3 sm:grid-cols-3">
+                {MODES.map((m) => {
+                  const I = m.icon
+                  const active = m.id === mode
+                  return (
+                    <motion.button
+                      key={m.id}
+                      type="button"
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => setMode(m.id)}
+                      aria-pressed={active}
+                      className={`flex flex-col items-start gap-2 rounded-3xl border p-5 text-left transition-colors ${
+                        active ? 'border-gold/70 bg-gold/12' : 'border-white/8 bg-night-800/80 hover:border-white/20'
+                      }`}
+                    >
+                      <span className="flex size-12 items-center justify-center rounded-2xl text-night-900" style={{ background: `linear-gradient(140deg, ${m.from}, ${m.to})` }}>
+                        <I size={26} />
+                      </span>
+                      <span className="text-xl font-extrabold">{m.title}</span>
+                      <span className="text-sm text-ink-mute">{m.blurb}</span>
+                    </motion.button>
+                  )
+                })}
+              </div>
+            </SetupCard>
+          </GameMain>
+        )}
+        {phase === 'play' && question && (
+          <GameMain wide={mode === 'echo'} fill>
+            <Hud step={qIndex} total={ROUND} score={score} streak={streak} />
+            {question.kind === 'quality' && (
+              <ChoiceQuestion
+                key={qIndex}
+                title="Major or minor?"
+                prompt="Is this chord happy, sad… or something stranger?"
+                play={() => playAs(question, qualityNotes(question))}
+                options={(level.id.endsWith('mm') ? ['maj', 'min'] : ['maj', 'min', 'dim', 'aug']).map((id) => ({ id, label: QUALITY_LABEL[id] }))}
+                answer={rightOption(question)}
+                hear={(id) => playAs(question, optionNotes(question, id))}
+                reveal={() => (
+                  <MusicText text={`${pitchName(fromMidi(question.root))} ${QUALITY_LABEL[question.type.id].toLowerCase()}`} />
+                )}
+                onAnswer={(a) => answered({ ...a, question })}
+                onNext={next}
+              />
+            )}
+            {question.kind === 'interval' && (
+              <ChoiceQuestion
+                key={qIndex}
+                title="Name the interval"
+                prompt={question.harmonic ? 'Two notes played together. How far apart?' : 'Two notes, low then high. How far apart?'}
+                play={() => playAs(question, optionNotes(question, rightOption(question)))}
+                options={INTERVAL_LEVELS.find((l) => level.id.endsWith(l.id))!.semis.map((s) => ({ id: String(s), label: intervalName(s) }))}
+                answer={rightOption(question)}
+                // Played the way the question was: together for a harmonic interval.
+                hear={(id) => playAs(question, optionNotes(question, id))}
+                reveal={() => (
+                  <span>
+                    {intervalName(question.semis)} · {question.semis} half step{question.semis > 1 ? 's' : ''}
+                    {intervalCue(question.semis) && <span className="mt-1 block text-base font-bold text-ink-soft">Like {intervalCue(question.semis)}</span>}
+                  </span>
+                )}
+                keyboard={{ from: 48, to: 84, marks: { [question.low]: { kind: 'root', label: pitchName(fromMidi(question.low)) }, [question.low + question.semis]: { kind: 'chord', label: pitchName(fromMidi(question.low + question.semis)) } } }}
+                onAnswer={(a) => answered({ ...a, question })}
+                onNext={next}
+              />
+            )}
+            {question.kind === 'echo' && <EchoQuestion key={qIndex} q={question} onAnswer={(a) => answered({ ...a, question })} onNext={next} />}
+          </GameMain>
+        )}
+        {phase === 'done' && (
+          <GameMain>
+            <ResultsCard
+              title={clean >= 9 ? 'Golden ears!' : clean >= 7 ? 'Great listening!' : 'Round complete'}
+              score={score}
+              stars={starsFor(clean / ROUND, 0.9, 0.7)}
+              result={finish}
+              stats={[
+                { label: 'First try', value: `${clean}/${ROUND}` },
+                { label: 'Correct', value: `${outcomes.filter((o) => o.correct).length}/${ROUND}` },
+                { label: 'Best streak', value: bestStreak },
+              ]}
+              onAgain={start}
+              onSetup={() => setPhase('setup')}
+            >
+              <MissList misses={outcomes.filter((o) => !o.clean).map(toMiss)} />
+            </ResultsCard>
+          </GameMain>
+        )}
+      </div>
     </div>
   )
 }
@@ -360,15 +363,17 @@ function ChoiceQuestion({
   }
 
   return (
-    <motion.div ref={cardRef} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-5">
-      <div className="glass flex flex-col items-center gap-4 rounded-3xl p-6 text-center">
-        <h2 className="font-display text-3xl font-bold sm:text-4xl">{title}</h2>
-        <p className="text-lg text-ink-soft">{prompt}</p>
-        <ReplayButton onClick={run} playing={playing} />
-        <FeedbackLine tone={result === 'clean' ? 'good' : result === 'second' ? 'info' : result === 'missed' ? 'bad' : 'neutral'} id={result ?? wrongs.length}>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <QuestionCard cardRef={cardRef} title={title} prompt={prompt} replay={<ReplayButton onClick={run} playing={playing} />}>
+        <FeedbackLine start tone={result === 'clean' ? 'good' : result === 'second' ? 'info' : result === 'missed' ? 'bad' : 'neutral'} id={result ?? wrongs.length}>
           {result ? reveal() : wrongs.length ? 'Not that one. Listen again and try another.' : 'Tap the speaker to hear it again.'}
         </FeedbackLine>
-      </div>
+        {result && result !== 'clean' && (
+          <Button size="lg" iconRight={ArrowRight} onClick={onNext}>
+            Next
+          </Button>
+        )}
+      </QuestionCard>
       <div className={`grid gap-3 ${options.length <= 4 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'}`}>
         {options.map((o) => {
           const isAnswer = result !== null && o.id === answer
@@ -400,18 +405,26 @@ function ChoiceQuestion({
           )
         })}
       </div>
-      {result && keyboard && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-3xl p-3">
-          <Piano from={keyboard.from} to={keyboard.to} marks={keyboard.marks} labels="marked" height={150} />
-        </motion.div>
-      )}
-      {result && result !== 'clean' && (
-        <div className="flex justify-center">
-          <Button size="lg" iconRight={ArrowRight} onClick={onNext}>
-            Next
-          </Button>
-        </div>
-      )}
+      {result && keyboard && <KeysCard max={170}>{(fit) => <Piano from={keyboard.from} to={keyboard.to} marks={keyboard.marks} labels="marked" height={fit.keys} />}</KeysCard>}
+    </div>
+  )
+}
+
+/** The question: the big replay button, then its title, prompt and feedback (beside the button on wider screens). */
+function QuestionCard({ cardRef, title, prompt, replay, children }: { cardRef: RefObject<HTMLDivElement | null>; title: string; prompt: ReactNode; replay: ReactNode; children: ReactNode }) {
+  return (
+    <motion.div
+      ref={cardRef}
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="glass flex flex-col items-center gap-4 rounded-3xl p-5 text-center sm:flex-row sm:gap-7 sm:p-6 sm:text-left"
+    >
+      {replay}
+      <div className="flex min-w-0 flex-1 flex-col items-center gap-2 sm:items-start">
+        <h2 className="font-display text-3xl font-bold sm:text-4xl">{title}</h2>
+        <p className="text-lg text-ink-soft">{prompt}</p>
+        {children}
+      </div>
     </motion.div>
   )
 }
@@ -471,14 +484,22 @@ function EchoQuestion({ q, onAnswer, onNext }: { q: EchoQ; onAnswer: (a: Answer)
   if (state !== 'listening') notes.forEach((n, i) => (marks[n] = { kind: revealIndex === i ? 'root' : 'chord', label: String(i + 1) }))
 
   return (
-    <motion.div ref={cardRef} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-5">
-      <div className="glass flex flex-col items-center gap-4 rounded-3xl p-6 text-center">
-        <h2 className="font-display text-3xl font-bold sm:text-4xl">Echo</h2>
-        <p className="text-lg text-ink-soft">
-          Listen, then play it back. It starts on <b className="text-gold"><MusicText text={pitchName(first)} /></b> (any octave is fine).
-        </p>
-        <ReplayButton onClick={run} playing={playing} />
-        <motion.div key={shake} animate={shake ? { x: [0, -10, 10, -6, 6, 0] } : {}} transition={{ duration: 0.4 }} className="flex gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <QuestionCard
+        cardRef={cardRef}
+        title="Echo"
+        prompt={
+          <>
+            Listen, then play it back. It starts on{' '}
+            <b className="text-gold">
+              <MusicText text={pitchName(first)} />
+            </b>{' '}
+            (any octave is fine).
+          </>
+        }
+        replay={<ReplayButton onClick={run} playing={playing} />}
+      >
+        <motion.div key={shake} animate={shake ? { x: [0, -10, 10, -6, 6, 0] } : {}} transition={{ duration: 0.4 }} className="flex gap-3 py-1">
           {notes.map((_, i) => (
             <motion.span
               key={i}
@@ -489,7 +510,7 @@ function EchoQuestion({ q, onAnswer, onNext }: { q: EchoQ; onAnswer: (a: Answer)
             />
           ))}
         </motion.div>
-        <FeedbackLine tone={state === 'solved' ? 'good' : state === 'revealed' ? 'info' : attempts ? 'bad' : 'neutral'} id={`${state}-${attempts}`}>
+        <FeedbackLine start tone={state === 'solved' ? 'good' : state === 'revealed' ? 'info' : attempts ? 'bad' : 'neutral'} id={`${state}-${attempts}`}>
           {state === 'solved'
             ? attempts === 0
               ? 'Perfect echo!'
@@ -500,22 +521,18 @@ function EchoQuestion({ q, onAnswer, onNext }: { q: EchoQ; onAnswer: (a: Answer)
                 ? `Not quite. From the first note again (${3 - attempts} ${3 - attempts === 1 ? 'try' : 'tries'} left).`
                 : 'Your turn whenever you’re ready.'}
         </FeedbackLine>
-        <div className="flex flex-wrap justify-center gap-2">
-          {state === 'listening' && (
-            <Button variant="ghost" size="md" onClick={reveal}>
-              Show me
-            </Button>
-          )}
-          {state === 'revealed' && (
-            <Button size="md" iconRight={ArrowRight} onClick={onNext}>
-              Next
-            </Button>
-          )}
-        </div>
-      </div>
-      <div className="glass rounded-3xl px-2 pb-2 pt-20 sm:px-4">
-        <Piano from={48} to={84} marks={marks} sparks labels="c" height={190} />
-      </div>
-    </motion.div>
+        {state === 'listening' && (
+          <Button variant="ghost" size="md" onClick={reveal}>
+            Show me
+          </Button>
+        )}
+        {state === 'revealed' && (
+          <Button size="lg" iconRight={ArrowRight} onClick={onNext}>
+            Next
+          </Button>
+        )}
+      </QuestionCard>
+      <KeysCard>{(fit) => <Piano from={48} to={84} marks={marks} sparks sparkHeight={fit.sparks} labels="c" height={fit.keys} />}</KeysCard>
+    </div>
   )
 }

@@ -7,6 +7,7 @@ import { type Marks, Piano } from '../../components/piano/Piano'
 import { Staff } from '../../components/staff/Staff'
 import { Button } from '../../components/ui/Button'
 import { Paper } from '../../components/ui/Card'
+import { useViewportHeight } from '../../hooks/useViewport'
 import { playNotes } from '../../lib/audio/play'
 import { burst } from '../../lib/fx'
 import { type NoteEvent, heldNow, useNoteEvents } from '../../lib/input/bus'
@@ -15,7 +16,7 @@ import { micHearsChord } from '../../lib/input/micMatch'
 import { type Chord, fromMidi, midiOf, mod, noteName, pcOf, pitchName, voicedChord } from '../../lib/theory'
 import { useLive } from '../../state/live'
 import { TRAINER_LEVELS, chordLabel, chordRecipe, inversionIndex, matchChord, pickRound } from './logic/chords'
-import { FeedbackLine, GameMain, Hud, ResultsCard, SetupCard } from './shared/GameParts'
+import { FeedbackLine, GameMain, Hud, KeysCard, ResultsCard, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame, remember, sfx, starsFor, store } from './shared/finish'
 
 const ROUND = 10
@@ -64,66 +65,69 @@ export function ChordTrainer() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex h-dvh flex-col">
       <TopBar back="/practice" title="Chord Trainer" subtitle={phase === 'setup' ? 'See it, play it' : level.name} />
-      {phase === 'setup' && (
-        <GameMain>
-          <SetupCard
-            icon={Layers}
-            from="#9b8cff"
-            to="#ff8fc8"
-            title="Chord Trainer"
-            blurb={
-              <>
-                A chord symbol appears. Play it, in any octave, any order. On your keyboard, hold the notes together. On screen, tap each key.
-                Fast and clean earns bonus points.
-              </>
-            }
-            gameId="chord-trainer"
-            levels={TRAINER_LEVELS}
-            level={level.id}
-            onLevel={setLevelId}
-            onStart={start}
-          />
-        </GameMain>
-      )}
-      {phase === 'play' && round[results.length] && (
-        <GameMain wide>
-          <Hud step={results.length} total={ROUND} score={score} streak={streak} label="Chord" />
-          <Challenge key={results.length} chord={round[results.length]} onDone={onDone} />
-        </GameMain>
-      )}
-      {phase === 'done' && (
-        <GameMain>
-          <ResultsCard
-            title={starsFor(results.filter(isClean).length / ROUND) === 3 ? 'Chord master!' : 'Round complete'}
-            score={score}
-            stars={starsFor(results.filter(isClean).length / ROUND)}
-            result={finish}
-            stats={[
-              { label: 'Clean', value: `${results.filter(isClean).length}/${ROUND}` },
-              { label: 'Avg time', value: `${(results.reduce((s, r) => s + r.seconds, 0) / ROUND).toFixed(1)}s` },
-              { label: 'Hints', value: results.filter((r) => r.hinted).length },
-            ]}
-            onAgain={start}
-            onSetup={() => setPhase('setup')}
-          >
-            <div className="mt-5 flex flex-wrap justify-center gap-2">
-              {results.map((r, i) => (
-                <span
-                  key={i}
-                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 font-display text-lg font-bold ${
-                    isClean(r) ? 'bg-good/15 text-good' : 'bg-bad/12 text-bad'
-                  }`}
-                >
-                  {isClean(r) ? <Check size={16} strokeWidth={3} /> : <X size={16} strokeWidth={3} />}
-                  <MusicText text={chordLabel(r.chord).symbol} />
-                </span>
-              ))}
-            </div>
-          </ResultsCard>
-        </GameMain>
-      )}
+      {/* The keyboard takes the height that's left, so the page only scrolls on very short screens. */}
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
+        {phase === 'setup' && (
+          <GameMain>
+            <SetupCard
+              icon={Layers}
+              from="#9b8cff"
+              to="#ff8fc8"
+              title="Chord Trainer"
+              blurb={
+                <>
+                  A chord symbol appears. Play it, in any octave, any order. On your keyboard, hold the notes together. On screen, tap each key.
+                  Fast and clean earns bonus points.
+                </>
+              }
+              gameId="chord-trainer"
+              levels={TRAINER_LEVELS}
+              level={level.id}
+              onLevel={setLevelId}
+              onStart={start}
+            />
+          </GameMain>
+        )}
+        {phase === 'play' && round[results.length] && (
+          <GameMain wide fill>
+            <Hud step={results.length} total={ROUND} score={score} streak={streak} label="Chord" />
+            <Challenge key={results.length} chord={round[results.length]} onDone={onDone} />
+          </GameMain>
+        )}
+        {phase === 'done' && (
+          <GameMain>
+            <ResultsCard
+              title={starsFor(results.filter(isClean).length / ROUND) === 3 ? 'Chord master!' : 'Round complete'}
+              score={score}
+              stars={starsFor(results.filter(isClean).length / ROUND)}
+              result={finish}
+              stats={[
+                { label: 'Clean', value: `${results.filter(isClean).length}/${ROUND}` },
+                { label: 'Avg time', value: `${(results.reduce((s, r) => s + r.seconds, 0) / ROUND).toFixed(1)}s` },
+                { label: 'Hints', value: results.filter((r) => r.hinted).length },
+              ]}
+              onAgain={start}
+              onSetup={() => setPhase('setup')}
+            >
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
+                {results.map((r, i) => (
+                  <span
+                    key={i}
+                    className={`flex items-center gap-1 rounded-xl px-3 py-1.5 font-display text-lg font-bold ${
+                      isClean(r) ? 'bg-good/15 text-good' : 'bg-bad/12 text-bad'
+                    }`}
+                  >
+                    {isClean(r) ? <Check size={16} strokeWidth={3} /> : <X size={16} strokeWidth={3} />}
+                    <MusicText text={chordLabel(r.chord).symbol} />
+                  </span>
+                ))}
+              </div>
+            </ResultsCard>
+          </GameMain>
+        )}
+      </div>
     </div>
   )
 }
@@ -143,6 +147,8 @@ function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) =
   const [flash, setFlash] = useState<Record<number, true>>({})
   const [feedbackId, setFeedbackId] = useState(0)
   const symbolRef = useRef<HTMLDivElement>(null)
+  // Laptop screens are short: a smaller symbol leaves the keyboard its room.
+  const short = useViewportHeight() < 860
   const startedAt = useRef(0)
   const finished = useRef(false)
   const lastMistake = useRef(0)
@@ -291,7 +297,7 @@ function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) =
               initial={{ scale: 0.6, opacity: 0 }}
               animate={{ scale: status === 'correct' ? [1, 1.15, 1] : 1, opacity: 1 }}
               transition={{ type: 'spring', stiffness: 420, damping: 20 }}
-              className={`font-display text-7xl font-bold leading-none sm:text-8xl ${status === 'correct' ? 'text-good' : 'text-ink'}`}
+              className={`font-display font-bold leading-none ${short ? 'text-6xl sm:text-7xl' : 'text-7xl sm:text-8xl'} ${status === 'correct' ? 'text-good' : 'text-ink'}`}
             >
               <MusicText text={label.symbol} />
             </motion.div>
@@ -356,7 +362,7 @@ function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) =
             </div>
           )}
         </motion.div>
-        <Paper className="flex min-h-[15rem] flex-col justify-center">
+        <Paper className={`flex flex-col justify-center ${short ? 'min-h-[11rem]' : 'min-h-[15rem]'}`}>
           {revealed ? (
             <Staff
               clef="treble"
@@ -373,9 +379,9 @@ function Challenge({ chord, onDone }: { chord: Chord; onDone: (r: ChordResult) =
           )}
         </Paper>
       </div>
-      <div className="glass rounded-3xl px-2 pb-2 pt-12 sm:px-4">
-        <Piano from={48} to={84} mode="toggle" onToggle={toggle} marks={marks} sparks labels="c" height={180} />
-      </div>
+      <KeysCard>
+        {(fit) => <Piano from={48} to={84} mode="toggle" onToggle={toggle} marks={marks} sparks sparkHeight={fit.sparks} labels="c" height={fit.keys} />}
+      </KeysCard>
     </>
   )
 }
