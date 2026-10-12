@@ -6,6 +6,7 @@ import { Button } from '../../../components/ui/Button'
 import { GoalProgress } from '../../../components/ui/GoalProgress'
 import { IconTile } from '../../../components/ui/Card'
 import { ProgressBar, Stars } from '../../../components/ui/progress'
+import { useHandsFree } from '../../../hooks/useHandsFree'
 import { go } from '../../../router'
 import { useProgress } from '../../../state/progress'
 import type { FinishResult } from './finish'
@@ -69,6 +70,8 @@ export function SetupCard({
   const games = useProgress((s) => s.games)
   const index = Math.max(0, levels.findIndex((l) => l.id === level))
   const rounds = useHistory(trendKey ?? `${gameId}:${level}`)
+  // Enter, a pedal tap or the top C start, so your hands can stay on the keys.
+  useHandsFree(onStart)
   return (
     <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-5">
       <div className="glass relative overflow-hidden rounded-3xl p-5 sm:p-7">
@@ -306,6 +309,9 @@ export function ResultsCard({
   children?: ReactNode
 }) {
   const rounds = useHistory(historyKey ?? '')
+  // Enter, a pedal tap or the top C press the main button (not straight away, so the note or Enter that ended the
+  // round doesn't skip the results).
+  useHandsFree(next?.onClick ?? onAgain)
   // A best for this level only: beating your own earlier score here (the first round on a level has nothing to beat).
   const levelBest = !!result && !result.isBest && result.levelBest && result.levelPrevBest > 0
   return (

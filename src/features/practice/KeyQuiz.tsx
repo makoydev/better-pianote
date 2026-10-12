@@ -7,6 +7,7 @@ import { MusicText } from '../../components/MusicText'
 import { Staff } from '../../components/staff/Staff'
 import { Button } from '../../components/ui/Button'
 import { Segmented, Toggle } from '../../components/ui/controls'
+import { useHandsFree } from '../../hooks/useHandsFree'
 import { burst } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
 import { enharmonicLabel, keyId, keyName } from '../../lib/theory'
@@ -226,6 +227,8 @@ function Question({
   }, [])
   // A note that names none of the choices: said, not counted.
   const [stray, setStray] = useState<number | null>(null)
+  // Hands-free Next after a wrong answer (a right one moves on by itself); while keynotes are answers, none.
+  useHandsFree(picked !== null && !right ? onNext : null)
 
   const choose = (i: number) => {
     if (picked !== null) return

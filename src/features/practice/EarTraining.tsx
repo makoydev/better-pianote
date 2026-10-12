@@ -7,6 +7,7 @@ import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
 import { Button } from '../../components/ui/Button'
 import { Toggle } from '../../components/ui/controls'
+import { useHandsFree } from '../../hooks/useHandsFree'
 import { playNotes } from '../../lib/audio/play'
 import { burst } from '../../lib/fx'
 import { heldNow, useNoteEvents } from '../../lib/input/bus'
@@ -494,6 +495,8 @@ function ChoiceQuestion({
   const stale = useRef(new Set(heldNow()))
   const [heard, setHeard] = useState<{ text: string; tone: 'neutral' | 'info'; id: string } | null>(null)
   useMicChords(!!byPlaying?.chord && !result)
+  // Hands-free Next once it's answered (a first-try answer moves on by itself); while notes are answers, none.
+  useHandsFree(result && result !== 'clean' ? onNext : null)
 
   const choose = (id: string) => {
     if (result) {
@@ -693,6 +696,8 @@ function EchoQuestion({ q, onAnswer, onNext }: { q: EchoQ; onAnswer: (a: Answer)
     return playAs(q, notes)
   }, notes.join('-'))
   const first = fromMidi(notes[0])
+  // While you're echoing, notes are answers; once it's shown, Enter, a pedal tap or the top C go on.
+  useHandsFree(state === 'revealed' ? onNext : null)
 
   const reveal = () => {
     setState('revealed')

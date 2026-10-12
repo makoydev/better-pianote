@@ -6,6 +6,7 @@ import { Staff } from '../../components/staff/Staff'
 import { Button } from '../../components/ui/Button'
 import { Paper } from '../../components/ui/Card'
 import { Slider, Toggle } from '../../components/ui/controls'
+import { useHandsFree } from '../../hooks/useHandsFree'
 import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { useNoteEvents } from '../../lib/input/bus'
@@ -382,6 +383,15 @@ function Round({ pattern, bpm, clickOn, onDone }: { pattern: RNote[]; bpm: numbe
     if (e.type === 'on' && e.source !== 'screen') tap(e.time, e.source === 'mic' ? 0.07 : 0)
   })
 
+  const retry = () => void begin(false)
+  const moveOn = () => {
+    if (result) onDone({ best: Math.max(best, result.score), first: first.current ?? result.score, errors: errors.current })
+  }
+  const retryFirst = !!result && result.score < 65
+  // Enter or a pedal tap: Start before a try, then Try again or Next. Never the top C: here every piano key is a
+  // tap, so a key can't also be a button (and taps after a try do nothing).
+  useHandsFree(phase === 'ready' ? retry : phase === 'review' && result ? (retryFirst ? retry : moveOn) : null, { topC: false })
+
   // Colour the notes on the staff once graded.
   const staffItems = useMemo(() => {
     if (!result) return patternToStaff(pattern)
@@ -492,11 +502,12 @@ function Round({ pattern, bpm, clickOn, onDone }: { pattern: RNote[]; bpm: numbe
                 {result.extras.length > 0 && <span className="rounded-full bg-bad/15 px-3 py-1 text-bad">{result.extras.length} extra</span>}
               </div>
               <p className="text-sm text-ink-mute">Numbers under the notes are milliseconds: minus = early, plus = late.</p>
+              {/* The main button (the one Enter or a pedal tap presses): another go after a shaky try, otherwise Next. */}
               <div className="flex flex-wrap gap-2">
-                <Button size="lg" variant="secondary" icon={RotateCcw} onClick={() => void begin(false)}>
+                <Button size="lg" variant={retryFirst ? 'primary' : 'secondary'} icon={RotateCcw} onClick={retry}>
                   Try again
                 </Button>
-                <Button size="lg" iconRight={SkipForward} onClick={() => onDone({ best: Math.max(best, result.score), first: first.current ?? result.score, errors: errors.current })}>
+                <Button size="lg" variant={retryFirst ? 'secondary' : 'primary'} iconRight={SkipForward} onClick={moveOn}>
                   Next
                 </Button>
               </div>
