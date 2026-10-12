@@ -168,6 +168,29 @@ export function isProgression(v: unknown): v is string[] {
   })
 }
 
+/** Edits to a progression (new arrays; out-of-range moves leave it as it was). */
+export const replaceAt = (romans: string[], i: number, rn: string) => romans.map((r, k) => (k === i ? rn : r))
+export const removeAt = (romans: string[], i: number) => romans.filter((_, k) => k !== i)
+export function moveAt(romans: string[], i: number, by: -1 | 1): string[] {
+  const j = i + by
+  if (i < 0 || i >= romans.length || j < 0 || j >= romans.length) return romans
+  const out = [...romans]
+  ;[out[i], out[j]] = [out[j], out[i]]
+  return out
+}
+
+export const sameRomans = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((r, i) => r === b[i])
+
+/** Stable keys for a progression's cards ("IV#0", "IV#1" for a repeated chord), so a moved card slides instead of reappearing. */
+export function cardKeys(romans: string[]): string[] {
+  const seen = new Map<string, number>()
+  return romans.map((r) => {
+    const n = seen.get(r) ?? 0
+    seen.set(r, n + 1)
+    return `${r}#${n}`
+  })
+}
+
 const ROMANS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
 const accSign = (acc: number) => (acc < 0 ? '♭'.repeat(-acc) : '♯'.repeat(acc))
 

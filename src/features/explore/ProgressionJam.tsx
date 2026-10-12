@@ -1,4 +1,4 @@
-import { Check, Drum, Eraser, Info, Minus, Play, Plus, Repeat, Square, Target, Timer, Undo2, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Drum, Eraser, Info, Minus, Play, Plus, Repeat, Square, Target, Timer, Undo2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MusicText } from '../../components/MusicText'
@@ -10,7 +10,7 @@ import { Segmented, Slider, Toggle } from '../../components/ui/controls'
 import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { playNotes } from '../../lib/audio/play'
-import { bassFor, chordPcs, chordSymbol, mod, parseNote, pcOf, pitchName, voiceProgression } from '../../lib/theory'
+import { type Chord, bassFor, chordPcs, chordSymbol, mod, parseNote, pcOf, pitchName, voiceProgression } from '../../lib/theory'
 import { heldMidis, useLive } from '../../state/live'
 import { usePref } from '../../state/prefs'
 import { spellVoicing } from './chordTools'
@@ -20,14 +20,19 @@ import {
   PALETTE_GROUPS,
   PRESETS,
   type PatternId,
+  cardKeys,
   drumHits,
   isMinorProgression,
   isProgression,
   jamChords,
   jamTonic,
+  moveAt,
   nashville,
   patternHits,
+  removeAt,
+  replaceAt,
   romanLabel,
+  sameRomans,
 } from './jam'
 import { OctavePicker } from './OctavePicker'
 import { useMicChords } from '../../lib/input/mic'
@@ -41,11 +46,22 @@ const PRESET_IDS = [...PRESETS.map((p) => p.id), CUSTOM]
 const KEYS = Array.from({ length: 12 }, (_, pc) => pc)
 const FEELS: PatternId[] = ['block', 'fingerstyle', 'ballad']
 const NO_CHORDS: string[] = []
+const UNDO_STEPS = 30
 
 interface Pos {
   /** Chord index, or -1 during the count-in. */
   chord: number
   beat: number
+}
+
+/** What Undo puts back: the progression on screen, your own one, and the settings a load can change. */
+interface Snapshot {
+  presetId: string
+  own: string[]
+  tonic: number
+  bpm: number
+  pattern: PatternId
+  perChord: 8 | 4
 }
 
 export function ProgressionJam() {
@@ -62,9 +78,15 @@ export function ProgressionJam() {
   const [playing, setPlaying] = useState(false)
   const [pos, setPos] = useState<Pos | null>(null)
   const [focus, setFocus] = useState(0)
+  // The card being edited: numerals then replace it, and ◀ ▶ move it.
+  const [selected, setSelected] = useState<number | null>(null)
+  const [history, setHistory] = useState<Snapshot[]>([])
+  // Set when editing a preset replaced the progression under Yours, to offer Undo.
+  const [replaced, setReplaced] = useState(false)
 
   const preset = PRESETS.find((p) => p.id === presetId) ?? null
-  const romans = preset ? preset.romans : isProgression(ownRomans) ? ownRomans : NO_CHORDS
+  const own = isProgression(ownRomans) ? ownRomans : NO_CHORDS
+  const romans = preset ? preset.romans : own
   const minor = useMemo(() => isMinorProgression(romans), [romans])
   const tonicName = (pc: number) => pitchName(jamTonic(pc, minor))
   const chords = useMemo(() => jamChords(romans, tonic, minor), [romans, tonic, minor])
@@ -142,24 +164,76 @@ export function ProgressionJam() {
     setPlaying(true)
   }
 
+  const remember = () => setHistory((h) => [...h.slice(1 - UNDO_STEPS), { presetId, own, tonic, bpm, pattern, perChord }])
+  const undo = () => {
+    const last = history[history.length - 1]
+    if (!last) return
+    setHistory((h) => h.slice(0, -1))
+    setPresetId(last.presetId)
+    setOwnRomans(last.own)
+    setTonic(last.tonic)
+    setBpm(last.bpm)
+    setPattern(last.pattern)
+    setPerChord(last.perChord)
+    setSelected(null)
+    setReplaced(false)
+    const back = PRESETS.find((p) => p.id === last.presetId)?.romans ?? last.own
+    setFocus((f) => Math.min(f, Math.max(0, back.length - 1)))
+    if (!back.length) stop()
+  }
+
   const choosePreset = (id: string) => {
     const p = PRESETS.find((x) => x.id === id)!
+    if (id !== presetId || tonicPc(p.tonic) !== tonic) remember()
     setPresetId(id)
     setTonic(tonicPc(p.tonic))
     setFocus(0)
+    setSelected(null)
+    setReplaced(false)
   }
+  const chooseYours = () => {
+    if (presetId === CUSTOM) return
+    remember()
+    setPresetId(CUSTOM)
+    setFocus(0)
+    setSelected(null)
+    setReplaced(false)
+  }
+  /** Any change to the chords makes them your own progression ("Yours"). */
   const edit = (next: string[]) => {
+    remember()
+    // Editing a preset copies it into Yours, replacing what was there: offer Undo when that loses something.
+    setReplaced(presetId !== CUSTOM && own.length > 0 && !sameRomans(own, romans))
     setPresetId(CUSTOM)
     setOwnRomans(next)
     setFocus((f) => Math.min(f, Math.max(0, next.length - 1)))
     if (!next.length) stop()
   }
-  const preview = (i: number) => {
+  const tapCard = (i: number) => {
     setFocus(i)
-    if (!playing) playNotes([basses[i], ...voicings[i]], { dur: 1.6, strum: 0.03 })
+    if (playing) return
+    setSelected((s) => (s === i ? null : i))
+    playNotes([basses[i], ...voicings[i]], { dur: 1.6, strum: 0.03 })
+  }
+  const removeCard = (i: number) => {
+    edit(removeAt(romans, i))
+    setSelected((s) => (s === null || s === i ? null : s > i ? s - 1 : s))
+  }
+  const moveCard = (i: number, by: -1 | 1) => {
+    edit(moveAt(romans, i, by))
+    setSelected(i + by)
+    setFocus(i + by)
+  }
+  /** A numeral chip: replaces the selected chord, or adds one at the end. */
+  const pickChip = (r: string, c: Chord) => {
+    if (selected !== null && selected < romans.length && !playing) edit(replaceAt(romans, selected, r))
+    else edit([...romans, r])
+    playNotes([bassFor(c, 40), ...voiceProgression([c], { center: 64, low: 57, high: 79 })[0]], { dur: 1.2, strum: 0.02 })
   }
 
   const n = chords.length
+  const editing = !playing && selected !== null && selected < n ? selected : null
+  const keys = cardKeys(romans)
   const cur = pos && pos.chord >= 0 ? pos.chord : Math.min(focus, Math.max(0, n - 1))
   const next = n ? (cur + 1) % n : 0
   const beats = perChord / 2
@@ -189,27 +263,33 @@ export function ProgressionJam() {
         <section className="flex min-w-0 flex-col gap-5">
           <Card>
             <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+              {own.length > 0 && <PresetChip name="Yours" romans={own} active={presetId === CUSTOM} onClick={chooseYours} />}
               {PRESETS.map((p) => (
-                <motion.button
-                  key={p.id}
-                  type="button"
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => choosePreset(p.id)}
-                  aria-pressed={p.id === presetId}
-                  className={`shrink-0 rounded-2xl border px-4 py-2.5 text-left transition-colors ${
-                    p.id === presetId ? 'border-gold bg-gold text-night-900' : 'border-white/10 bg-night-750 text-ink-soft hover:border-white/25 hover:text-ink'
-                  }`}
-                >
-                  <span className="block text-base font-extrabold leading-tight">{p.name}</span>
-                  <span className={`block text-xs font-bold ${p.id === presetId ? 'text-night-700' : 'text-ink-mute'}`}>
-                    <MusicText text={p.romans.slice(0, 4).map(romanLabel).join('–') + (p.romans.length > 4 ? '…' : '')} />
-                  </span>
-                </motion.button>
+                <PresetChip key={p.id} name={p.name} romans={p.romans} active={p.id === presetId} onClick={() => choosePreset(p.id)} />
               ))}
             </div>
             <p className="mt-3 min-h-6 text-ink-soft">
-              {preset ? <MusicText text={preset.about} /> : 'Your own progression. Tap numerals below to add chords, × to remove them.'}
+              {preset ? <MusicText text={preset.about} /> : 'Your own progression. Tap a chord to change or move it, or a numeral below to add one.'}
             </p>
+            <AnimatePresence>
+              {replaced && (
+                <motion.div
+                  role="status"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-gold/30 bg-gold/10 py-1.5 pl-4 pr-1.5">
+                    <span className="min-w-0 flex-1 font-bold text-ink-soft">That replaced your earlier progression under Yours.</span>
+                    <Button size="sm" variant="secondary" icon={Undo2} onClick={undo}>
+                      Undo
+                    </Button>
+                    <IconButton icon={X} label="Dismiss" size={44} onClick={() => setReplaced(false)} />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </Card>
 
           {/* On narrower screens the controls column sits below, so keep the essentials up here. */}
@@ -250,22 +330,31 @@ export function ProgressionJam() {
                 {chords.map((ch, i) => {
                   const isCur = i === cur
                   const isNext = playing && i === next && lastBeat
+                  const isSel = i === editing
                   return (
                     <motion.div
-                      key={`${i}-${romans[i]}`}
+                      key={keys[i]}
                       layout
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: isCur && playing ? 1.05 : 1 }}
                       transition={{ type: 'spring', stiffness: 420, damping: 26 }}
                       className={`relative overflow-hidden rounded-3xl border transition-colors ${
-                        isCur
-                          ? 'border-gold bg-gold/15 shadow-[0_0_44px_-10px_#ffc857]'
-                          : isNext
-                            ? 'border-white/40 bg-night-700'
-                            : 'border-white/8 bg-night-800/85 hover:border-white/20'
+                        isSel
+                          ? 'border-gold bg-gold/15 shadow-[0_0_0_2px_#ffc857]'
+                          : isCur
+                            ? 'border-gold bg-gold/15 shadow-[0_0_44px_-10px_#ffc857]'
+                            : isNext
+                              ? 'border-white/40 bg-night-700'
+                              : 'border-white/8 bg-night-800/85 hover:border-white/20'
                       }`}
                     >
-                      <button type="button" onClick={() => preview(i)} className="block w-full p-4 text-left">
+                      <button
+                        type="button"
+                        onClick={() => tapCard(i)}
+                        aria-pressed={playing ? undefined : isSel}
+                        aria-label={`Chord ${i + 1}: ${chordSymbol(ch)}`}
+                        className="block w-full p-4 pr-12 text-left"
+                      >
                         <span className="text-xs font-extrabold text-ink-mute">{i + 1}</span>
                         <span className="block font-display text-4xl font-bold leading-tight">
                           <MusicText text={chordSymbol(ch)} />
@@ -280,6 +369,12 @@ export function ProgressionJam() {
                           </span>
                         </span>
                       </button>
+                      {isSel && (
+                        <div className="flex gap-2 px-3 pb-3">
+                          <IconButton icon={ChevronLeft} label={`Move chord ${i + 1} earlier`} size={44} disabled={i === 0} onClick={() => moveCard(i, -1)} />
+                          <IconButton icon={ChevronRight} label={`Move chord ${i + 1} later`} size={44} disabled={i === n - 1} onClick={() => moveCard(i, 1)} />
+                        </div>
+                      )}
                       {isCur && playing && (
                         <div className="absolute inset-x-0 bottom-0 flex gap-1 px-4 pb-2">
                           {Array.from({ length: beats }, (_, b) => (
@@ -291,10 +386,11 @@ export function ProgressionJam() {
                         <button
                           type="button"
                           aria-label={`Remove chord ${i + 1}`}
-                          onClick={() => edit(romans.filter((_, k) => k !== i))}
-                          className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full text-ink-mute hover:bg-white/10 hover:text-ink"
+                          title="Remove"
+                          onClick={() => removeCard(i)}
+                          className="absolute right-1 top-1 flex size-11 items-center justify-center rounded-full text-ink-mute hover:bg-white/10 hover:text-ink"
                         >
-                          <X size={16} />
+                          <X size={18} />
                         </button>
                       )}
                     </motion.div>
@@ -319,13 +415,27 @@ export function ProgressionJam() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-extrabold uppercase tracking-wider text-ink-mute">Build your own</h2>
               <div className="flex gap-1">
-                <Button variant="ghost" size="sm" icon={Undo2} disabled={!romans.length} onClick={() => edit(romans.slice(0, -1))}>
+                <Button variant="ghost" size="sm" icon={Undo2} disabled={!history.length} onClick={undo}>
                   Undo
                 </Button>
                 <Button variant="ghost" size="sm" icon={Eraser} disabled={!romans.length} onClick={() => edit([])}>
                   Clear
                 </Button>
               </div>
+            </div>
+            <div className="mb-3 flex min-h-11 flex-wrap items-center gap-2 font-bold text-ink-soft">
+              {editing !== null ? (
+                <>
+                  <span className="min-w-0 flex-1">
+                    <MusicText text={`Tap a numeral to replace chord ${editing + 1} (${chordSymbol(chords[editing])}).`} />
+                  </span>
+                  <Button size="sm" variant="secondary" icon={Check} onClick={() => setSelected(null)}>
+                    Done
+                  </Button>
+                </>
+              ) : (
+                <span>{romans.length >= MAX_CHORDS ? `That’s ${MAX_CHORDS} chords, the most a progression can hold.` : 'Tap a numeral to add it at the end.'}</span>
+              )}
             </div>
             <div className="space-y-3">
               {PALETTE_GROUPS.map((g) => (
@@ -339,11 +449,8 @@ export function ProgressionJam() {
                           key={r}
                           type="button"
                           whileTap={{ scale: 0.92 }}
-                          disabled={romans.length >= MAX_CHORDS}
-                          onClick={() => {
-                            edit([...romans, r])
-                            playNotes([bassFor(c, 40), ...voiceProgression([c], { center: 64, low: 57, high: 79 })[0]], { dur: 1.2, strum: 0.02 })
-                          }}
+                          disabled={editing === null && romans.length >= MAX_CHORDS}
+                          onClick={() => pickChip(r, c)}
                           className="flex min-h-14 min-w-[4.5rem] flex-col items-center justify-center rounded-2xl border border-white/10 bg-night-750 px-3 py-1.5 transition-colors hover:border-gold/50 disabled:opacity-40"
                         >
                           <span className="text-sm font-extrabold text-gold">
@@ -467,11 +574,11 @@ export function ProgressionJam() {
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-extrabold uppercase tracking-wider text-ink-mute">Key</span>
                 <div className="flex items-center gap-2">
-                  <IconButton icon={Minus} label="Transpose down a half step" size={40} onClick={() => setTonic((tonic + 11) % 12)} />
+                  <IconButton icon={Minus} label="Transpose down a half step" size={48} onClick={() => setTonic((tonic + 11) % 12)} />
                   <span className="w-12 text-center font-display text-2xl font-bold">
                     <MusicText text={tonicName(tonic)} />
                   </span>
-                  <IconButton icon={Plus} label="Transpose up a half step" size={40} onClick={() => setTonic((tonic + 1) % 12)} />
+                  <IconButton icon={Plus} label="Transpose up a half step" size={48} onClick={() => setTonic((tonic + 1) % 12)} />
                 </div>
               </div>
               <OctavePicker value={tonic} onChange={setTonic} height={96} label="Key" names={(p) => ({ main: tonicName(p) })} />
@@ -480,6 +587,26 @@ export function ProgressionJam() {
         </aside>
       </main>
     </div>
+  )
+}
+
+/** A preset (or your own progression) in the strip at the top: its name and first few numerals. */
+function PresetChip({ name, romans, active, onClick }: { name: string; romans: string[]; active: boolean; onClick: () => void }) {
+  return (
+    <motion.button
+      type="button"
+      whileTap={{ scale: 0.95 }}
+      onClick={onClick}
+      aria-pressed={active}
+      className={`shrink-0 rounded-2xl border px-4 py-2.5 text-left transition-colors ${
+        active ? 'border-gold bg-gold text-night-900' : 'border-white/10 bg-night-750 text-ink-soft hover:border-white/25 hover:text-ink'
+      }`}
+    >
+      <span className="block text-base font-extrabold leading-tight">{name}</span>
+      <span className={`block text-xs font-bold ${active ? 'text-night-700' : 'text-ink-mute'}`}>
+        <MusicText text={romans.slice(0, 4).map(romanLabel).join('–') + (romans.length > 4 ? '…' : '')} />
+      </span>
+    </motion.button>
   )
 }
 

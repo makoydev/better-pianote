@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import { bassFor, chordPcs, chordSymbol, mod, parseKey, pcOf, pitchName, romanToChord } from '../../lib/theory'
-import { MORE_CHIPS, PALETTE, PALETTE_GROUPS, isMinorProgression, isProgression, jamChords, nashville, patternHits } from './jam'
+import {
+  MORE_CHIPS,
+  PALETTE,
+  PALETTE_GROUPS,
+  cardKeys,
+  isMinorProgression,
+  isProgression,
+  jamChords,
+  moveAt,
+  nashville,
+  patternHits,
+  removeAt,
+  replaceAt,
+  sameRomans,
+} from './jam'
 
 const symbols = (romans: string[], pc: number, minor = false) => jamChords(romans, pc, minor).map(chordSymbol).join(' ')
 const AWKWARD = /𝄫|𝄪|F♭|C♭|E♯|B♯/u
@@ -64,6 +78,38 @@ describe('jam chips', () => {
     expect(['I/3', 'V/3', 'Isus4', 'I7', 'IV7', 'II', 'III'].map(nashville)).toEqual(['1/3', '5/7', '1sus4', '17', '47', '2', '3'])
     expect(nashville('iv/3')).toBe('4m/♭6')
     expect(nashville('bVII/3')).toBe('♭7/2')
+  })
+})
+
+describe('editing a progression', () => {
+  const p = ['I', 'V', 'vi', 'IV']
+
+  it('replaces, removes and moves chords without touching the original', () => {
+    expect(replaceAt(p, 1, 'V/3')).toEqual(['I', 'V/3', 'vi', 'IV'])
+    expect(removeAt(p, 0)).toEqual(['V', 'vi', 'IV'])
+    expect(moveAt(p, 1, 1)).toEqual(['I', 'vi', 'V', 'IV'])
+    expect(moveAt(p, 1, -1)).toEqual(['V', 'I', 'vi', 'IV'])
+    expect(p).toEqual(['I', 'V', 'vi', 'IV'])
+  })
+
+  it('leaves the ends alone', () => {
+    expect(moveAt(p, 0, -1)).toBe(p)
+    expect(moveAt(p, 3, 1)).toBe(p)
+    expect(moveAt(p, 7, 1)).toBe(p)
+  })
+
+  it('keys repeated chords apart, and a moved card keeps its key', () => {
+    const blues = ['I7', 'I7', 'IV7', 'I7']
+    expect(cardKeys(blues)).toEqual(['I7#0', 'I7#1', 'IV7#0', 'I7#2'])
+    const before = cardKeys(p)
+    const after = cardKeys(moveAt(p, 1, 1))
+    expect(after[2]).toBe(before[1])
+  })
+
+  it('compares progressions by their numerals', () => {
+    expect(sameRomans(p, [...p])).toBe(true)
+    expect(sameRomans(p, p.slice(0, 3))).toBe(false)
+    expect(sameRomans(p, ['I', 'V', 'IV', 'vi'])).toBe(false)
   })
 })
 
