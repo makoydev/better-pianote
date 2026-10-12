@@ -14,10 +14,12 @@ import { audio } from '../../lib/audio/engine'
 import { playNotes } from '../../lib/audio/play'
 import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
 import { burst, celebrate } from '../../lib/fx'
-import { useNoteEvents } from '../../lib/input/bus'
+import { recentNotes, useNoteEvents } from '../../lib/input/bus'
+import { useMicChords } from '../../lib/input/mic'
+import { micHearsNotes } from '../../lib/input/micMatch'
 import { letterColor } from '../../lib/colors'
 import { nameNote } from '../../lib/naming'
-import { type Chord, bassFor, isBlackKey, parseNote, voiceLead } from '../../lib/theory'
+import { type Chord, bassFor, isBlackKey, mod, parseNote, voiceLead } from '../../lib/theory'
 import { go } from '../../router'
 import { useLive } from '../../state/live'
 import { useLibrary } from '../../state/library'
@@ -30,6 +32,7 @@ import { TempoPresets, TempoStepper } from './TempoControl'
 import { LoopControls } from './LoopControls'
 import { barName, barTitle, countedStraight } from './bars'
 import { LISTEN_PARTS, type ListenPart, accompaniment, handFilter, listenHand, otherHand } from './accompany'
+import { handSpans, judgeKey, micChordHeard, otherHandKey } from './hearing'
 import { type CountIn, type Cue, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
 import { type Run, aroundBar, carryOn, endPass, firstStepIn, newRun, runFrom, stepAt, stepsInBars, tally } from './practice'
 import { type Hands, accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
@@ -123,7 +126,9 @@ function Player({ song }: { song: Song }) {
   /** When the current stretch of practice started (null in Listen, or before the first right note). */
   const startedAt = useRef<number | null>(null)
   const [started, setStarted] = useState(false)
-  const lastCorrectAt = useRef(0)
+  /** When the step on screen became the one to play (the mic hears a chord as the notes since then). */
+  const stepSince = useRef(0)
+  const syncedIdx = useRef(-1)
   const prevPad = useRef<number[] | null>(null)
   /** XP earned this visit from clean loop passes (capped). */
   const loopXp = useRef(0)
@@ -132,6 +137,10 @@ function Player({ song }: { song: Song }) {
   const [fromBar, setFromBar] = useState<number | undefined>(undefined)
   const sync = () => {
     const r = run.current
+    if (r.idx !== syncedIdx.current) {
+      syncedIdx.current = r.idx
+      stepSince.current = performance.now()
+    }
     setStepIdx(r.idx)
     setSatisfied(new Set(r.sat))
     setMistakes(r.mistakes)
@@ -359,28 +368,59 @@ function Player({ song }: { song: Song }) {
     sync()
   }
 
+  // Through the mic, steps of two or more notes are heard as chords.
+  useMicChords(mic === 'on' && mode === 'wait' && (step?.notes.length ?? 0) > 1)
+  const spans = useMemo(() => handSpans(tl), [tl])
+  const [octaveHint, setOctaveHint] = useState(false)
+  const octaveTimer = useRef(0)
+  useEffect(() => () => window.clearTimeout(octaveTimer.current), [])
+
   useNoteEvents((e) => {
     const r = run.current
     if (e.type !== 'on' || mode !== 'wait' || r.done) return
     const cur = steps[r.idx]
     if (!cur) return
-    const strict = useSettings.getState().strictOctave
-    const same = (a: number, b: number) => (strict ? a === b : (a - b) % 12 === 0)
-    const hit = cur.notes.find((n) => !r.sat.has(n.id) && same(n.midi, e.midi))
-    if (hit) {
-      lastCorrectAt.current = performance.now()
+    const viaMic = e.source === 'mic'
+    const target = cur.notes.map((n) => n.midi)
+    if (viaMic && target.length > 1) {
+      // A chord through the mic: the notes heard since the step began, less ones still ringing from the step
+      // before, checked as a whole (the mic may miss a chord's 5th). Stray notes never count as slips.
+      if (target.some((m) => mod(m - e.midi, 12) === 0)) flashKey(e.midi, 'good')
+      const since = Math.min(1500, performance.now() - stepSince.current)
+      if (!micHearsNotes(micChordHeard(recentNotes(since), target, steps[r.idx - 1]?.notes.map((n) => n.midi) ?? []), target)) return
+      startClock()
+      for (const n of cur.notes) {
+        if (r.sat.has(n.id)) continue
+        r.sat.add(n.id)
+        tally(r, 'note')
+      }
+      completeStep(cur)
+      sync()
+      return
+    }
+    // A keyboard (USB or on screen) must play the written octave. The mic can't be sure of octaves, and computer keys
+    // only reach an octave and a half, so they follow the "exact octave" setting.
+    const exact = e.source === 'midi' || e.source === 'screen' || (e.source === 'keys' && useSettings.getState().strictOctave)
+    const otherHand = hands === 'both' ? undefined : (m: number) => otherHandKey(spans, hands, cur.bar, m)
+    const { verdict, note } = judgeKey(cur, r.sat, e.midi, exact, otherHand)
+    if (verdict === 'hit' && note) {
       startClock()
       flashKey(e.midi, 'good')
-      r.sat.add(hit.id)
+      r.sat.add(note.id)
       tally(r, 'note')
       if (r.sat.size >= cur.notes.length) completeStep(cur)
       sync()
       return
     }
-    // Pressing a note you already got for this step again isn't a mistake.
-    if (cur.notes.some((n) => r.sat.has(n.id) && same(n.midi, e.midi))) return
-    // The mic can hear overtones of the note you just played; give it a moment.
-    if (e.source === 'mic' && performance.now() - lastCorrectAt.current < 450) return
+    if (verdict === 'octave') {
+      flashKey(e.midi, 'bad')
+      setOctaveHint(true)
+      window.clearTimeout(octaveTimer.current)
+      octaveTimer.current = window.setTimeout(() => setOctaveHint(false), 2200)
+      return
+    }
+    // Pressed again, the other hand's part, or (through the mic) most likely an overtone or a note still ringing.
+    if (verdict !== 'wrong' || viaMic) return
     tally(r, 'slip')
     r.combo = 0
     sync()
@@ -878,7 +918,7 @@ function Player({ song }: { song: Song }) {
                   : 'Press Play (or Space) to hear it at your tempo.'}
             </span>
           ) : null}
-          {mode === 'wait' && mic === 'on' && <span className="text-sm text-sky">Mic: play one note at a time.</span>}
+          {mode === 'wait' && octaveHint && <span className="text-sm font-bold text-coral">Right note, wrong octave: play the key that’s lit.</span>}
           <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1">
             {mode === 'wait' && (
               <AnimatePresence>
