@@ -131,6 +131,13 @@ describe('naming what is sounding', () => {
     expect(nameSounding([60], [60], { pedal: false })).toBeNull()
   })
 
+  it('doesn’t make chords out of two notes you’ve let go of', () => {
+    // A melody under the pedal: E5 then A5 ring together, but that's not an A power chord.
+    expect(nameSounding([midi('E5'), midi('A5')], [], { pedal: true })).toBeNull()
+    // Two keys you hold are, though.
+    expect(nameSounding([midi('E2'), midi('B2')], [midi('E2'), midi('B2')], { pedal: false })?.det.symbol).toBe('E5')
+  })
+
   it('knows notes that are still the same chord', () => {
     expect(withinChord([midi('A2'), midi('E3')], parseChord('A'))).toBe(true)
     expect(withinChord([midi('A2'), midi('D3')], parseChord('A'))).toBe(false)

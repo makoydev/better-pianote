@@ -267,7 +267,7 @@ export function ChordExplorer() {
                 </div>
               </div>
 
-              <div className="relative mt-4 flex flex-wrap items-center gap-1" aria-label="How it's built">
+              <div role="group" className="relative mt-4 flex flex-wrap items-center gap-1" aria-label="How it's built">
                 {formula.map((f, i) => {
                   const c = noteColor(pcOf(f.note))
                   return (
@@ -297,8 +297,9 @@ export function ChordExplorer() {
                   )
                 })}
               </div>
+              {/* Spelled out in words, except where the column is narrow (an iPad on its side), to keep the keyboard in view. */}
               {formula.length > 1 && (
-                <p className="relative mt-2 text-sm text-ink-mute">
+                <p className="relative mt-2 text-sm text-ink-mute lg:max-xl:hidden">
                   From the root, stack{' '}
                   {formula.slice(1).map((f, i) => (
                     <span key={i}>
@@ -311,7 +312,14 @@ export function ChordExplorer() {
               )}
             </Card>
             <Paper className="flex items-center">
-              <Staff clef={hands === 'both' ? 'grand' : 'treble'} items={staffItems} sp={16} reserveAbove={hands === 'both' ? 2.2 : 2.6} reserveBelow={hands === 'both' ? 2.2 : 2.6} />
+              {/* Both hands' note names stack above and below a grand staff, so it's drawn smaller on short screens. */}
+              <Staff
+                clef={hands === 'both' ? 'grand' : 'treble'}
+                items={staffItems}
+                sp={hands === 'both' && short ? 12 : 16}
+                reserveAbove={hands === 'both' ? 2.2 : 2.6}
+                reserveBelow={hands === 'both' ? 2.2 : 2.6}
+              />
             </Paper>
           </div>
 

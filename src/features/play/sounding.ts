@@ -109,18 +109,20 @@ const MELODY_ABOVE = 19
 /**
  * Name what's sounding. With the pedal down, everything ringing counts. Without it, the keys you hold come first
  * when they make a chord on their own, then the broken chord. When the lot isn't a chord, a melody may be in the
- * way, so the notes near the bass get a try, and then the held keys alone.
+ * way, so the notes near the bass get a try, and then the held keys alone. Notes you've let go of only count
+ * towards a chord of three or more notes, so a melody under the pedal doesn't read as intervals and power chords.
  */
 export function nameSounding(all: number[], held: number[], opts: { pedal: boolean; prefer?: 'sharp' | 'flat'; mic?: boolean }): Named | null {
+  const pcs = (midis: number[]) => new Set(midis.map((m) => mod(m, 12))).size
   const name = (midis: number[]): Named | null => {
-    if (new Set(midis.map((m) => mod(m, 12))).size < 2) return null
+    if (pcs(midis) < 2) return null
     if (opts.mic) return nameHeardChord(midis, opts.prefer)
     const det = detectChord(midis, opts.prefer)
     return det ? { det, fifthGuessed: false } : null
   }
-  const pcs = (midis: number[]) => new Set(midis.map((m) => mod(m, 12))).size
+  const chordOnly = (midis: number[]) => (pcs(midis) >= 3 ? midis : [])
   const low = all.filter((m) => m - all[0] <= MELODY_ABOVE)
-  const tries = opts.pedal ? [all, low, held] : [pcs(held) >= 3 ? held : [], all, low, held]
+  const tries = opts.pedal ? [chordOnly(all), chordOnly(low), held] : [chordOnly(held), chordOnly(all), chordOnly(low), held]
   for (const t of tries) {
     const n = name(t)
     if (n) return n

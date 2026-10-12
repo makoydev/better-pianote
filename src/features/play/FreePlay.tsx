@@ -8,6 +8,7 @@ import { Staff, type StaffItem } from '../../components/staff/Staff'
 import { IconButton } from '../../components/ui/Button'
 import { Paper } from '../../components/ui/Card'
 import { useElementSize } from '../../hooks/useElementSize'
+import { useViewportHeight } from '../../hooks/useViewport'
 import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { playChord, playNotes } from '../../lib/audio/play'
@@ -45,6 +46,7 @@ import {
 import { useLive } from '../../state/live'
 import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
+import { useSettings } from '../../state/settings'
 import { guitarVoicings } from '../explore/guitar'
 import { GuitarDiagram } from '../explore/GuitarDiagram'
 import { openChord, openJamWith } from '../explore/links'
@@ -103,6 +105,10 @@ export function FreePlay() {
   const [discovered, setDiscovered] = useState<string | null>(null)
   const [showCollection, setShowCollection] = useState(false)
   const [area, { height: areaH, width: areaW }] = useElementSize<HTMLDivElement>()
+  // The staff keeps one height whatever you play (room for three note names above and below), so the keyboard
+  // under it doesn't jump from chord to chord; it's drawn a little smaller on short screens.
+  const short = useViewportHeight() < 900
+  const reserve = useSettings((s) => s.staffLabels) ? 4.8 : 2.4
 
   // The mic hears whole chords here (not just single notes).
   useMicChords()
@@ -412,7 +418,8 @@ export function FreePlay() {
               {suggestions.length > 0 && (
                 <>
                   <span className="text-xs font-extrabold uppercase tracking-widest text-ink-mute">
-                    Try next{!key && nextKey ? ' (if it’s home)' : ''}
+                    {/* No key yet: say which key the suggestions assume. */}
+                    Try next{!key && nextKey ? <MusicText text={` in ${keyName(nextKey)}`} /> : null}
                   </span>
                   {suggestions.map((s) => (
                     <motion.button
@@ -454,7 +461,7 @@ export function FreePlay() {
 
           {/* On the staff (the last chord, faded, once you let go) */}
           <Paper className={`flex items-center transition-opacity ${!sound.all.length && last ? 'opacity-60' : ''}`}>
-            <Staff clef="grand" items={staffItems} sp={14} minSlot={6} reserveAbove={2.4} reserveBelow={2.4} animate={false} />
+            <Staff clef="grand" items={staffItems} sp={short ? 13 : 16} minSlot={6} reserveAbove={reserve} reserveBelow={reserve} animate={false} />
           </Paper>
         </div>
 
