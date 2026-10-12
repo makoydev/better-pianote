@@ -3,7 +3,7 @@ import { useElementSize } from '../../hooks/useElementSize'
 import { measureMusicText } from '../../lib/musicText'
 import { LETTERS, type Note, SOLFEGE, accText } from '../../lib/theory'
 import { useSettings } from '../../state/settings'
-import type { LaidEvent, NoteState, StaffNoteSpec } from './layout'
+import type { LaidEvent, NoteState, StaffId, StaffNoteSpec } from './layout'
 import { type ScoreInput, type ScoreLayout, colX, layoutScore } from './score'
 import { StaffSvg } from './StaffSvg'
 
@@ -30,6 +30,8 @@ export interface ScoreStaffProps {
   ink?: string
   className?: string
   onLayout?: (l: ScoreLayout) => void
+  /** Fade one staff (e.g. the right hand's while you practise the left). */
+  dim?: StaffId
 }
 
 /** Real music (one or two staves, any number of voices) drawn with the score layout. */
@@ -52,6 +54,7 @@ export function ScoreStaff({
   ink,
   className = '',
   onLayout,
+  dim,
 }: ScoreStaffProps) {
   const [ref, { width: cw }] = useElementSize<HTMLDivElement>()
   const settingsLabels = useSettings((s) => s.staffLabels)
@@ -95,6 +98,7 @@ export function ScoreStaff({
           eventState={eventState}
           clip={clip}
           maxWidth={fit && cw ? cw : undefined}
+          dim={dim}
         />
       )}
     </div>

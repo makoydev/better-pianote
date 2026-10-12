@@ -32,10 +32,23 @@ describe('song results', () => {
     expect(bestText(games, 'x')).toBe('RH 100% · Both 85%')
   })
 
+  it('keeps a left-hand best too, and shows every hands you have a best with', () => {
+    expect(recordSongRun('l', 'lh', 70)).toBe(true)
+    expect(recordSongRun('l', 'rh', 90)).toBe(true)
+    const games = useProgress.getState().games
+    expect(handsBest(games, 'l', 'lh')).toBe(70)
+    expect(handsBest(games, 'l', 'both')).toBe(0)
+    expect(bestText(games, 'l')).toBe('RH 90% · LH 70%')
+    expect(recordSongRun('l', 'both', 60)).toBe(true)
+    expect(bestText(useProgress.getState().games, 'l')).toBe('RH 90% · LH 70% · Both 60%')
+  })
+
   it('still reads records saved before bests were kept per hands', () => {
     const games = { [songKey('old')]: record(90) }
     expect(handsBest(games, 'old', 'rh')).toBe(90)
     expect(handsBest(games, 'old', 'both')).toBe(90)
+    // The old record was set with the right hand or both, never the left hand alone.
+    expect(handsBest(games, 'old', 'lh')).toBe(0)
     expect(bestText(games, 'old')).toBe('Best 90%')
     useProgress.setState({ games })
     expect(recordSongRun('old', 'both', 85)).toBe(false)

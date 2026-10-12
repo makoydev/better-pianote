@@ -2,7 +2,10 @@ import { type GameRecord, useProgress } from '../../state/progress'
 
 /** Scoring a song run: accuracy, stars, time, and bests kept per hands. */
 
-export type Hands = 'rh' | 'both'
+export type Hands = 'rh' | 'lh' | 'both'
+
+const HANDS: Hands[] = ['rh', 'lh', 'both']
+const HANDS_SHORT: Record<Hands, string> = { rh: 'RH', lh: 'LH', both: 'Both' }
 
 /** Progress keys: the song's overall best (what the song list has always read) and one per hands. */
 export const songKey = (id: string, hands?: Hands) => (hands ? `song-${id}:${hands}` : `song-${id}`)
@@ -22,20 +25,23 @@ export function clockTime(seconds: number): string {
 
 /**
  * Your best with these hands. Runs saved before bests were kept per hands only have the overall record (hands
- * unknown), so it stands in until the song has a record per hands.
+ * unknown, but right hand or both), so it stands in until the song has a record per hands. Left hand only came
+ * later, so it never borrows the old record.
  */
 export function handsBest(games: Record<string, GameRecord>, id: string, hands: Hands): number {
   const own = games[songKey(id, hands)]
   if (own) return own.best
-  if (games[songKey(id, 'rh')] || games[songKey(id, 'both')]) return 0
+  if (hands === 'lh' || HANDS.some((h) => games[songKey(id, h)])) return 0
   return games[songKey(id)]?.best ?? 0
 }
 
-/** What a song card shows: both bests once you've finished it with each, else the overall best. */
+/** What a song card shows: the best per hands once you've finished it with two of them, else the overall best. */
 export function bestText(games: Record<string, GameRecord>, id: string): string | null {
-  const rh = games[songKey(id, 'rh')]
-  const both = games[songKey(id, 'both')]
-  if (rh && both) return `RH ${rh.best}% · Both ${both.best}%`
+  const per = HANDS.flatMap((h) => {
+    const r = games[songKey(id, h)]
+    return r ? [`${HANDS_SHORT[h]} ${r.best}%`] : []
+  })
+  if (per.length >= 2) return per.join(' · ')
   const best = games[songKey(id)]?.best ?? 0
   return best > 0 ? `Best ${best}%` : null
 }

@@ -90,6 +90,8 @@ export interface ScoreLayout extends Layout {
   cols: { t: number; x: number }[]
   /** Chord symbols, tuplet numbers and brackets. */
   extras: { lines: Line[]; glyphs: Glyph[]; texts: Text[] }
+  /** The staff of each event, beam and tie (by key), so a renderer can dim one staff. */
+  staffOf: Record<string, StaffId>
 }
 
 const EPS = 1e-6
@@ -593,6 +595,8 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
   }
 
   // ---- Beams ----
+  const staffOf: Record<string, StaffId> = {}
+  for (const inf of infos) staffOf[inf.ev.key] = inf.staff
   const beams: Layout['beams'] = []
   const groups = new Map<number, LaidEvent[]>()
   for (const [le, info] of stemInfo) if (info.inf.beam !== null) (groups.get(info.inf.beam) ?? groups.set(info.inf.beam, []).get(info.inf.beam)!).push(le)
@@ -630,6 +634,7 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
       const yb = lineAt(xb) + sgn * off
       return `${xa},${ya} ${xb},${yb} ${xb},${yb + sgn * th} ${xa},${ya + sgn * th}`
     }
+    const first = beams.length
     beams.push({ key: `b${gid}`, points: poly(x0 - stemT / 2, x1 + stemT / 2, 0), x0, x1 })
     const levels = infos2.map((i) => BEAM_LEVELS[i.inf.ev.dur])
     for (let lv = 2; lv <= Math.max(...levels); lv++) {
@@ -644,6 +649,7 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
         }
       })
     }
+    for (const b of beams.slice(first)) staffOf[b.key] = infos2[0].inf.staff
   }
 
   // ---- Ties: to the same note in the voice's next event ----
@@ -671,6 +677,7 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
         const h = (above ? -1 : 1) * Math.min(1.4 * sp, 0.35 * sp + (xb - xa) * 0.08)
         const xm = (xa + xb) / 2
         ties.push({ key: `t${a.key}-${n.id}`, d: `M${xa},${y0} Q${xm},${y0 + h * 1.25} ${xb},${y0} Q${xm},${y0 + h * 0.9} ${xa},${y0} Z`, x0: xa, x1: xb })
+        staffOf[`t${a.key}-${n.id}`] = v.staff
       })
     })
   })
@@ -815,6 +822,7 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
     rhythm: false,
     cols: colT.map((t, c) => ({ t, x: colHead[c] })),
     extras,
+    staffOf,
   }
 }
 

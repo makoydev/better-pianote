@@ -22,6 +22,7 @@ export interface SongResult {
 }
 
 const TITLES = ['Nice try!', 'You played it!', 'Lovely playing!', 'Perfect!']
+const HANDS_NAME: Record<Hands, string> = { rh: 'right hand', lh: 'left hand', both: 'both hands' }
 
 export function SongResults({
   song,
@@ -46,7 +47,7 @@ export function SongResults({
           <h2 className="mt-3 font-display text-4xl font-bold">{TITLES[result.stars]}</h2>
           <p className="mt-1 text-lg text-ink-soft">
             {song.title}
-            {result.hands === 'both' ? ' · both hands' : ''}
+            {song.lh ? ` · ${HANDS_NAME[result.hands]}` : ''}
           </p>
           {result.isBest && (
             <motion.p

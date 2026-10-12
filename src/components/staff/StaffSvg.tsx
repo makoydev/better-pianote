@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { letterColor } from '../../lib/colors'
 import { SvgMusicText } from '../MusicText'
 import type { ScoreLayout } from './score'
-import type { LaidEvent, Layout, NoteState, StaffNoteSpec } from './layout'
+import type { LaidEvent, Layout, NoteState, StaffId, StaffNoteSpec } from './layout'
 import { WIDTH } from './glyphs'
 
 const STATE_COLOR: Partial<Record<NoteState, string>> = { correct: '#15a34a', wrong: '#e11d48' }
@@ -25,15 +25,21 @@ export interface StaffSvgProps {
   clip?: [number, number]
   /** Shrink the whole drawing to at most this width (like a picture) when it's wider. */
   maxWidth?: number
+  /** Fade one staff of a score (e.g. the right hand's while you practise the left). */
+  dim?: StaffId
 }
 
+const DIMMED = 0.25
+
 /** Draws a laid-out staff (from layoutStaff or layoutScore) as SVG. */
-export function StaffSvg({ layout, ink = '#1f1b33', colored, animate = true, cursor, cursorX, title, noteState, eventState, clip, maxWidth }: StaffSvgProps) {
+export function StaffSvg({ layout, ink = '#1f1b33', colored, animate = true, cursor, cursorX, title, noteState, eventState, clip, maxWidth, dim }: StaffSvgProps) {
   const headColor = (state: NoteState, letter: number, override?: string) =>
     STATE_COLOR[state] ?? override ?? (colored ? letterColor(letter, true) : ink)
   const inView = (x0: number, x1: number) => !clip || (x1 >= clip[0] && x0 <= clip[1])
   const events = clip ? layout.events.filter((e) => inView(e.x - 3 * layout.sp, e.x + e.width + 3 * layout.sp)) : layout.events
   const extras = 'extras' in layout ? layout.extras : null
+  const staffOf = 'staffOf' in layout ? layout.staffOf : null
+  const dimmed = (key: string | number) => !!dim && staffOf?.[key] === dim
   const scale = maxWidth && layout.width > maxWidth ? maxWidth / layout.width : 1
   const cursorAt =
     cursorX !== undefined
@@ -97,7 +103,7 @@ export function StaffSvg({ layout, ink = '#1f1b33', colored, animate = true, cur
         ))}
       </>
     )
-    const opacity = evState === 'ghost' ? 0.3 : evState === 'done' ? 0.42 : 1
+    const opacity = dimmed(e.key) ? DIMMED : evState === 'ghost' ? 0.3 : evState === 'done' ? 0.42 : 1
     return animate ? (
       <motion.g
         key={e.key}
@@ -149,8 +155,12 @@ export function StaffSvg({ layout, ink = '#1f1b33', colored, animate = true, cur
         ))}
         {layout.bars.map((l, i) => (inView(l.x1, l.x2) ? <line key={`b${i}`} x1={l.x1} x2={l.x2} y1={l.y1} y2={l.y2} stroke={ink} strokeWidth={l.w} /> : null))}
         {animate ? <AnimatePresence initial={false}>{events.map(drawEvent)}</AnimatePresence> : events.map(drawEvent)}
-        {layout.beams.map((b) => (b.x0 === undefined || inView(b.x0, b.x1 ?? b.x0) ? <polygon key={b.key} points={b.points} fill={ink} /> : null))}
-        {layout.ties.map((t) => (t.x0 === undefined || inView(t.x0, t.x1 ?? t.x0) ? <path key={t.key} d={t.d} fill={ink} /> : null))}
+        {layout.beams.map((b) =>
+          b.x0 === undefined || inView(b.x0, b.x1 ?? b.x0) ? <polygon key={b.key} points={b.points} fill={ink} opacity={dimmed(b.key) ? DIMMED : undefined} /> : null,
+        )}
+        {layout.ties.map((t) =>
+          t.x0 === undefined || inView(t.x0, t.x1 ?? t.x0) ? <path key={t.key} d={t.d} fill={ink} opacity={dimmed(t.key) ? DIMMED : undefined} /> : null,
+        )}
         {extras && (
           <>
             {extras.lines.map((l, i) => (inView(l.x1, l.x2) ? <line key={`xl${i}`} x1={l.x1} x2={l.x2} y1={l.y1} y2={l.y2} stroke={ink} strokeWidth={l.w} /> : null))}

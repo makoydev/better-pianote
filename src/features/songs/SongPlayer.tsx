@@ -27,11 +27,12 @@ import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import { type SongResult, SongResults } from './SongResults'
 import { TempoPresets, TempoStepper } from './TempoControl'
-import { type CountIn, type Cue, type NoteFilter, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
+import { LISTEN_PARTS, type ListenPart, accompaniment, handFilter, listenHand, otherHand } from './accompany'
+import { type CountIn, type Cue, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
 import { type Run, carryOn, endPass, newRun, stepAt, stepsInBars, tally } from './practice'
 import { type Hands, accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
 import { clampTempo, loopSpeedUp } from './tempo'
-import { type Step, type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, songScoreInput } from './timeline'
+import { type Step, type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, plays, songScoreInput } from './timeline'
 
 const TICK = 0.25 // listen mode wakes up every sixteenth note (and plays what's due inside it at exact times)
 const EPS = 1e-6
@@ -84,6 +85,9 @@ function Player({ song }: { song: Song }) {
   const [loop, setLoop] = useState(false)
   const [loopBars, setLoopBars] = useState<[number, number]>([firstFullBar, Math.min(song.rh.length - 1, firstFullBar + 3)])
   const [backing, setBacking] = useState(true)
+  /** Practising one hand, the app can play the other along with you; Listen can play one hand or both. */
+  const [accompany, setAccompany] = usePref(`song:${song.id}:accompany`, false)
+  const [listenPart, setListenPart] = usePref<ListenPart>(`song:${song.id}:listen`, 'all', LISTEN_PARTS)
   // The tempo is remembered per song; the count-in, metronome and speed-up for every song.
   const [savedBpm, setBpm] = usePref(`song:${song.id}:bpm`, song.bpm)
   const bpm = clampTempo(savedBpm, song.bpm)
@@ -184,6 +188,7 @@ function Player({ song }: { song: Song }) {
 
   /** A fresh practice run (from the first step, unless given one that starts elsewhere). */
   const resetRun = (fresh = newRun(hands)) => {
+    stopAccompaniment()
     run.current = fresh
     sync()
     setFlash({})
@@ -227,6 +232,45 @@ function Player({ song }: { song: Song }) {
     const tri = voiceLead(prevPad.current, c, { center: 55, low: 48, high: 62 })
     prevPad.current = tri
     return withBass ? [bassFor(c, 36), ...tri] : tri
+  }
+
+  // ---- Accompany me: the other hand plays along, up to your next step ----
+  const accTimers = useRef<number[]>([])
+  const stopAccompaniment = () => {
+    for (const id of accTimers.current) window.clearTimeout(id)
+    accTimers.current = []
+  }
+  useEffect(() => () => accTimers.current.forEach((id) => window.clearTimeout(id)), [])
+  /** Light a key while the app plays it (as in Listen). */
+  const lightKey = (n: TimedNote, seconds: number) => {
+    setSounding((x) => ({ ...x, [n.midi]: n.hand }))
+    window.setTimeout(
+      () =>
+        setSounding((x) => {
+          const y = { ...x }
+          delete y[n.midi]
+          return y
+        }),
+      seconds * 1000,
+    )
+  }
+  /** You've played the step at `cur`: the other hand's notes from there to your next step, at your tempo. */
+  const accompanyStep = (cur: Step, next: number) => {
+    const hand = otherHand(hands)
+    stopAccompaniment()
+    if (!hand || !accompany || mic === 'on') return
+    const spb = 60 / bpm
+    const end = listenRange()[1]
+    for (const { note, at } of accompaniment(tl, hand, cur.start, next, cur.notes.map((n) => n.midi))) {
+      const dur = Math.max(0.15, Math.min(note.dur, end - note.start) * spb * 0.96)
+      const play = () => {
+        playNotes([note.midi], { dur, vel: hand === 'rh' ? 0.7 : 0.5 })
+        lightKey(note, dur)
+      }
+      // Ones still to come wait for their beat (and are dropped if you get to your next step first).
+      if (at < EPS) play()
+      else accTimers.current.push(window.setTimeout(play, at * spb * 1000))
+    }
   }
 
   // ---- Wait mode: check each note you play ----
@@ -289,7 +333,10 @@ function Player({ song }: { song: Song }) {
     const r = run.current
     r.combo++
     r.best = Math.max(r.best, r.combo)
-    if (backing && cur.chord && mic !== 'on') playNotes(padVoicing(cur.chord.chord, hands === 'rh'), { dur: 1.8, vel: 0.34, strum: 0.012 })
+    // The chord gets a bass note when nobody plays the left hand (you, or the app accompanying you).
+    const lhPlayed = hands !== 'rh' || (accompany && !!song.lh)
+    if (backing && cur.chord && mic !== 'on') playNotes(padVoicing(cur.chord.chord, !lhPlayed), { dur: 1.8, vel: 0.34, strum: 0.012 })
+    accompanyStep(cur, steps[r.idx + 1]?.start ?? listenRange()[1])
     nextStep()
   }
 
@@ -297,6 +344,7 @@ function Player({ song }: { song: Song }) {
   const skip = () => {
     const r = run.current
     if (mode !== 'wait' || r.done || !steps[r.idx]) return
+    stopAccompaniment()
     startClock()
     tally(r, 'slip')
     r.combo = 0
@@ -338,14 +386,16 @@ function Player({ song }: { song: Song }) {
   const cues = useMemo(() => buildCues(tl, beatClicks(song, tl)), [song, tl])
 
   /**
-   * Play [lo, hi) from `from`. Listen plays everything, moves the playhead and can count in, click along and speed
-   * up each loop; a bar heard in Practice plays only the hands you're practising.
+   * Play [lo, hi) from `from`. Listen plays the part you chose (both hands, one, or the one you're not practising),
+   * moves the playhead and can count in, click along and speed up each loop; a bar heard in Practice plays only the
+   * hands you're practising.
    */
   const startPlayback = (opts: { from: number; lo: number; hi: number; looping: boolean; bar: boolean; count?: CountIn }) => {
     const { from, lo, hi, looping, bar, count } = opts
     stopPlayback()
-    // A bar heard with the right hand only leaves the left hand out before shared notes merge (so none go missing).
-    const only: NoteFilter | undefined = bar && hands === 'rh' ? (n) => n.hand === 'rh' : undefined
+    stopAccompaniment()
+    // One hand leaves the other out before shared notes merge (so none go missing).
+    const only = handFilter(bar ? (hands === 'both' ? 'all' : hands) : listenHand(listenPart, hands))
     const list = only ? buildCues(tl, [], only) : cues
     const head: Playhead = { pos: from, next: firstCueAt(list, from) }
     const withChords = backing && !bar
@@ -495,14 +545,18 @@ function Player({ song }: { song: Song }) {
   const noteById = useMemo(() => new Map(tl.notes.map((n) => [n.id, n])), [tl])
   const cur = mode === 'wait' && !finished ? steps[stepIdx] : undefined
   const loopFrom = loop ? (tl.bars[loopBars[0]]?.start ?? 0) : 0
+  const listenH = listenHand(listenPart, hands)
   const noteState = (spec: StaffNoteSpec): NoteState | undefined => {
     const n = spec.id === undefined ? undefined : noteById.get(spec.id)
     if (!n) return undefined
-    if (mode === 'listen') return playing && listenAt >= n.start - EPS && listenAt < n.start + n.dur - EPS ? 'active' : undefined
+    if (mode === 'listen') {
+      const heard = listenH === 'all' || n.hand === listenH
+      return heard && playing && listenAt >= n.start - EPS && listenAt < n.start + n.dur - EPS ? 'active' : undefined
+    }
     if (finished) return 'done'
     if (!cur) return undefined
     // A note two voices share is one key in the step, so both noteheads light up together.
-    const key = !n.cont && Math.abs(n.start - cur.start) < EPS ? cur.notes.find((x) => x.midi === n.midi) : undefined
+    const key = plays(hands, n.hand) && !n.cont && Math.abs(n.start - cur.start) < EPS ? cur.notes.find((x) => x.midi === n.midi) : undefined
     if (key) {
       if (satisfied.has(key.id)) return 'done'
       return wrongAt !== null && Math.abs(wrongAt - cur.start) < EPS ? 'wrong' : 'active'
@@ -518,7 +572,7 @@ function Player({ song }: { song: Song }) {
     return undefined
   }
 
-  const showBass = hands === 'both' && !!song.lh
+  const showBass = hands !== 'rh' && !!song.lh
   const sp = Math.round(Math.max(12, Math.min(22, vh / 46)) * (showBass ? 0.8 : 1))
   const cursorX = layout ? colX(layout, cursorTime) : 0
   const scrollX = useMemo(() => {
@@ -531,7 +585,7 @@ function Player({ song }: { song: Song }) {
 
   // ---- Keyboard ----
   const range = useMemo(
-    () => keyboardRange(tl.notes.filter((n) => mode === 'listen' || hands === 'both' || n.hand === 'rh').map((n) => n.midi)),
+    () => keyboardRange(tl.notes.filter((n) => mode === 'listen' || plays(hands, n.hand)).map((n) => n.midi)),
     [tl, hands, mode],
   )
   const marks: Marks = {}
@@ -557,6 +611,7 @@ function Player({ song }: { song: Song }) {
   const changeMode = (m: 'wait' | 'listen') => {
     if (m === mode) return
     stopPlayback()
+    stopAccompaniment()
     if (m === 'listen') {
       // Listen starts from the step you're on; the practice clock stops meanwhile.
       const r = run.current
@@ -579,6 +634,7 @@ function Player({ song }: { song: Song }) {
     if (mode === 'wait') {
       // Keep your bar: the first step at or after this moment, in the new hands' steps.
       stopPlayback()
+      stopAccompaniment()
       const r = run.current
       const at = r.done || r.idx === 0 ? listenRange()[0] : (steps[r.idx]?.start ?? 0)
       moveTo(stepAt(stepsInBars(buildSteps(tl, h), loop ? loopBars : null), at, loop), h)
@@ -627,6 +683,7 @@ function Player({ song }: { song: Song }) {
               onChange={changeHands}
               options={[
                 { value: 'rh', label: 'Right hand' },
+                { value: 'lh', label: 'Left hand' },
                 { value: 'both', label: 'Both hands' },
               ]}
             />
@@ -635,6 +692,35 @@ function Player({ song }: { song: Song }) {
             <TogglePill checked={backing && !(mode === 'wait' && mic === 'on')} onChange={setBacking} label="Backing chords">
               Chords
             </TogglePill>
+          )}
+          {song.lh && mode === 'wait' && hands !== 'both' && (
+            <TogglePill
+              checked={accompany && mic !== 'on'}
+              onChange={setAccompany}
+              label={
+                mic === 'on'
+                  ? 'Accompany me: off while the mic listens (it would hear the app)'
+                  : `Accompany me: the app plays the ${hands === 'rh' ? 'left' : 'right'} hand along with you`
+              }
+            >
+              Accompany me
+            </TogglePill>
+          )}
+          {song.lh && mode === 'listen' && (
+            <div className="flex items-center gap-2" title="What Listen plays">
+              <span className="text-sm font-extrabold text-ink-mute">Plays</span>
+              <Segmented<ListenPart>
+                size="sm"
+                value={listenPart === 'other' && hands === 'both' ? 'all' : listenPart}
+                onChange={setListenPart}
+                options={[
+                  { value: 'all', label: 'Both' },
+                  { value: 'rh', label: 'Right' },
+                  { value: 'lh', label: 'Left' },
+                  ...(hands === 'both' ? [] : [{ value: 'other' as const, label: <span title="The hand you’re not practising">Other hand</span> }]),
+                ]}
+              />
+            </div>
           )}
           <div className="flex items-center gap-2.5 rounded-2xl border border-white/8 bg-night-850 px-3 py-2">
             <Toggle checked={loop} onChange={changeLoop} label="Loop some bars" />
@@ -715,7 +801,8 @@ function Player({ song }: { song: Song }) {
                 clip={clip}
                 onLayout={onLayout}
                 reserveBelow={showBass ? 1.2 : 2.5}
-                title={showBass ? song.title : `${song.title}, right hand`}
+                dim={hands === 'lh' ? 'treble' : undefined}
+                title={hands === 'both' || !song.lh ? song.title : `${song.title}, ${hands === 'rh' ? 'right' : 'left'} hand`}
               />
             </motion.div>
             <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-linear-to-r from-paper to-transparent" />
@@ -759,7 +846,7 @@ function Player({ song }: { song: Song }) {
               >
                 <span className="text-sm font-extrabold uppercase tracking-wider text-ink-mute">{!started && stepIdx === 0 ? 'Play to start' : 'Next'}</span>
                 {step.notes.map((n) => (
-                  <NotePill key={n.id} note={n} done={satisfied.has(n.id)} />
+                  <NotePill key={n.id} note={n} done={satisfied.has(n.id)} tagHand={hands === 'both'} />
                 ))}
               </motion.div>
             </AnimatePresence>
@@ -845,7 +932,7 @@ function Stepper({ label, text, onMinus, onPlus }: { label: string; text: string
   )
 }
 
-function NotePill({ note, done }: { note: TimedNote; done: boolean }) {
+function NotePill({ note, done, tagHand }: { note: TimedNote; done: boolean; tagHand: boolean }) {
   const n = parseNote(note.name)
   const color = letterColor(n.letter)
   return (
@@ -855,7 +942,7 @@ function NotePill({ note, done }: { note: TimedNote; done: boolean }) {
       style={{ color, borderColor: `${color}66`, background: `${color}1c` }}
     >
       <MusicText text={noteName(n)} />
-      {note.hand === 'lh' && <span className="rounded-md bg-white/10 px-1.5 text-xs text-ink-soft">left hand</span>}
+      {tagHand && note.hand === 'lh' && <span className="rounded-md bg-white/10 px-1.5 text-xs text-ink-soft">left hand</span>}
       {note.finger !== undefined && (
         <span className="flex size-6 items-center justify-center rounded-full bg-ink text-sm text-night-900" title="Finger">
           {note.finger}

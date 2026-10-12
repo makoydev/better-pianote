@@ -2,6 +2,7 @@ import type { StaffId } from '../../components/staff/layout'
 import type { ScoreBar, ScoreInput, ScoreVoice } from '../../components/staff/score'
 import { type Song, type SongEvent, eventBeats } from '../../content/songs'
 import { type Chord, chordSymbol, midiOf, parseChord, parseNote } from '../../lib/theory'
+import type { Hands } from './results'
 
 /** A song laid out in time (quarter-note beats), ready for wait mode, playback and drawing. */
 
@@ -186,10 +187,13 @@ export function addShared(notes: TimedNote[], n: TimedNote) {
   else if (n.dur > notes[twin].dur + EPS) notes[twin] = n
 }
 
-export function buildSteps(tl: Timeline, hands: 'rh' | 'both'): Step[] {
+/** Does practising with these hands mean playing this hand's notes? */
+export const plays = (hands: Hands, hand: 'rh' | 'lh') => hands === 'both' || hands === hand
+
+export function buildSteps(tl: Timeline, hands: Hands): Step[] {
   const groups = new Map<number, TimedNote[]>()
   for (const n of tl.notes) {
-    if (n.cont || (hands === 'rh' && n.hand === 'lh')) continue
+    if (n.cont || !plays(hands, n.hand)) continue
     const k = Math.round(n.start * 1000)
     const group = groups.get(k) ?? []
     addShared(group, n)
@@ -223,13 +227,13 @@ export function signatures(song: Song, bars: number) {
   })
 }
 
-/** What the score layout needs to draw a song (or some of its bars). */
+/** What the score layout needs to draw a song (or some of its bars). Left hand alone shows both staves. */
 export function songScoreInput(
   song: Song,
   tl: Timeline,
-  opts: { hands: 'rh' | 'both'; bars?: [number, number]; fingers?: boolean },
+  opts: { hands: Hands; bars?: [number, number]; fingers?: boolean },
 ): ScoreInput {
-  const both = opts.hands === 'both' && !!song.lh
+  const both = opts.hands !== 'rh' && !!song.lh
   const [b0, b1] = opts.bars ?? [0, tl.bars.length - 1]
   const sigs = signatures(song, tl.bars.length)
   const bars: ScoreBar[] = tl.bars.slice(b0, b1 + 1).map((b, i) => ({ start: b.start, dur: b.dur, ...sigs[b0 + i] }))
@@ -275,7 +279,7 @@ export function songScoreInput(
 }
 
 /** Bars for a preview: up to two after any pickup, fewer when they're busy (max moments to show). */
-export function previewBars(tl: Timeline, hands: 'rh' | 'both', pickup: boolean, max = 12): [number, number] {
+export function previewBars(tl: Timeline, hands: Hands, pickup: boolean, max = 12): [number, number] {
   const moments = (bar: number) => {
     const set = new Set<number>()
     for (const v of tl.voices) {

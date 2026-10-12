@@ -121,6 +121,19 @@ describe('score layout', () => {
     expect(xs.some((x, i) => i > 0 && Math.abs(x - xs[i - 1] - 0.5 * SP) < 1e-6)).toBe(true)
   })
 
+  it('knows the staff of every event, beam and tie (so one staff can be faded)', () => {
+    const l = lay({
+      staves: ['treble', 'bass'],
+      voices: [
+        treble(e('a', 0, '8', ['E5']), e('b', 0.5, '8', ['D5']), e('c', 1, 'h', ['C5'], { dots: 1 })),
+        bass(e('d', 0, 'h', [n('C3', { tie: true })]), e('f', 2, 'h', [n('C3', { cont: true })])),
+      ],
+    })
+    expect(['a', 'c', 'd', 'f'].map((k) => l.staffOf[k])).toEqual(['treble', 'treble', 'bass', 'bass'])
+    expect(l.beams.map((b) => l.staffOf[b.key])).toEqual(['treble'])
+    expect(l.ties.map((t) => l.staffOf[t.key])).toEqual(['bass'])
+  })
+
   it('puts chord symbols on the column where they start', () => {
     const l = lay({ voices: [treble(e('a', 0, 'h', ['E5']), e('b', 2, 'h', ['D5']))], chords: [{ start: 2, text: 'G' }] })
     expect(l.extras.texts.map((t) => [t.text, t.x])).toEqual([['G', ev(l, 'b').headX]])
