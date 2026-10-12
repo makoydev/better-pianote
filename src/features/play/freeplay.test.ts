@@ -46,19 +46,26 @@ describe('the chord chart', () => {
 
   it('adds a chord unless it’s the one already at the end, and keeps the newest', () => {
     let c: ChartEntry[] = []
-    for (const s of ['Am', 'Am', 'F', 'C', 'C', 'G']) c = addToChart(c, parseChord(s))
+    ;['Am', 'Am', 'F', 'C', 'C', 'G'].forEach((s, i) => (c = addToChart(c, parseChord(s), 1000 + i)))
     expect(c.map((e) => e.root + e.type)).toEqual(['Amin', 'Fmaj', 'Cmaj', 'Gmaj'])
-    expect(c.map((e) => e.id)).toEqual([1, 2, 3, 4])
+    // Each one is stamped with when it was added.
+    expect(c.map((e) => e.id)).toEqual([1000, 1002, 1003, 1005])
     for (let i = 0; i < 60; i++) c = addToChart(c, parseChord(i % 2 ? 'C' : 'G7'))
     expect(c).toHaveLength(CHART_MAX)
+  })
+
+  it('keeps ids unique and rising even if the clock doesn’t', () => {
+    let c: ChartEntry[] = []
+    for (const s of ['C', 'F', 'G']) c = addToChart(c, parseChord(s), 500)
+    expect(c.map((e) => e.id)).toEqual([500, 501, 502])
   })
 
   it('records a chord once when it’s spelled again, keeping the newer spelling', () => {
     // Once the key is found, a held G♭ is named F♯: still one chord on the chart.
     let c: ChartEntry[] = []
-    for (const s of ['Db', 'Bbm', 'Gb', 'F#', 'Ab']) c = addToChart(c, parseChord(s))
+    ;['Db', 'Bbm', 'Gb', 'F#', 'Ab'].forEach((s, i) => (c = addToChart(c, parseChord(s), 10 * (i + 1))))
     expect(symbols(c.map(fromEntry))).toBe('D♭ B♭m F♯ A♭')
-    expect(c.map((e) => e.id)).toEqual([1, 2, 3, 4])
+    expect(c.map((e) => e.id)).toEqual([10, 20, 30, 50])
     // Spelled the same, nothing changes; another bass is another chord.
     expect(addToChart(c, parseChord('Ab'))).toBe(c)
     expect(addToChart(c, parseChord('Ab/C'))).toHaveLength(5)

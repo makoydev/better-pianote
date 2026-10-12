@@ -128,11 +128,15 @@ export function FreePlay() {
   const [sound, setSound] = useState(() => ({ all: tracker.notes(performance.now()), held: tracker.heldNotes() }))
   const look = useCallback(() => setSound({ all: tracker.notes(performance.now()), held: tracker.heldNotes() }), [tracker])
 
-  // The key you're in, found from recent notes (and how long each sounded) plus the chart's last chords.
+  // The key you're in, found from recent notes (and how long each sounded) plus the last chords added this visit:
+  // yesterday's chart shouldn't decide today's key (entries are stamped with when they were added).
   const spans = useRef<NoteSpan[]>([])
   const [heard, setHeard] = useState<KeyFound | null>(null)
-  const listen = (chartNow: ChartEntry[]) =>
-    setHeard((prev) => findKey(noteWeights(spans.current, performance.now()), chartNow.map(fromEntry).slice(-12), prev?.key ?? null))
+  const [visitStart] = useState(() => Date.now())
+  const listen = (chartNow: ChartEntry[]) => {
+    const fresh = chartNow.filter((e) => e.id >= visitStart).map(fromEntry)
+    setHeard((prev) => findKey(noteWeights(spans.current, performance.now()), fresh.slice(-12), prev?.key ?? null))
+  }
   const changeChart = (next: ChartEntry[]) => {
     setChart(next)
     listen(next)

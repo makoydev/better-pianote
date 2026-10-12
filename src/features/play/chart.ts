@@ -21,6 +21,7 @@ import {
 
 /** One chord on the "You played" chart, as it's saved in prefs: note names ("F#") and a chord type id. */
 export interface ChartEntry {
+  /** When it was added (ms since 1970), kept unique, so a visit can tell its own chords from earlier ones. */
   id: number
   root: string
   type: string
@@ -66,16 +67,16 @@ export const sameSound = (a: Chord, b: Chord) =>
   pcOf(a.root) === pcOf(b.root) && a.type.id === b.type.id && pcOf(a.bass ?? a.root) === pcOf(b.bass ?? b.root)
 
 /**
- * Add a chord to the end of the chart, unless the chord already there sounds the same. That one may be spelled
- * again (G♭ becomes F♯ once the key is found): it takes the new spelling. Keeps the newest CHART_MAX.
+ * Add a chord to the end of the chart at time `at`, unless the chord already there sounds the same. That one may be
+ * spelled again (G♭ becomes F♯ once the key is found): it takes the new spelling. Keeps the newest CHART_MAX.
  */
-export function addToChart(chart: ChartEntry[], chord: Chord): ChartEntry[] {
+export function addToChart(chart: ChartEntry[], chord: Chord, at = Date.now()): ChartEntry[] {
   const last = chart[chart.length - 1]
   if (last && sameSound(fromEntry(last), chord)) {
     const respelled = toEntry(chord, last.id)
     return respelled.root === last.root && respelled.bass === last.bass ? chart : [...chart.slice(0, -1), respelled]
   }
-  const id = chart.reduce((m, e) => Math.max(m, e.id), 0) + 1
+  const id = Math.max(at, chart.reduce((m, e) => Math.max(m, e.id), 0) + 1)
   return [...chart, toEntry(chord, id)].slice(-CHART_MAX)
 }
 
