@@ -150,7 +150,7 @@ export function parseMusicXml(xml: string): ParsedScore {
     const name = names.get(id)
     return parsePart(p, id, name && !/^musicxml part$/i.test(name) ? name : `Part ${i + 1}`, jumpWords)
   })
-  if (!parts.length) throw new ImportError('This score has no parts with music in them.')
+  if (!parts.length) throw new ImportError('This score has no parts with music in them.', { kind: 'score' })
   return { title, composer, tempo: findTempo(doc), parts, braces, jumpWords }
 }
 

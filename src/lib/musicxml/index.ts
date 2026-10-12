@@ -1,5 +1,6 @@
 import { convertScore } from './convert'
 import type { ImportResult } from './convert'
+import { ImportError } from './errors'
 import { parseMusicXml } from './parse'
 import { readScoreText } from './zip'
 
@@ -13,13 +14,26 @@ import { readScoreText } from './zip'
  */
 export const IMPORTER_VERSION = 1
 
-export { ImportError } from './errors'
+export { ImportError, describeProblems } from './errors'
+export type { ImportErrorKind, ProblemGroup } from './errors'
 export type { ImportPart, ImportResult } from './convert'
 export { readScoreText } from './zip'
-export { validateSong } from './validate'
+export { songProblems, validateSong } from './validate'
+export type { SongProblem } from './validate'
 
 export function importMusicXml(xml: string, fileName: string, opts?: { partIndex?: number }): ImportResult {
-  return convertScore(parseMusicXml(xml), fileName, opts)
+  const score = parseMusicXml(xml)
+  try {
+    return convertScore(score, fileName, opts)
+  } catch (e) {
+    // The file read as MusicXML, so whatever stopped it is in the music ("which files work" won't help).
+    if (e instanceof ImportError) {
+      e.kind = 'score'
+      throw e
+    }
+    console.error('MusicXML import failed:', e)
+    throw new ImportError('Something in this score confused the importer, so it couldn’t be imported.', { kind: 'score' })
+  }
 }
 
 export async function importScoreFile(bytes: Uint8Array, fileName: string, opts?: { partIndex?: number }): Promise<ImportResult> {

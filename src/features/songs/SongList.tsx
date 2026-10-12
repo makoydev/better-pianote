@@ -12,8 +12,10 @@ import { go } from '../../router'
 import { removeEntry, useLibrary } from '../../state/library'
 import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
+import { scoreAccept } from './files'
 import { HowToGetFiles, ImportSheet } from './ImportSheet'
-import { startImport } from './importSession'
+import { onImportRequest, requestImport, takeImportRequest } from './importRequest'
+import { replaceImport, startImports } from './importSession'
 import { bestText, songKey } from './results'
 import { buildTimeline, previewBars, songScoreInput } from './timeline'
 
@@ -34,14 +36,27 @@ export function SongList() {
   const [removing, setRemoving] = useState<Song | null>(null)
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
-  const pickFile = () => fileInput.current?.click()
+  /** What to do with the files the picker returns: import them, or swap the open import for them. */
+  const onPicked = useRef<(files: File[]) => void>(startImports)
+  const pickFiles = (then: (files: File[]) => void) => {
+    onPicked.current = then
+    fileInput.current?.click()
+  }
+  const pickFile = () => pickFiles(startImports)
 
   const matches = (s: Song) => filter === 'all' || filter === 'mine' || s.difficulty === filter
   const mine = entries.map((e) => e.song).filter(matches)
   const builtIn = filter === 'mine' ? [] : SONGS.filter(matches)
   const best = (s: Song) => games[songKey(s.id)]?.best ?? 0
 
-  // Drop a file anywhere on the page to import it.
+  // Files dropped on another page (the app sends them here), now or while this page is open.
+  useEffect(() => {
+    const take = () => startImports(takeImportRequest())
+    take()
+    return onImportRequest(take)
+  }, [])
+
+  // Drop files anywhere on the page to import them.
   useEffect(() => {
     const hasFiles = (e: DragEvent) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files')
     let depth = 0
@@ -64,8 +79,8 @@ export function SongList() {
       e.preventDefault()
       depth = 0
       setDragging(false)
-      const f = e.dataTransfer?.files[0]
-      if (f) void startImport(f)
+      // Through the same hand-over as drops on other pages, so a drop both handlers see imports once.
+      if (e.dataTransfer) requestImport(Array.from(e.dataTransfer.files))
     }
     window.addEventListener('dragenter', enter)
     window.addEventListener('dragover', over)
@@ -92,11 +107,13 @@ export function SongList() {
       <input
         ref={fileInput}
         type="file"
+        multiple
+        accept={scoreAccept()}
         className="hidden"
         onChange={(e) => {
-          const f = e.target.files?.[0]
-          if (f) void startImport(f)
+          const files = Array.from(e.target.files ?? [])
           e.target.value = ''
+          onPicked.current(files)
         }}
       />
       <div className="-mx-1 mb-6 overflow-x-auto px-1 pb-1">
@@ -148,10 +165,10 @@ export function SongList() {
 
       <p className="mt-10 max-w-3xl text-sm leading-relaxed text-ink-mute">
         The built-in pieces are all in the public domain. Have sheet music for something else? Import its MusicXML file with{' '}
-        <b className="text-ink-soft">Import song</b> (or drop the file on this page). It stays on this device.
+        <b className="text-ink-soft">Import song</b> (or drop files on this page). It stays on this device.
       </p>
 
-      <ImportSheet onPickAnother={pickFile} />
+      <ImportSheet onPickAnother={() => pickFiles(replaceImport)} />
       <RemoveSong song={removing} onClose={() => setRemoving(null)} />
       <AnimatePresence>
         {dragging && (
@@ -164,7 +181,7 @@ export function SongList() {
             <div className="flex flex-col items-center gap-3 rounded-[2rem] border-4 border-dashed border-gold/70 px-12 py-10 text-center">
               <FileMusic size={48} className="text-gold" />
               <p className="font-display text-3xl font-bold">Drop to import</p>
-              <p className="text-ink-soft">MusicXML (.mxl, .musicxml or .xml)</p>
+              <p className="text-ink-soft">MusicXML files (.mxl, .musicxml or .xml), one or several</p>
             </div>
           </motion.div>
         )}

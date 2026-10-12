@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { eventBeats } from '../../content/songs/parse'
 import type { Song, SongEvent } from '../../content/songs/types'
-import { ImportError, importMusicXml, importScoreFile, validateSong } from './index'
+import { ImportError, describeProblems, importMusicXml, importScoreFile, songProblems, validateSong } from './index'
 import {
   CONTAINER,
   DIV,
@@ -486,6 +486,21 @@ describe('errors', () => {
     expect(() => importMusicXml('<html><body/></html>', 'x.xml')).toThrow(/MusicXML/)
     expect(() => importMusicXml(one(measure(1, start(), r('whole'))), 'x.xml')).toThrow(/no notes/)
   })
+
+  it('tells a file it can’t read from MusicXML whose music stopped the import', async () => {
+    const kindOf = (f: () => unknown) => {
+      try {
+        f()
+      } catch (e) {
+        return e instanceof ImportError ? e.kind : 'other'
+      }
+    }
+    expect(kindOf(() => importMusicXml('hello', 'x.txt'))).toBe('file')
+    expect(kindOf(() => importMusicXml('<score-timewise/>', 'x.xml'))).toBe('file')
+    expect(kindOf(() => importMusicXml(one(measure(1, start(), r('whole'))), 'x.xml'))).toBe('score')
+    expect(kindOf(() => importMusicXml('<score-partwise><part-list/></score-partwise>', 'x.xml'))).toBe('score')
+    await expect(importScoreFile(new TextEncoder().encode('MThd'), 'x.mid')).rejects.toMatchObject({ kind: 'file' })
+  })
 })
 
 describe('files', () => {
@@ -518,12 +533,57 @@ describe('validateSong', () => {
       f(s)
       return validateSong(s)
     }
-    expect(broken((s) => (s.rh[0][1].hidden = true))).toEqual(expect.arrayContaining([expect.stringMatching(/hidden events must be rests/)]))
+    expect(broken((s) => (s.rh[0][1].hidden = true))).toEqual(expect.arrayContaining([expect.stringMatching(/Hidden events must be rests/)]))
     expect(broken((s) => (s.rh[0][1].notes = ['D4']))).toEqual([expect.stringMatching(/tie on C4/)])
     expect(broken((s) => (s.rh[0][0].notes = ['C1']))).toEqual(expect.arrayContaining([expect.stringMatching(/off the keyboard/)]))
     expect(broken((s) => (s.rh[0][0].chord = 'H7'))).toEqual([expect.stringMatching(/Unknown chord/)])
     expect(broken((s) => (s.lh = [[]]))).toEqual(expect.arrayContaining([expect.stringMatching(/Left hand, bar 1/)]))
     expect(broken((s) => (s.rh[0][0].tuplet = { actual: 3, normal: 2 }))).toEqual(expect.arrayContaining([expect.stringMatching(/tuplet/)]))
     expect(broken((s) => (s.pickup = 1))).toEqual([expect.stringMatching(/pickup/)])
+  })
+
+  it('says which bar and line each problem is in, with a fix to try', () => {
+    const s = structuredClone(ok)
+    s.rh.push([{ notes: ['D4'], dur: 'w', dots: 0, tie: false }])
+    s.lh = [
+      [{ notes: ['C3'], dur: 'w', dots: 0, tie: false }],
+      [{ notes: ['G2'], dur: 'h', dots: 1, tie: false }],
+    ]
+    s.voices = [{ hand: 'lh', bars: [[{ notes: [], dur: 'w', dots: 0, tie: false }], [{ notes: ['B2'], dur: 'w', dots: 0, tie: true }]] }]
+    const problems = songProblems(s)
+    expect(problems).toEqual([
+      { bar: 1, line: 'Left hand', text: 'This bar lasts 3 beats; the right hand’s lasts 4.', fix: expect.stringMatching(/missing rest/) },
+      { bar: 1, line: 'Left hand, voice 2', text: 'A tie on B2 doesn’t land on the same note.', fix: expect.stringMatching(/tie/) },
+    ])
+    expect(validateSong(s)).toEqual(['Left hand, bar 2: This bar lasts 3 beats; the right hand’s lasts 4.', 'Left hand, voice 2, bar 2: A tie on B2 doesn’t land on the same note.'])
+  })
+})
+
+describe('describing problems', () => {
+  const p = (bar: number | undefined, text: string, fix = 'Fix the length.', line?: string) => ({ bar, text, fix, line })
+
+  it('names bars the way the score numbers them, lists each problem once, in bar order', () => {
+    // Bars 1–2 repeated: playing order 1 2 1 2, so the same problem comes up twice.
+    const { groups, more } = describeProblems(
+      [p(3, 'Too short.', 'Fix the length.', 'Left hand'), p(1, 'Too short.', 'Fix the length.', 'Left hand'), p(undefined, 'Bad tempo.', 'Set a tempo.')],
+      ['1', '2', '1', '2'],
+    )
+    expect(groups).toEqual([
+      { fix: 'Set a tempo.', items: [{ where: '', text: 'Bad tempo.' }] },
+      { fix: 'Fix the length.', items: [{ where: 'Bar 2 · Left hand', text: 'Too short.' }] },
+    ])
+    expect(more).toBe(0)
+  })
+
+  it('groups problems under the fix they share, shows the first few and counts the rest', () => {
+    const problems = [p(0, 'A.', 'Fix 1.'), p(1, 'B.', 'Fix 2.'), p(2, 'C.', 'Fix 1.'), p(3, 'D.', 'Fix 1.')]
+    const { groups, more } = describeProblems(problems, ['0', '1', '2', ''], 3)
+    expect(groups).toEqual([
+      { fix: 'Fix 1.', items: [{ where: 'Pickup bar', text: 'A.' }, { where: 'Bar 2', text: 'C.' }] },
+      { fix: 'Fix 2.', items: [{ where: 'Bar 1', text: 'B.' }] },
+    ])
+    expect(more).toBe(1)
+    // Without the score's numbers, bars count from 1.
+    expect(describeProblems([p(3, 'D.')]).groups[0].items[0].where).toBe('Bar 4')
   })
 })

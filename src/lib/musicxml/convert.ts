@@ -6,7 +6,7 @@ import { type Frac, ZERO, add, cmp, frac, ge, gt, lt, mul, sub, toNum } from './
 import { type Notated, TYPE_DUR, notate, soundingLength, writtenLength } from './notate'
 import type { ParsedPart, ParsedScore, RawNote } from './parse'
 import { playOrder } from './repeats'
-import { validateSong } from './validate'
+import { songProblems, validateSong } from './validate'
 
 export interface ImportPart {
   id: string
@@ -522,7 +522,10 @@ export function convertScore(score: ParsedScore, fileName: string, opts: { partI
   const problems = validateSong(song)
   if (problems.length) {
     console.warn('MusicXML import produced an invalid song:', problems)
-    throw new ImportError('Something in this score confused the importer, so it couldn’t be imported.')
+    throw new ImportError('Something in this score confused the importer, so it couldn’t be imported.', {
+      problems: songProblems(song),
+      barNames: order.map((mi) => ms[mi].number),
+    })
   }
 
   // ---- What the person should know ----

@@ -1,19 +1,24 @@
-import { AlertTriangle, FileMusic, Hand, Loader2, Lock, Play, Upload } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, FileMusic, Hand, Lightbulb, Loader2, Lock, Play, SkipForward, Upload } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { ScoreStaff } from '../../components/staff/ScoreStaff'
 import { Button } from '../../components/ui/Button'
 import { Segmented } from '../../components/ui/controls'
 import { Modal } from '../../components/ui/Modal'
 import type { Song } from '../../content/songs'
+import { toast } from '../../lib/fx'
+import type { ProblemGroup } from '../../lib/musicxml'
 import { go } from '../../router'
 import { saveEntry } from '../../state/library'
-import { closeImport, editImport, startImport, useImport } from './importSession'
+import { batchOf, closeImport, editImport, nextImport, startImport, useImport } from './importSession'
 import { buildTimeline, previewBars, songScoreInput } from './timeline'
 
-/** Shows what's in the file being imported, and saves it to My songs. */
+/** Shows what's in the file being imported, and saves it to My songs. Several files take turns. */
 export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
   const phase = useImport((s) => s.phase)
   const edits = useImport((s) => s.edits)
+  const queue = useImport((s) => s.queue)
+  const done = useImport((s) => s.done)
+  const batch = batchOf({ queue, done })
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const ready = phase.kind === 'ready' ? phase : null
@@ -38,8 +43,14 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
         version: ready.version,
         addedAt: Date.now(),
       })
-      closeImport()
-      go(`/songs/${finalSong.id}`)
+      if (batch) {
+        // Several files: on to the next one, and you play them from My songs afterwards.
+        toast({ kind: 'info', title: 'Saved to My songs', detail: finalSong.title })
+        nextImport()
+      } else {
+        closeImport()
+        go(`/songs/${finalSong.id}`)
+      }
     } catch {
       setSaveError('Couldn’t save the song on this device. The browser may be in private mode or out of space.')
     } finally {
@@ -51,11 +62,26 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
     setSaveError(null)
     closeImport()
   }
+  const skip = () => {
+    setSaveError(null)
+    nextImport()
+  }
   const file = phase.kind === 'closed' ? null : phase.file
   const stats = ready?.result.stats
 
+  const title = (
+    <>
+      Import a song
+      {batch && (
+        <span className="ml-2 align-middle font-sans text-base font-extrabold text-ink-mute">
+          File {batch.at} of {batch.of}
+        </span>
+      )}
+    </>
+  )
+
   return (
-    <Modal open={phase.kind !== 'closed'} onClose={close} title="Import a song" wide>
+    <Modal open={phase.kind !== 'closed'} onClose={close} title={title} wide>
       {phase.kind === 'reading' && (
         <div className="flex items-center gap-3 py-10 text-lg font-bold text-ink-soft">
           <Loader2 className="animate-spin text-gold" size={26} /> Reading {file?.name}…
@@ -66,14 +92,21 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
         <div className="space-y-5">
           <div className="flex gap-3 rounded-2xl border border-coral/40 bg-coral/10 p-4 text-ink">
             <AlertTriangle className="mt-0.5 shrink-0 text-coral" size={22} />
-            <div>
+            <div className="min-w-0">
               <p className="font-extrabold">{phase.message}</p>
-              <p className="mt-1 text-sm text-ink-soft">{file?.name}</p>
+              <p className="mt-1 text-sm text-ink-soft [overflow-wrap:anywhere]">{file?.name}</p>
             </div>
           </div>
-          <HowToGetFiles />
+          {phase.details && <ProblemDetails {...phase.details} />}
+          {/* A MusicXML file that failed for another reason: "which files work" would only mislead. */}
+          {!phase.musicXml && <HowToGetFiles />}
           <div className="flex flex-wrap gap-3">
-            <Button icon={Upload} onClick={onPickAnother}>
+            {queue.length > 0 && (
+              <Button icon={SkipForward} onClick={skip}>
+                Next file
+              </Button>
+            )}
+            <Button variant={queue.length ? 'secondary' : 'primary'} icon={Upload} onClick={onPickAnother}>
               Choose another file
             </Button>
             <Button variant="ghost" onClick={close}>
@@ -112,7 +145,7 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
               <select
                 className={INPUT}
                 value={ready.result.partIndex}
-                onChange={(e) => void startImport(ready.file, Number(e.target.value), ready.bytes)}
+                onChange={(e) => void startImport(ready.file, { partIndex: Number(e.target.value), bytes: ready.bytes })}
               >
                 {ready.result.parts.map((p, i) => (
                   <option key={p.id} value={i}>
@@ -163,9 +196,14 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
           {saveError && <p className="text-sm font-bold text-coral">{saveError}</p>}
 
           <div className="flex flex-wrap gap-3">
-            <Button icon={Play} onClick={() => void save()} disabled={saving}>
-              Save and play
+            <Button icon={batch ? Check : Play} onClick={() => void save()} disabled={saving}>
+              {!batch ? 'Save and play' : queue.length ? 'Save, next file' : 'Save'}
             </Button>
+            {queue.length > 0 && (
+              <Button variant="secondary" icon={SkipForward} onClick={skip}>
+                Skip this file
+              </Button>
+            )}
             <Button variant="ghost" icon={FileMusic} onClick={onPickAnother}>
               Pick a different file
             </Button>
@@ -173,6 +211,48 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
         </div>
       )}
     </Modal>
+  )
+}
+
+/** "Show details" under an import that failed: the first problems by bar, and what to try. */
+function ProblemDetails({ groups, more }: { groups: ProblemGroup[]; more: number }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="rounded-2xl border border-white/8 bg-night-850">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex min-h-12 w-full items-center gap-2 rounded-2xl px-4 text-left font-extrabold text-ink-soft transition-colors hover:text-ink"
+      >
+        <ChevronDown size={20} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {open ? 'Hide details' : 'Show details'}
+      </button>
+      {open && (
+        <div className="space-y-4 px-4 pb-4 text-[0.95rem] leading-relaxed">
+          {groups.map((g) => (
+            <div key={g.fix}>
+              <ul className="space-y-1">
+                {g.items.map((it) => (
+                  <li key={`${it.where}|${it.text}`}>
+                    {it.where && <b className="text-ink">{it.where}: </b>}
+                    <span className="text-ink-soft">{it.text}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1.5 flex gap-2 text-sm font-bold text-gold">
+                <Lightbulb size={16} className="mt-0.5 shrink-0" /> {g.fix}
+              </p>
+            </div>
+          ))}
+          {more > 0 && (
+            <p className="text-sm text-ink-mute">
+              …and {more} more {more === 1 ? 'problem' : 'problems'}.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
