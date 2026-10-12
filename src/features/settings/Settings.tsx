@@ -39,7 +39,7 @@ export function Settings() {
               Show shortcuts
             </Button>
           </Row>
-          <ToggleRow label="Exact octave in games" hint="Off: any C counts as C. On: it must be the written octave." checked={s.strictOctave} onChange={(v) => set({ strictOctave: v })} />
+          <ToggleRow label="Exact octave in games" hint="Off: any C counts as C (in games, and from computer keys in songs). Songs on a USB or on-screen keyboard always want the written octave; the mic never does." checked={s.strictOctave} onChange={(v) => set({ strictOctave: v })} />
         </Section>
 
         <Section icon={<Monitor size={22} />} title="Display">
