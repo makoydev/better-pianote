@@ -85,7 +85,8 @@ export function replaceImport(files: File[]) {
 export function nextImport() {
   const { queue, done } = useImport.getState()
   if (!queue.length) return closeImport()
-  useImport.setState({ queue: queue.slice(1), done: done + 1 })
+  // Only the file picked with "Replace file" replaces that song; files waiting after it are songs of their own.
+  useImport.setState({ queue: queue.slice(1), done: done + 1, replacing: null, target: null, duplicate: null })
   void startImport(queue[0])
 }
 

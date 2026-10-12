@@ -146,6 +146,19 @@ describe('a file that is already in My songs', () => {
     expect(s.edits?.title).toBe('My title')
   })
 
+  it('files dropped while replacing a song are imported as songs of their own', async () => {
+    useLibrary.setState({ entries: [mine()] })
+    startReplace(file('fixed.mxl'), 'my-piece-1')
+    await settled()
+    startImports([file('new.mxl')])
+    nextImport()
+    await settled()
+    const s = useImport.getState()
+    expect(openFile()).toBe('new.mxl')
+    expect([s.replacing, s.target, s.duplicate]).toEqual([null, null, null])
+    expect(s.edits?.title).toBe('new')
+  })
+
   it('reading another part of the same file keeps every choice', async () => {
     useLibrary.setState({ entries: [mine()] })
     startImports([file('a.mxl')])
