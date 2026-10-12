@@ -1,6 +1,6 @@
-import { Eraser, Hand, Music, Play, Sparkles, Waves } from 'lucide-react'
+import { Eraser, Hand, Music, Play, Waves } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { type ReactNode, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { MusicText } from '../../components/MusicText'
 import { TopBar } from '../../components/layout/TopBar'
 import { type KeyMark, Piano } from '../../components/piano/Piano'
@@ -8,8 +8,11 @@ import { Staff, type StaffItem } from '../../components/staff/Staff'
 import { Button } from '../../components/ui/Button'
 import { Card, Paper } from '../../components/ui/Card'
 import { Segmented, Toggle } from '../../components/ui/controls'
+import { useHandsFree } from '../../hooks/useHandsFree'
+import { useViewportHeight } from '../../hooks/useViewport'
 import { playNotes, playSequence } from '../../lib/audio/play'
 import { noteColor } from '../../lib/colors'
+import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
 import {
   CHORD_TYPE,
   CHORD_TYPES,
@@ -36,6 +39,9 @@ const INV_LABELS = ['Root', '1st', '2nd', '3rd']
 const ROOTS = PC_NAMES.map((n) => n.pc)
 const TYPE_IDS = CHORD_TYPES.map((t) => t.id)
 const INVERSIONS = INV_LABELS.map((_, i) => i)
+/** Short tab names for the chord groups, so the four fit side by side. */
+const GROUP_TABS: Record<string, string> = { Triads: 'Triads', 'Sus & power': 'Sus', Sevenths: '7ths', Colour: 'Colour' }
+const groupOf = (typeId: string) => CHORD_GROUPS.find((g) => g.ids.includes(typeId))?.title ?? CHORD_GROUPS[0].title
 
 type Choice = { pc?: number; typeId?: string; inversion?: number }
 
@@ -47,12 +53,17 @@ export function ChordExplorer() {
   const [build, setBuild] = useState(false)
   const [picked, setPicked] = useState<number[]>([])
   const [pulse, setPulse] = useState(0)
+  // The type tab you opened; otherwise the tab of the chord on show.
+  const [tab, setTab] = useState<string | null>(null)
+  // Short windows (a 13" laptop, an iPad on its side) get a lower keyboard, so chord, staff and keys fit together.
+  const short = useViewportHeight() < 900
 
   const type = CHORD_TYPE[typeId]
   const chord: Chord = useMemo(() => ({ root: spellRoot(pc, CHORD_TYPE[typeId]), type: CHORD_TYPE[typeId] }), [pc, typeId])
   const invCount = Math.min(type.ivs.length, 4)
   const inv = Math.min(inversion, invCount - 1)
   const symbol = chordSymbol(chord)
+  const group = tab ?? groupOf(typeId)
 
   const rh = useMemo(() => rhVoicing(chord, inv), [chord, inv])
   const lh = useMemo(() => (hands === 'both' ? lhVoicing(chord) : []), [chord, hands])
@@ -92,6 +103,18 @@ export function ChordExplorer() {
     playSequence([...lh, ...rh, [...lh, ...rh]], { gap: 0.2, dur: 1.6 })
   }
 
+  // Hands-free: Enter, a tap of the pedal or the top C play the chord, and so does Space (left to a focused button).
+  useHandsFree(playBlock)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || !isPlainKey(e) || isTypingTarget(e.target) || isButtonTarget(e.target)) return
+      e.preventDefault()
+      playBlock()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   /** Change root/type/inversion, leave build mode and play the result. */
   const choose = (next: Choice) => {
     const nPc = next.pc ?? pc
@@ -102,26 +125,29 @@ export function ChordExplorer() {
     setInversion(nInv)
     setBuild(false)
     setPicked([])
+    setTab(null)
     const c = { root: spellRoot(nPc, nType), type: nType }
     const l = hands === 'both' ? lhVoicing(c) : []
     setPulse((p) => p + 1)
     playNotes([...l, ...rhVoicing(c, nInv)], { dur: 1.6, strum: 0.02 })
   }
 
-  const live = <LiveName picked={build ? picked : []} building={build} onExplore={choose} onClear={() => setPicked([])} />
+  const groupIds = CHORD_GROUPS.find((g) => g.title === group)?.ids ?? []
 
   return (
     <div className="min-h-dvh pb-10">
-      <TopBar back="/explore" title="Chord Explorer" subtitle="Build, hear and name any chord" />
-      <main className="mx-auto grid max-w-[1500px] gap-5 px-3 pt-5 sm:px-5 lg:grid-cols-[minmax(320px,410px)_minmax(0,1fr)]">
-        <section className="flex flex-col gap-5">
-          <Card>
-            <h2 className="mb-3 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Root note</h2>
+      <TopBar back="/explore" title="Chord Explorer" subtitle="Build, hear and name any chord · Space plays it" />
+      <main className="mx-auto grid max-w-[1500px] gap-4 px-3 pt-4 sm:px-5 lg:grid-cols-[minmax(300px,340px)_minmax(0,1fr)]">
+        {/* The pickers, in one card so they fit beside the chord on a laptop screen. */}
+        <Card className="flex flex-col gap-3 self-start">
+          <div>
+            <h2 className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Root note</h2>
             <OctavePicker
               value={pc}
               onChange={(v) => choose({ pc: v })}
               sound={false}
               label="Root note"
+              height={short ? 76 : 96}
               names={(p) => {
                 const n = PC_NAMES[p]
                 if (!n.black) return { main: n.sharp }
@@ -129,158 +155,165 @@ export function ChordExplorer() {
                 return { main: chosen, alt: chosen === n.sharp ? n.flat : n.sharp }
               }}
             />
-          </Card>
-          <Card>
-            <h2 className="mb-3 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Chord type</h2>
-            <div className="space-y-4">
+          </div>
+          <div>
+            <h2 className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Chord type</h2>
+            <div role="tablist" aria-label="Chord groups" className="flex rounded-2xl border border-white/8 bg-night-850 p-1">
               {CHORD_GROUPS.map((g) => (
-                <div key={g.title}>
-                  <div className="mb-1.5 text-xs font-extrabold uppercase tracking-wider text-ink-mute/80">{g.title}</div>
-                  <div className="flex flex-wrap gap-2">
-                    {g.ids.map((id) => {
-                      const t = CHORD_TYPE[id]
-                      const on = id === typeId
-                      return (
-                        <motion.button
-                          key={id}
-                          type="button"
-                          whileTap={{ scale: 0.94 }}
-                          onClick={() => choose({ typeId: id })}
-                          title={t.name}
-                          aria-pressed={on}
-                          className={`min-h-11 rounded-2xl border px-3.5 font-display text-lg font-bold transition-colors ${
-                            on ? 'border-gold bg-gold text-night-900' : 'border-white/10 bg-night-750 text-ink-soft hover:border-white/25 hover:text-ink'
-                          }`}
-                        >
-                          <MusicText text={pitchName(spellRoot(pc, t)) + t.suffix} />
-                        </motion.button>
-                      )
-                    })}
-                  </div>
-                </div>
+                <button
+                  key={g.title}
+                  type="button"
+                  role="tab"
+                  aria-selected={g.title === group}
+                  title={g.title}
+                  onClick={() => setTab(g.title)}
+                  className={`min-h-11 flex-1 rounded-xl px-2 text-sm font-extrabold transition-colors ${
+                    g.title === group ? 'bg-night-600 text-ink' : 'text-ink-mute hover:text-ink'
+                  } ${g.ids.includes(typeId) ? 'underline decoration-gold decoration-2 underline-offset-4' : ''}`}
+                >
+                  {GROUP_TABS[g.title] ?? g.title}
+                </button>
               ))}
             </div>
-          </Card>
-          <Card className="space-y-4">
-            <div>
-              <h2 className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Inversion</h2>
-              <Segmented
-                value={inv}
-                onChange={(v) => choose({ inversion: v })}
-                options={Array.from({ length: invCount }, (_, i) => ({ value: i, label: INV_LABELS[i] }))}
-                className="w-full"
-              />
-              <p className="mt-2 text-sm text-ink-mute">
-                {INVERSION_NAMES[inv]}
-                {inv > 0 && hands === 'rh' && (
+            {/* Room for three rows, so switching tabs doesn't make the page jump. */}
+            <div className="mt-2 flex min-h-[9rem] flex-wrap content-start gap-1.5">
+              {groupIds.map((id) => {
+                const t = CHORD_TYPE[id]
+                const on = id === typeId
+                return (
+                  <motion.button
+                    key={id}
+                    type="button"
+                    whileTap={{ scale: 0.94 }}
+                    onClick={() => choose({ typeId: id })}
+                    title={t.name}
+                    aria-pressed={on}
+                    className={`min-h-11 rounded-2xl border px-3 font-display text-base font-bold transition-colors ${
+                      on ? 'border-gold bg-gold text-night-900' : 'border-white/10 bg-night-750 text-ink-soft hover:border-white/25 hover:text-ink'
+                    }`}
+                  >
+                    <MusicText text={pitchName(spellRoot(pc, t)) + t.suffix} />
+                  </motion.button>
+                )
+              })}
+            </div>
+          </div>
+          <div>
+            <h2 className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Inversion</h2>
+            <Segmented
+              value={inv}
+              onChange={(v) => choose({ inversion: v })}
+              options={Array.from({ length: invCount }, (_, i) => ({ value: i, label: INV_LABELS[i] }))}
+              size="sm"
+              className="w-full"
+            />
+            {inv > 0 && (
+              <p className="mt-1.5 text-sm text-ink-mute">
+                {hands === 'rh' ? (
                   <>
-                    : <MusicText text={bassName} /> is the lowest note, written <MusicText text={shown} className="font-bold text-ink-soft" />.
+                    {INVERSION_NAMES[inv]}: <MusicText text={bassName} /> at the bottom, written <MusicText text={shown} className="font-bold text-ink-soft" />.
                   </>
-                )}
-                {inv > 0 && hands === 'both' && (
+                ) : (
                   <>
-                    : <MusicText text={bassName} /> is at the bottom of your right hand. With <MusicText text={pitchName(chord.root)} /> in the left hand
-                    it's still plain <MusicText text={symbol} className="font-bold text-ink-soft" />.
+                    With <MusicText text={pitchName(chord.root)} /> in the left hand it's still <MusicText text={symbol} className="font-bold text-ink-soft" />.
                   </>
                 )}
               </p>
-            </div>
-            <div>
-              <h2 className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Hands</h2>
-              <Segmented
-                value={hands}
-                onChange={setHands}
-                options={[
-                  { value: 'rh', label: 'Right hand' },
-                  { value: 'both', label: 'Both hands' },
-                ]}
-                className="w-full"
-              />
-              {hands === 'both' && <p className="mt-2 text-sm text-ink-mute">Left hand plays the chord in root position; the right hand plays your inversion.</p>}
-            </div>
-          </Card>
-        </section>
+            )}
+          </div>
+          <Segmented
+            value={hands}
+            onChange={setHands}
+            options={[
+              { value: 'rh', label: 'Right hand' },
+              { value: 'both', label: 'Both hands' },
+            ]}
+            size="sm"
+            className="w-full"
+          />
+        </Card>
 
-        <section className="flex min-w-0 flex-col gap-5">
-          <Card className="relative overflow-hidden">
-            <div aria-hidden className="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full opacity-25 blur-3xl" style={{ background: noteColor(pc) }} />
-            <div className="relative flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0">
-                <motion.div
-                  key={`${shown}-${pulse}`}
-                  initial={{ scale: 0.92, opacity: 0.6 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: 'spring', stiffness: 380, damping: 18 }}
-                  className="origin-left font-display text-7xl font-bold leading-none tracking-tight sm:text-8xl"
-                >
-                  <MusicText text={shown} />
-                </motion.div>
-                <div className="mt-2 text-xl font-extrabold text-ink-soft">
-                  <MusicText text={chordLongName(chord)} />
+        <section className="flex min-w-0 flex-col gap-4">
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(14rem,18rem)]">
+            <Card className="relative overflow-hidden">
+              <div aria-hidden className="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full opacity-25 blur-3xl" style={{ background: noteColor(pc) }} />
+              <div className="relative flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <motion.div
+                    key={`${shown}-${pulse}`}
+                    initial={{ scale: 0.92, opacity: 0.6 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 18 }}
+                    className="origin-left font-display text-6xl font-bold leading-none tracking-tight [@media(min-height:900px)]:text-7xl"
+                  >
+                    <MusicText text={shown} />
+                  </motion.div>
+                  <div className="mt-2 text-lg font-extrabold text-ink-soft">
+                    <MusicText text={chordLongName(chord)} />
+                    <span className="font-bold text-ink-mute"> · {type.mood}</span>
+                  </div>
                 </div>
-                <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/6 px-3 py-1 text-sm font-bold text-ink-mute">
-                  <Sparkles size={15} /> {type.mood}
+                {/* Icons only until there's room, so they stay beside the name. */}
+                <div className="flex gap-2">
+                  <Button size="md" icon={Play} onClick={playBlock} aria-label="Play the chord" title="Play the chord (Space)">
+                    <span className="hidden xl:inline">Play</span>
+                  </Button>
+                  <Button size="md" variant="secondary" icon={Waves} onClick={playArp} aria-label="Play it as an arpeggio" title="Play it as an arpeggio">
+                    <span className="hidden xl:inline">Arpeggio</span>
+                  </Button>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button icon={Play} onClick={playBlock}>
-                  Play
-                </Button>
-                <Button variant="secondary" icon={Waves} onClick={playArp}>
-                  Arpeggio
-                </Button>
-              </div>
-            </div>
 
-            <div className="relative mt-6">
-              <h3 className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">How it's built</h3>
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="relative mt-4 flex flex-wrap items-center gap-1" aria-label="How it's built">
                 {formula.map((f, i) => {
                   const c = noteColor(pcOf(f.note))
                   return (
-                    <div key={`${symbol}-${i}`} className="flex items-center gap-1.5">
+                    <div key={`${symbol}-${i}`} className="flex items-center gap-1">
                       {i > 0 && (
-                        <div className="flex flex-col items-center px-0.5 text-center" title={f.gapName}>
+                        <div className="flex flex-col items-center text-center" title={f.gapName}>
                           <span className="text-xs font-extrabold text-ink-mute">+{f.gap}</span>
-                          <span className="text-ink-mute">→</span>
+                          <span className="text-xs leading-none text-ink-mute">→</span>
                         </div>
                       )}
                       <motion.div
                         initial={{ y: 10, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         transition={{ delay: i * 0.06 }}
-                        className="flex min-w-[4.25rem] flex-col items-center rounded-2xl border px-3 py-2"
+                        className="flex min-w-[3.4rem] flex-col items-center rounded-2xl border px-2 py-1"
+                        title={f.fromRoot}
                         style={{ borderColor: `${c}66`, background: `${c}18` }}
                       >
-                        <span className="text-sm font-extrabold text-ink-mute">
+                        <span className="text-xs font-extrabold text-ink-mute">
                           <MusicText text={f.degree} />
                         </span>
-                        <span className="font-display text-2xl font-bold" style={{ color: c }}>
+                        <span className="font-display text-xl font-bold leading-tight" style={{ color: c }}>
                           <MusicText text={pitchName(f.note)} />
                         </span>
-                        <span className="text-[0.7rem] font-bold text-ink-mute">{f.fromRoot}</span>
                       </motion.div>
                     </div>
                   )
                 })}
               </div>
               {formula.length > 1 && (
-                <p className="mt-3 text-base text-ink-soft">
-                  Start on the root, then stack{' '}
+                <p className="relative mt-2 text-sm text-ink-mute">
+                  From the root, stack{' '}
                   {formula.slice(1).map((f, i) => (
                     <span key={i}>
                       {i > 0 && ' + '}
-                      <b className="text-ink">{f.gapName.toLowerCase()}</b> ({f.gap} half steps)
+                      <b className="text-ink-soft">{f.gapName.toLowerCase()}</b>
                     </span>
                   ))}
                   .
                 </p>
               )}
-            </div>
-          </Card>
+            </Card>
+            <Paper className="flex items-center">
+              <Staff clef={hands === 'both' ? 'grand' : 'treble'} items={staffItems} sp={16} reserveAbove={hands === 'both' ? 2.2 : 2.6} reserveBelow={hands === 'both' ? 2.2 : 2.6} />
+            </Paper>
+          </div>
 
-          <Card className="pt-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <Card className="pt-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
               <div className="flex items-center gap-2 text-sm font-extrabold text-ink-mute">
                 <Hand size={18} /> {build ? 'Tap keys to add or remove them' : 'Numbers on the keys are finger numbers (1 = thumb)'}
               </div>
@@ -307,18 +340,15 @@ export function ChordExplorer() {
               onToggle={(m) => setPicked((xs) => (xs.includes(m) ? xs.filter((x) => x !== m) : [...xs, m].sort((a, b) => a - b)))}
               sparks
               sparkHeight={90}
-              height={from < 60 ? 170 : 200}
+              height={short ? (from < 60 ? 150 : 165) : from < 60 ? 170 : 200}
               octaveLabels
             />
           </Card>
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <Paper className="flex items-center">
-              <Staff clef={hands === 'both' ? 'grand' : 'treble'} items={staffItems} sp={18} reserveAbove={3} reserveBelow={3} />
-            </Paper>
+          <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
             <GuitarCard chord={chord} />
+            <LiveName picked={build ? picked : []} building={build} onExplore={choose} onClear={() => setPicked([])} />
           </div>
-          {live}
         </section>
       </main>
     </div>
