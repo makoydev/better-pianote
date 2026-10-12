@@ -103,6 +103,11 @@ export interface PlayStep {
   success?: string
   /** Other notes don't count as slips (the prompt asks you to play something else first, e.g. C major, then F). */
   free?: boolean
+  /**
+   * The prompt in a quick review, where the step appears on its own (for prompts that lean on the step before).
+   * The `success` line is left out there too, as it usually leans on the lesson as well.
+   */
+  review?: string
 }
 
 export interface QuizStep {
@@ -121,6 +126,8 @@ export interface QuizStep {
   ordered?: boolean
   /** Shown after answering. */
   explain?: string
+  /** The question in a quick review, where the step appears on its own (e.g. instead of "And this one?"). */
+  review?: string
 }
 
 export interface WidgetStep {

@@ -10,6 +10,7 @@ import { useHandsFree } from '../../hooks/useHandsFree'
 import { isPlainKey, isTypingTarget } from '../../lib/focus'
 import { useLive } from '../../state/live'
 import type { Resume } from './resume'
+import { stepLabel } from './stepText'
 import { ExplainStepView, WidgetStepView } from './steps/ExplainStepView'
 import { PlayStepView } from './steps/PlayStepView'
 import { QuizStepView } from './steps/QuizStepView'
@@ -23,18 +24,22 @@ export interface StepPlayerProps {
   color: string
   /** Tap the sustain pedal to continue (off for the lesson about the pedal itself). */
   pedal?: boolean
+  /** Reviewing a finished lesson: Continue always works, a strip jumps to any step, and nothing is counted. */
+  browse?: boolean
+  /** Shown after the title for each step (the lesson a quick-review question comes from). */
+  sources?: string[]
   /** Where to pick up (an unfinished lesson you're coming back to). */
   initial?: Resume | null
   /** Called as you go, so your place can be remembered. */
   onProgress?: (p: Resume) => void
   /** Offered in the footer while you're still on the step you came back to. */
   onStartOver?: () => void
-  /** Runs once, after the last step, with the slips per step and the seconds it took. */
-  onFinish: (slips: Record<number, number>, seconds: number) => void
+  /** Runs once, after the last step, with the slips per step, the seconds it took and the steps you answered. */
+  onFinish: (slips: Record<number, number>, seconds: number, solved: number[]) => void
 }
 
 /** Plays a list of lesson steps: the header, each step in turn, Back / Skip / Continue. */
-export function StepPlayer({ steps, title, icon, color, pedal = true, initial, onProgress, onStartOver, onFinish }: StepPlayerProps) {
+export function StepPlayer({ steps, title, icon, color, pedal = true, browse = false, sources, initial, onProgress, onStartOver, onFinish }: StepPlayerProps) {
   const [i, setI] = useState(initial?.step ?? 0)
   const [dir, setDir] = useState(1)
   const [solved, setSolved] = useState<Record<number, boolean>>(() => Object.fromEntries((initial?.solved ?? []).map((k) => [k, true])))
@@ -58,20 +63,19 @@ export function StepPlayer({ steps, title, icon, color, pedal = true, initial, o
   const elapsed = () => Math.round((Date.now() - started.current) / 1000)
 
   const step = steps[i]
-  const canContinue = !needsAnswer(step) || !!solved[i]
+  const canContinue = browse || !needsAnswer(step) || !!solved[i]
+  const answered = () => Object.keys(solved).map(Number).filter((k) => solved[k])
 
   // Remember your place as you go.
   const report = useEffectEvent(() => {
-    if (done.current) return
-    const answered = Object.keys(solved).map(Number).filter((k) => solved[k])
-    onProgress?.({ step: i, solved: answered, slips, secs: elapsed(), of: steps.length })
+    if (!done.current) onProgress?.({ step: i, solved: answered(), slips, secs: elapsed(), of: steps.length })
   })
   useEffect(() => report(), [i, solved, slips])
 
   const finish = (slipsNow: Record<number, number>) => {
     if (done.current) return
     done.current = true
-    onFinish(slipsNow, elapsed())
+    onFinish(slipsNow, elapsed(), answered())
   }
   const goTo = (k: number) => {
     setJustSolved(null)
@@ -89,7 +93,9 @@ export function StepPlayer({ steps, title, icon, color, pedal = true, initial, o
   const back = () => {
     if (i > 0) goTo(i - 1)
   }
-  const addSlips = (n: number) => setSlips((s) => ({ ...s, [i]: (s[i] ?? 0) + n }))
+  const addSlips = (n: number) => {
+    if (!browse) setSlips((s) => ({ ...s, [i]: (s[i] ?? 0) + n }))
+  }
   const skip = () => {
     const slipsNow = { ...slips, [i]: (slips[i] ?? 0) + 2 }
     setSlips(slipsNow)
@@ -119,7 +125,8 @@ export function StepPlayer({ steps, title, icon, color, pedal = true, initial, o
     return () => window.removeEventListener('keydown', onKey)
   })
   // Enter, a quick pedal tap or the top C continue, so your hands stay on the keys (no delay: steps are quick).
-  useHandsFree(canContinue ? next : null, { pedal, delay: 0 })
+  // In a review Continue is always on, so the top C stays a note while a question waits for an answer.
+  useHandsFree(canContinue ? next : null, { pedal, delay: 0, topC: !(browse && needsAnswer(step) && !solved[i]) })
 
   const progress = (i + (canContinue ? 1 : 0)) / steps.length
   const onSolved = () => {
@@ -135,7 +142,11 @@ export function StepPlayer({ steps, title, icon, color, pedal = true, initial, o
           <div className="min-w-0 flex-1 px-1">
             <div className="mb-1.5 flex items-center justify-between gap-3 text-sm font-extrabold">
               <span className="flex min-w-0 items-center gap-2 truncate" style={{ color }}>
-                <Icon name={icon} size={18} /> <span className="truncate">{title}</span>
+                <Icon name={icon} size={18} />
+                <span className="truncate">
+                  {title}
+                  {sources?.[i] && <span className="text-ink-mute"> · {sources[i]}</span>}
+                </span>
               </span>
               <span className="shrink-0 text-ink-mute">
                 {i + 1} / {steps.length}
@@ -174,6 +185,7 @@ export function StepPlayer({ steps, title, icon, color, pedal = true, initial, o
         </AnimatePresence>
       </main>
       <footer className="shrink-0 border-t border-white/6 bg-night-900/90 px-4 pb-[max(0.85rem,env(safe-area-inset-bottom))] pt-3 sm:px-6">
+        {browse && <StepStrip steps={steps} at={i} solved={solved} onPick={(k) => k !== i && goTo(k)} />}
         <div className="mx-auto flex max-w-5xl items-center gap-3">
           <Button variant="ghost" size="md" icon={ArrowLeft} onClick={back} disabled={i === 0}>
             <span className="hidden sm:inline">Back</span>
@@ -186,21 +198,52 @@ export function StepPlayer({ steps, title, icon, color, pedal = true, initial, o
                   <span className="hidden sm:inline">Start over</span>
                 </Button>
               </>
+            ) : browse ? (
+              <span className="hidden md:inline">Reviewing: nothing is scored</span>
             ) : (
               canContinue && midiReady && pedal && <span className="hidden md:inline">Tip: tap your sustain pedal to continue</span>
             )}
           </div>
-          {needsAnswer(step) && !solved[i] && (
+          {!browse && needsAnswer(step) && !solved[i] && (
             <Button variant="ghost" size="md" icon={SkipForward} onClick={skip} aria-label="Skip">
               <span className="hidden sm:inline">Skip</span>
             </Button>
           )}
           <Button size="lg" iconRight={ArrowRight} onClick={next} disabled={!canContinue} className="sm:min-w-44">
-            {i === steps.length - 1 ? 'Finish' : 'Continue'}
+            {i < steps.length - 1 ? 'Continue' : browse ? 'Done' : 'Finish'}
           </Button>
         </div>
       </footer>
     </div>
+  )
+}
+
+/** In a review: every step as a numbered button, to jump straight to it. */
+function StepStrip({ steps, at, solved, onPick }: { steps: Step[]; at: number; solved: Record<number, boolean>; onPick: (k: number) => void }) {
+  return (
+    <nav aria-label="Steps" className="mx-auto mb-2.5 max-w-5xl overflow-x-auto scrollbar-none">
+      <div className="mx-auto flex w-max gap-1.5">
+        {steps.map((s, k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => onPick(k)}
+            aria-label={`Step ${k + 1}: ${stepLabel(s)}`}
+            aria-current={k === at ? 'step' : undefined}
+            title={stepLabel(s)}
+            className={`flex size-11 shrink-0 items-center justify-center rounded-xl border text-base font-extrabold transition-colors ${
+              k === at
+                ? 'border-gold bg-gold text-night-900'
+                : solved[k]
+                  ? 'border-good/40 bg-good/10 text-good'
+                  : 'border-white/10 bg-night-750 text-ink-soft hover:border-white/25 hover:text-ink'
+            }`}
+          >
+            {k + 1}
+          </button>
+        ))}
+      </div>
+    </nav>
   )
 }
 

@@ -3,10 +3,14 @@ import { TopBar } from '../../components/layout/TopBar'
 import { ALL_LESSONS, findLesson } from '../../content'
 import { audio } from '../../lib/audio/engine'
 import { celebrate } from '../../lib/fx'
+import { goBack } from '../../router'
 import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import { LessonComplete, type Result } from './LessonComplete'
+import { LessonIntro } from './LessonIntro'
+import { QuickReview } from './QuickReview'
 import { isFresh, loadResume, saveResume } from './resume'
+import { REVIEW_ID } from './review'
 import { stepLabel } from './stepText'
 import { StepPlayer } from './StepPlayer'
 
@@ -19,6 +23,7 @@ const total = (slips: Record<number, number>) => Object.values(slips).reduce((a,
 type Found = NonNullable<ReturnType<typeof findLesson>>
 
 export function LessonPlayer({ lessonId }: { lessonId: string }) {
+  if (lessonId === REVIEW_ID) return <QuickReview />
   const found = findLesson(lessonId)
   if (!found) {
     return (
@@ -31,12 +36,18 @@ export function LessonPlayer({ lessonId }: { lessonId: string }) {
   return <LessonRun found={found} />
 }
 
+/**
+ * One lesson: a scored run (picking up where you left off), or for a lesson you've finished, a choice between
+ * replaying it for stars and reviewing it.
+ */
 function LessonRun({ found }: { found: Found }) {
   const { lesson, unit } = found
   const pedal = lesson.pedalContinue !== false
+  const best = useProgress((s) => s.lessons[lesson.id]?.stars ?? 0)
   // Where you left off last time, if you didn't finish (read once, when the lesson opens).
   const [initial, setInitial] = useState(() => loadResume(lesson.id, lesson.steps.length))
-  // Bumped to start a fresh run (Replay, Start over).
+  const [phase, setPhase] = useState<'intro' | 'run' | 'review'>(() => (!initial && useProgress.getState().lessons[lesson.id] ? 'intro' : 'run'))
+  // Bumped to start afresh (Replay, Start over).
   const [run, setRun] = useState(0)
   const [result, setResult] = useState<Result | null>(null)
 
@@ -44,6 +55,7 @@ function LessonRun({ found }: { found: Found }) {
     saveResume(lesson.id, null)
     setInitial(null)
     setResult(null)
+    setPhase('run')
     setRun((r) => r + 1)
   }
 
@@ -74,6 +86,15 @@ function LessonRun({ found }: { found: Found }) {
   }
 
   if (result) return <LessonComplete result={result} unitColor={unit.color} onReplay={restart} pedal={pedal} />
+
+  if (phase === 'intro') {
+    return <LessonIntro lesson={lesson} unit={unit} stars={best} onReplay={restart} onReview={() => setPhase('review')} pedal={pedal} />
+  }
+
+  // Reviewing: nothing is scored or saved, and Done goes back to where you came from.
+  if (phase === 'review') {
+    return <StepPlayer steps={lesson.steps} title={lesson.title} icon={lesson.icon} color={unit.color} pedal={pedal} browse onFinish={() => goBack('/learn')} />
+  }
 
   return (
     <StepPlayer

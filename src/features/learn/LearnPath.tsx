@@ -1,7 +1,8 @@
-import { Check, Clock, Star } from 'lucide-react'
+import { Check, Clock, Repeat, Star } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect } from 'react'
 import { Page } from '../../components/layout/Page'
+import { Button } from '../../components/ui/Button'
 import { Icon } from '../../components/ui/Icon'
 import { ProgressBar, Stars } from '../../components/ui/progress'
 import { ALL_LESSONS, UNITS, nextLesson } from '../../content'
@@ -9,6 +10,7 @@ import type { Lesson, Unit } from '../../content/types'
 import { go, navKind } from '../../router'
 import { useProgress } from '../../state/progress'
 import { useResumeStep } from './resume'
+import { REVIEW_ID } from './review'
 
 // Horizontal wiggle of the trail, in rem.
 const OFFSETS = [0, 3.5, 5.5, 3.5, 0, -3.5, -5.5, -3.5]
@@ -43,6 +45,16 @@ export function LearnPath() {
         <div className="flex items-center gap-2 text-lg font-extrabold text-gold">
           <Star className="fill-gold" size={24} /> {stars} <span className="text-sm text-ink-mute">/ {ALL_LESSONS.length * 3}</span>
         </div>
+        <Button
+          variant="secondary"
+          size="md"
+          icon={Repeat}
+          onClick={() => go(`/learn/${REVIEW_ID}`)}
+          disabled={done === 0}
+          title={done === 0 ? 'Finish a lesson first' : 'Ten questions from lessons you’ve finished, mostly ones with fewer stars'}
+        >
+          Quick review
+        </Button>
       </div>
       <div className="space-y-14">
         {UNITS.map((u, i) => (

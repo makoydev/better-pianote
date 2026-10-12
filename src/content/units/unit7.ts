@@ -68,6 +68,7 @@ Rolling it as 1-5-8-5 gives a flowing, ballad feel. It's the kind of rolling lef
         {
           kind: 'play',
           prompt: 'Now on A minor: A – E – A.',
+          review: 'Left hand, 1-5-8 on A minor: A – E – A.',
           target: { type: 'sequence', notes: ['A2', 'E3', 'A3'] },
           keyboard: { from: 'A2', to: 'C4', labels: 'all', fingers: { A2: 5, E3: 2, A3: 1 } },
           hint: 'Same shape, moved down to A: pinky on A, finger 2 on E, thumb on the A above.',
@@ -176,6 +177,7 @@ Mozart used it constantly; his famous Sonata in C (K. 545) opens with exactly th
         {
           kind: 'play',
           prompt: 'Now on G: G, D, B, D (fingers 5, 1, 3, 1).',
+          review: 'Alberti bass on G: G, D, B, D (fingers 5, 1, 3, 1).',
           target: { type: 'sequence', notes: ['G2', 'D3', 'B2', 'D3'] },
           keyboard: { from: 'C2', to: 'C4', labels: 'all', fingers: { G2: 5, B2: 3, D3: 1 } },
           hint: 'G major is G B D. Bottom (G), top (D), middle (B), top (D).',
@@ -253,6 +255,7 @@ Play each bass note **together with** the first melody note of its bar, and hold
         {
           kind: 'play',
           prompt: 'Together, slowly: start bar 1 with left-hand C3 and right-hand E4 at the same time.',
+          review: 'Hands together: play left-hand C3 and right-hand E4 at the same time.',
           target: { type: 'chord', notes: ['C3', 'E4'], anyOctave: false },
           keyboard: { from: 'C3', to: 'C5', labels: 'all' },
           success: 'Now keep holding the C and play E F G with your right hand.',
@@ -260,6 +263,7 @@ Play each bass note **together with** the first melody note of its bar, and hold
         {
           kind: 'play',
           prompt: 'Bar 2 starts with left-hand G2 and right-hand G4 together.',
+          review: 'Hands together: play left-hand G2 and right-hand G4 at the same time.',
           target: { type: 'chord', notes: ['G2', 'G4'], anyOctave: false },
           keyboard: { from: 'G2', to: 'C5', labels: 'all' },
           success: 'Then F E D in the right hand over the held G. That’s hands together!',
@@ -387,6 +391,7 @@ It's worth practising even if you do have a pedal. Pianists with good finger leg
         {
           kind: 'quiz',
           question: 'And these?',
+          review: 'Listen to these four chords. How does the ending feel?',
           listen: {
             label: 'Play again',
             notes: [['C3', 'E4', 'G4', 'C5'], ['A2', 'E4', 'A4', 'C5'], ['F2', 'F4', 'A4', 'C5'], ['G2', 'D4', 'G4', 'B4']],
@@ -423,6 +428,7 @@ It's the fastest way to connect the sounds you hear to the names and notes you'v
         {
           kind: 'quiz',
           question: 'This starts on C too. Where does it go?',
+          review: 'This starts on C. Which note does it go up to?',
           listen: { label: 'Play again', notes: ['C4', 'E4'], gap: 0.7 },
           options: ['E', 'D', 'F', 'G'],
           answer: 0,

@@ -147,6 +147,7 @@ Same letters, one half step apart, and a completely different mood.`,
         {
           kind: 'quiz',
           question: 'And this one?',
+          review: 'Listen. Major 3rd or minor 3rd?',
           listen: { label: 'Play again', notes: [['A3', 'C4']], dur: 1.6 },
           options: ['Major 3rd (brighter)', 'Minor 3rd (darker)'],
           answer: 1,
@@ -311,6 +312,7 @@ To keep the recipe, F has to become **F♯**. That's why the key of **G major ha
         {
           kind: 'play',
           prompt: 'Now down: 5 4 3 2 1, finger 3 crosses over, then 2 1.',
+          review: 'Right hand, C major going down: 5 4 3 2 1, finger 3 crosses over, then 2 1.',
           target: { type: 'sequence', notes: ['C5', 'B4', 'A4', 'G4', 'F4', 'E4', 'D4', 'C4'] },
           keyboard: { from: 'C4', to: 'C5', labels: 'all', fingers: { C4: 1, D4: 2, E4: 3, F4: 1, G4: 2, A4: 3, B4: 4, C5: 5 } },
         },
@@ -425,6 +427,7 @@ That G♯ leans hard back up to A, which gives this scale its dramatic, slightly
         {
           kind: 'play',
           prompt: 'Now A harmonic minor: the same, but with G♯.',
+          review: 'Play A harmonic minor going up: A B C D E F G♯ A.',
           target: { type: 'sequence', notes: ['A3', 'B3', 'C4', 'D4', 'E4', 'F4', 'G#4', 'A4'] },
           keyboard: { from: 'A3', to: 'A4', labels: 'all', fingers: { A3: 1, B3: 2, C4: 3, D4: 1, E4: 2, F4: 3, 'G#4': 4, A4: 5 } },
           success: 'Hear that pull from G♯ up to A?',

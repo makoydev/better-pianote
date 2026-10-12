@@ -1,4 +1,4 @@
-import { ArrowRight, Flame, Footprints, ListChecks, RotateCcw, Timer, Trophy, Zap } from 'lucide-react'
+import { ArrowRight, Flame, Footprints, ListChecks, Repeat, RotateCcw, Timer, Trophy, Zap } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect } from 'react'
 import { Button } from '../../components/ui/Button'
@@ -11,7 +11,8 @@ import { go } from '../../router'
 import { liveStreak, useProgress } from '../../state/progress'
 
 export interface Result {
-  stars: number
+  /** Null for a quick review: it isn't a lesson, so there are no stars to keep. */
+  stars: number | null
   xp: number
   seconds: number
   /** Steps you slipped on, in order. */
@@ -19,9 +20,23 @@ export interface Result {
   /** Set when this lesson finished its unit for the first time. */
   unitDone: string | null
   next: Lesson | null
+  /** Quick review: questions you got right first time. */
+  firstTry?: { right: number; of: number }
 }
 
-export function LessonComplete({ result, unitColor, onReplay, pedal }: { result: Result; unitColor: string; onReplay: () => void; pedal: boolean }) {
+export function LessonComplete({
+  result,
+  unitColor,
+  onReplay,
+  replayLabel = 'Replay',
+  pedal,
+}: {
+  result: Result
+  unitColor: string
+  onReplay: () => void
+  replayLabel?: string
+  pedal: boolean
+}) {
   const streak = useProgress(liveStreak)
   const mins = Math.floor(result.seconds / 60)
   const secs = result.seconds % 60
@@ -52,14 +67,22 @@ export function LessonComplete({ result, unitColor, onReplay, pedal }: { result:
           </div>
         )}
         <div className="mx-auto mb-4 flex size-24 items-center justify-center rounded-[1.75rem] shadow-[0_20px_60px_-15px_rgba(255,200,87,.6)]" style={{ background: `linear-gradient(140deg, ${unitColor}, #ff8a6b)` }}>
-          <Footprints size={48} className="text-night-900" />
+          {result.stars === null ? <Repeat size={48} className="text-night-900" /> : <Footprints size={48} className="text-night-900" />}
         </div>
-        <h1 className="font-display text-5xl font-bold sm:text-6xl">Lesson complete!</h1>
-        <div className="mt-5 flex justify-center">
-          <Stars value={result.stars} size={52} animate />
-        </div>
+        <h1 className="font-display text-5xl font-bold sm:text-6xl">{result.stars === null ? 'Review done!' : 'Lesson complete!'}</h1>
+        {result.stars !== null && (
+          <div className="mt-5 flex justify-center">
+            <Stars value={result.stars} size={52} animate />
+          </div>
+        )}
         <p className="mt-3 text-lg text-ink-soft">
-          {result.stars === 3 ? 'Flawless. Your hands are learning fast.' : result.stars === 2 ? 'Great work! Replay any time for three stars.' : 'Done! Each replay makes it stick.'}
+          {result.firstTry
+            ? `${result.firstTry.right} of ${result.firstTry.of} right first time. ${result.firstTry.right === result.firstTry.of ? 'It all stuck!' : 'The slips below show which lessons to revisit.'}`
+            : result.stars === 3
+              ? 'Flawless. Your hands are learning fast.'
+              : result.stars === 2
+                ? 'Great work! Replay any time for three stars.'
+                : 'Done! Each replay makes it stick.'}
         </p>
       </motion.div>
       <motion.div
@@ -105,7 +128,7 @@ export function LessonComplete({ result, unitColor, onReplay, pedal }: { result:
       )}
       <div className="mt-6 flex w-full max-w-xl flex-col gap-3 sm:flex-row">
         <Button variant="secondary" icon={RotateCcw} onClick={onReplay} className="sm:flex-1">
-          Replay
+          {replayLabel}
         </Button>
         <Button iconRight={ArrowRight} onClick={goNext} className="sm:flex-[2]">
           {result.next ? `Next: ${result.next.title}` : 'Back to the path'}

@@ -127,6 +127,7 @@ Next: why some triads sound happy and others sound sad.`,
         {
           kind: 'quiz',
           question: 'And this one?',
+          review: 'Listen. Major or minor?',
           listen: { label: 'Play again', notes: [['F3', 'A3', 'C4']], dur: 1.8 },
           options: ['Major (bright)', 'Minor (dark)'],
           answer: 0,
@@ -308,6 +309,7 @@ It's still C major. It just sounds a little different, and it can sit much close
         {
           kind: 'play',
           prompt: 'Now 2nd inversion: G, C, E, with G at the bottom.',
+          review: 'Play C major in 2nd inversion: G, C, E, with G at the bottom.',
           target: { type: 'chord', notes: ['G4', 'C5', 'E5'], anyOctave: true, bass: 'G4' },
           keyboard: { from: 'C4', to: 'C6', labels: 'all', fingers: { G4: 1, C5: 3, E5: 5 } },
         },

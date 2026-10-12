@@ -61,6 +61,7 @@ Lines are counted from the **bottom**: line 1 is the lowest, line 5 the highest.
         {
           kind: 'quiz',
           question: 'And this one?',
+          review: 'Is this note on a line or in a space?',
           visual: { staff: { clef: 'treble', items: [w('C5')], labels: false } },
           options: ['On a line', 'In a space'],
           answer: 1,

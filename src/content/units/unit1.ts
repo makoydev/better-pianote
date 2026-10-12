@@ -374,6 +374,7 @@ Most first pieces only use these ten notes, so this is your home position.`,
         {
           kind: 'play',
           prompt: 'Come back down: G F E D C, fingers 5 4 3 2 1.',
+          review: 'Right hand in C position, coming down: G F E D C, fingers 5 4 3 2 1.',
           target: { type: 'sequence', notes: ['G4', 'F4', 'E4', 'D4', 'C4'] },
           keyboard: { from: 'C4', to: 'C5', labels: 'all', fingers: { C4: 1, D4: 2, E4: 3, F4: 4, G4: 5 } },
         },

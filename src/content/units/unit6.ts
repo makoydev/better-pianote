@@ -89,6 +89,7 @@ One exception to memorise: **one flat (B♭) is F major**.`,
         {
           kind: 'quiz',
           question: 'And this one?',
+          review: 'Which major key has this key signature?',
           visual: { staff: { clef: 'treble', keySig: -2, items: [] } },
           options: ['B♭ major', 'E♭ major', 'F major', 'D major'],
           answer: 0,
@@ -384,6 +385,7 @@ Good pianists **keep shared notes where they are** and move the other notes to t
         {
           kind: 'play',
           prompt: 'Now F, keeping your thumb on C: C4, F4, A4.',
+          review: 'Play F major with your thumb on C: C4, F4, A4.',
           target: { type: 'chord', notes: ['C4', 'F4', 'A4'] },
           keyboard: { from: 'G3', to: 'C5', labels: 'all', fingers: { C4: 1, F4: 3, A4: 5 } },
           success: 'Only two fingers moved, one step each.',
@@ -391,6 +393,7 @@ Good pianists **keep shared notes where they are** and move the other notes to t
         {
           kind: 'play',
           prompt: 'Now G: B3, D4, G4.',
+          review: 'Play G major with B at the bottom: B3, D4, G4.',
           target: { type: 'chord', notes: ['B3', 'D4', 'G4'] },
           keyboard: { from: 'G3', to: 'C5', labels: 'all', fingers: { B3: 1, D4: 2, G4: 5 } },
           success: 'C → F → G with almost no hand movement. That’s voice leading.',
