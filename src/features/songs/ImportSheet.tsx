@@ -55,7 +55,12 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
         go(`/songs/${id}`)
       }
     } catch {
-      setSaveError('Couldn’t save the song on this device. The browser may be in private mode or out of space.')
+      const gone = target && !useLibrary.getState().entries.some((e) => e.id === target)
+      setSaveError(
+        gone
+          ? 'The song this file was going to replace isn’t in My songs any more. Close this and import the file as a new song.'
+          : 'Couldn’t save the song on this device. The browser may be in private mode or out of space.',
+      )
     } finally {
       setSaving(false)
     }
@@ -68,6 +73,10 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
   const skip = () => {
     setSaveError(null)
     nextImport()
+  }
+  const pickAnother = () => {
+    setSaveError(null)
+    onPickAnother()
   }
   const file = phase.kind === 'closed' ? null : phase.file
   const stats = ready?.result.stats
@@ -119,7 +128,7 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
                 Next file
               </Button>
             )}
-            <Button variant={queue.length ? 'secondary' : 'primary'} icon={Upload} onClick={onPickAnother}>
+            <Button variant={queue.length ? 'secondary' : 'primary'} icon={Upload} onClick={pickAnother}>
               Choose another file
             </Button>
             <Button variant="ghost" onClick={close}>
@@ -207,11 +216,11 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
               {!batch ? `${verb} and play` : queue.length ? `${verb}, next file` : verb}
             </Button>
             {queue.length > 0 && (
-              <Button variant="secondary" icon={SkipForward} onClick={skip}>
+              <Button variant="secondary" icon={SkipForward} onClick={skip} disabled={saving}>
                 Skip this file
               </Button>
             )}
-            <Button variant="ghost" icon={FileMusic} onClick={onPickAnother}>
+            <Button variant="ghost" icon={FileMusic} onClick={pickAnother} disabled={saving}>
               Pick a different file
             </Button>
           </div>

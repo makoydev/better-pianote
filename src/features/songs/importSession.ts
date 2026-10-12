@@ -97,9 +97,19 @@ export function startReplace(file: File, id: string) {
   void startImport(file)
 }
 
-/** For a file that's already in My songs: replace that song (pass its id) or add the file as a new one (null). */
+const sameDetails = (a: ImportEdits, b: ImportEdits) => a.title === b.title && a.composer === b.composer && a.difficulty === b.difficulty
+
+/**
+ * For a file that's already in My songs: replace that song (pass its id) or add the file as a new one (null).
+ * Fields you haven't changed follow the choice: a song you replace keeps the title, composer and level you gave it.
+ */
 export function chooseTarget(target: string | null) {
-  useImport.setState({ target })
+  const s = useImport.getState()
+  const phase = s.phase
+  if (phase.kind !== 'ready' || target === s.target) return
+  const songFor = (id: string | null) => (id ? useLibrary.getState().entries.find((e) => e.id === id)?.song : undefined) ?? phase.result.song
+  const untouched = !!s.edits && sameDetails(s.edits, detailsOf(songFor(s.target)))
+  useImport.setState({ target, ...(untouched ? { edits: detailsOf(songFor(target)) } : {}) })
 }
 
 /** Read a file (or the same file again with another part of the score). */
@@ -115,20 +125,28 @@ export async function startImport(file: File, opts: { partIndex?: number; bytes?
   useImport.setState((s) => ({ phase: { kind: 'reading', file }, edits: opts.partIndex === undefined ? null : s.edits }))
   let mod: typeof import('../../lib/musicxml') | null = null
   try {
-    mod = await import('../../lib/musicxml')
+    const m = (mod = await import('../../lib/musicxml'))
     const bytes = opts.bytes ?? new Uint8Array(await file.arrayBuffer())
-    const result = await mod.importScoreFile(bytes, file.name, { partIndex: opts.partIndex })
-    if (mine !== ticket) return
-    const phase: ImportPhase = { kind: 'ready', file, bytes, result, version: mod.IMPORTER_VERSION }
-    // The same file read with another part keeps every choice made so far.
-    if (opts.partIndex !== undefined) return useImport.setState({ phase })
     const { entries } = useLibrary.getState()
     const replacing = entries.find((e) => e.id === useImport.getState().replacing)
+    // A new file for a song is read with the part that song was learnt from (when the file has it).
+    let result = await m.importScoreFile(bytes, file.name, { partIndex: opts.partIndex ?? replacing?.source?.partIndex })
+    if (mine !== ticket) return
+    const ready = (): ImportPhase => ({ kind: 'ready', file, bytes, result, version: m.IMPORTER_VERSION })
+    // The same file read with another part keeps every choice made so far.
+    if (opts.partIndex !== undefined) return useImport.setState({ phase: ready() })
     const dup = replacing ? null : findDuplicate(entries, { name: file.name, bytes, title: result.song.title, composer: result.song.composer })
-    // Replacing a song keeps the title, composer and level you gave it.
-    const existing = replacing ?? dup?.entry
+    const samePart = dup?.reason === 'file' ? dup.entry.source?.partIndex : undefined
+    if (samePart !== undefined && samePart !== result.partIndex) {
+      result = await m.importScoreFile(bytes, file.name, { partIndex: samePart })
+      if (mine !== ticket) return
+    }
+    // A new file for a song, or the very same file again, replaces that song unless you say otherwise. A song
+    // that only shares the title and composer (another movement of the same work, say) is added as new.
+    const existing = replacing ?? (dup?.reason === 'file' ? dup.entry : undefined)
     useImport.setState({
-      phase,
+      phase: ready(),
+      // Replacing a song keeps the title, composer and level you gave it.
       edits: detailsOf(existing?.song ?? result.song),
       target: existing?.id ?? null,
       duplicate: dup && { id: dup.entry.id, title: dup.entry.song.title, reason: dup.reason },
