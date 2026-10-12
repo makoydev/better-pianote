@@ -68,7 +68,7 @@ import {
   readChart,
 } from './chart'
 import { KeyBar } from './KeyBar'
-import { Sounding, nameSounding, respelled, withinChord } from './sounding'
+import { Sounding, nameSounding, respelled, sameVoicing, withinChord } from './sounding'
 
 const KEY_OPTIONS = [...ALL_MAJOR_KEYS, ...ALL_MINOR_KEYS]
 const KEY_CHOICES = ['auto', 'none', ...KEY_OPTIONS.map(keyId)]
@@ -186,8 +186,9 @@ export function FreePlay() {
   const real = named && named.det.chord.type.ivs.length >= 3 ? named.det : null
   const [last, setLast] = useState<DetectedChord | null>(null)
   const current = real ?? (last && withinChord(sound.all, last.chord) ? last : (named?.det ?? null))
-  // Remembered as you play (React's "information from previous renders" pattern, no effect needed).
-  if (current && current.symbol !== last?.symbol) setLast(current)
+  // Remembered as you play, voicing and all, for the faded staff (React's "information from previous renders"
+  // pattern, no effect needed).
+  if (current && !(last && sameVoicing(current, last))) setLast(current)
 
   // Once a chord has been held steadily for a moment, add it to the chart (and the collection, by sound).
   const [undo, setUndo] = useState<ChartEntry[] | null>(null)

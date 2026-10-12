@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { detectChord, midi, noteName, parseChord, parseKey } from '../../lib/theory'
-import { BROKEN_MS, Sounding, nameSounding, respelled, withinChord } from './sounding'
+import { BROKEN_MS, Sounding, nameSounding, respelled, sameVoicing, withinChord } from './sounding'
 
 /** Play notes one after another, each released just before the next (like fingers moving on), `gap` ms apart. */
 function broken(s: Sounding, notes: string[], start: number, gap = 400): number {
@@ -147,6 +147,13 @@ describe('naming what is sounding', () => {
     expect(r.notes.map((n) => noteName(n))).toEqual(['D♯4', 'F♯4', 'A♯4'])
     expect(respelled(det, parseKey('Gb'))).toBe(det)
     expect(respelled(det, null)).toBe(det)
+  })
+
+  it('tells a chord played another way from the same voicing', () => {
+    const close = detectChord([midi('C4'), midi('E4'), midi('G4')])!
+    expect(sameVoicing(close, detectChord([midi('C4'), midi('E4'), midi('G4')])!)).toBe(true)
+    expect(sameVoicing(close, detectChord([midi('C3'), midi('G3'), midi('E4')])!)).toBe(false)
+    expect(sameVoicing(close, detectChord([midi('C3'), midi('E3'), midi('G3')])!)).toBe(false)
   })
 
   it('knows notes that are still the same chord', () => {

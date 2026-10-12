@@ -160,6 +160,11 @@ export function respelled(det: DetectedChord, key: Key | null): DetectedChord {
   return { ...det, chord, symbol: chordSymbol(chord), name: chordLongName(chord), notes }
 }
 
+/** The same chord played the same way: same name and the same keys (C in another octave or voicing isn't). */
+export function sameVoicing(a: DetectedChord, b: DetectedChord): boolean {
+  return a.symbol === b.symbol && a.notes.length === b.notes.length && a.notes.every((n, i) => midiOf(n) === midiOf(b.notes[i]))
+}
+
 /** Every note is one of the chord's tones: a partial arpeggio of it, or its bass struck again. */
 export function withinChord(midis: number[], chord: Chord): boolean {
   const pcs = new Set(chordPcs(chord))
