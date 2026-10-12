@@ -9,7 +9,7 @@ import { MusicText } from '../MusicText'
 import { type Marks, Piano } from '../piano/Piano'
 import { Staff } from '../staff/Staff'
 import { Button } from '../ui/Button'
-import { useFitKeyboard, useShortScreen } from './fit'
+import { useFitKeyboard, useShortScreen, useSpaceKey } from './fit'
 
 /** Builds a scale one step at a time from its whole/half-step recipe. */
 
@@ -58,6 +58,9 @@ export function StepPattern({ tonic, scale }: { tonic: string; scale: string }) 
       timers.current.push(audio.at(t0 + i * 0.42, () => setShown(i + 1)))
     })
   }
+
+  // In a lesson, Space plays the whole scale.
+  useSpaceKey(autoplay)
 
   // Playing the next note on your keyboard advances the scale.
   useNoteEvents((e) => {

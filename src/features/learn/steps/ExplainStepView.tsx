@@ -2,7 +2,7 @@ import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { Callout } from '../../../components/ui/Callout'
 import { RichText } from '../../../components/ui/RichText'
-import { FitContext, useShortScreen } from '../../../components/widgets/fit'
+import { InStep, useShortScreen } from '../../../components/widgets/fit'
 import { WidgetView } from '../../../components/widgets/WidgetView'
 import type { ExplainStep, WidgetStep } from '../../../content/types'
 import { VisualBlock } from '../VisualBlock'
@@ -20,9 +20,9 @@ export function ExplainStepView({ step }: { step: ExplainStep }) {
 export function WidgetStepView({ step }: { step: WidgetStep }) {
   return (
     <StepFrame title={step.title} body={step.body} tip={step.tip} guitar={step.guitar}>
-      <FitContext value>
+      <InStep value>
         <WidgetView widget={step.widget} />
-      </FitContext>
+      </InStep>
     </StepFrame>
   )
 }

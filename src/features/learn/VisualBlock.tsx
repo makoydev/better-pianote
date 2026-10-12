@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { type Marks, Piano } from '../../components/piano/Piano'
 import { Staff } from '../../components/staff/Staff'
 import { Paper } from '../../components/ui/Card'
-import { FitContext, useFitKeyboard } from '../../components/widgets/fit'
+import { InStep, useFitKeyboard, useSpaceKey } from '../../components/widgets/fit'
 import { WidgetView } from '../../components/widgets/WidgetView'
 import { useViewportHeight } from '../../hooks/useViewport'
 import type { AudioClip, KeyboardVisual, StaffVisual, Visual } from '../../content/types'
@@ -45,6 +45,8 @@ export function StaffView({ s, className = '', sp = 20 }: { s: StaffVisual; clas
 
 export function AudioButtons({ clips, onPlay }: { clips: AudioClip[]; onPlay?: (steps: (number | number[])[], timing: DemoTiming) => void }) {
   const [playing, setPlaying] = useState<number | null>(null)
+  // The clip Space plays: the last one you played (the first to begin with).
+  const [last, setLast] = useState(0)
   const play = (c: AudioClip, i: number) => {
     const steps = c.notes.map((n) => (Array.isArray(n) ? n.map(noteMidi) : noteMidi(n)))
     const gap = c.gap ?? 0.5
@@ -52,8 +54,10 @@ export function AudioButtons({ clips, onPlay }: { clips: AudioClip[]; onPlay?: (
     const total = playSequence(steps, { gap, dur })
     onPlay?.(steps, { gap, dur })
     setPlaying(i)
+    setLast(i)
     window.setTimeout(() => setPlaying((p) => (p === i ? null : p)), total * 1000)
   }
+  useSpaceKey(clips[last] ? () => play(clips[last], last) : null)
   return (
     <div className="flex flex-wrap gap-3">
       {clips.map((c, i) => (
@@ -85,13 +89,13 @@ export function VisualBlock({ v, lights = true, fit = false, center = false }: {
   const demo = useDemoLights()
   const vh = useViewportHeight()
   return (
-    <FitContext value={fit}>
+    <InStep value={fit}>
       <div className={fit ? `flex flex-1 flex-col gap-5 ${center ? 'justify-center' : ''}` : 'space-y-5'}>
         {v.widget && <WidgetView widget={v.widget} />}
         {v.staff && <StaffView s={v.staff} sp={fit ? pictureSp(vh) : 20} />}
         {v.audio && <AudioButtons clips={v.audio} onPlay={lights && v.keyboard ? demo.show : undefined} />}
         {v.keyboard && <KeyboardView k={v.keyboard} lit={demo.lit} />}
       </div>
-    </FitContext>
+    </InStep>
   )
 }

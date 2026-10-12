@@ -20,7 +20,7 @@ import { MusicText } from '../MusicText'
 import { Piano } from '../piano/Piano'
 import { Staff } from '../staff/Staff'
 import { Button } from '../ui/Button'
-import { useFitKeyboard } from './fit'
+import { useFitKeyboard, useSpaceKey } from './fit'
 
 /** Pick two notes (tap them, or play them on your keyboard) and see the interval between them. */
 
@@ -85,6 +85,9 @@ export function IntervalLab() {
   const marks: Record<number, { kind: 'root' | 'chord'; label: string }> = {}
   if (a !== null) marks[a] = { kind: 'root', label: '1' }
   if (b !== null && info) marks[b] = { kind: 'chord', label: String(info.num) }
+  // In a lesson, Space plays the interval, one note after the other.
+  useSpaceKey(pair ? () => playSequence([midiOf(pair[0]), midiOf(pair[1])], { gap: 0.5 }) : null)
+
   const clearButton = (
     <Button
       size="sm"

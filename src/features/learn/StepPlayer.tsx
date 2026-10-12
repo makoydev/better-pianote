@@ -125,8 +125,10 @@ export function StepPlayer({ steps, title, icon, color, pedal = true, browse = f
     return () => window.removeEventListener('keydown', onKey)
   })
   // Enter, a quick pedal tap or the top C continue, so your hands stay on the keys (no delay: steps are quick).
-  // In a review Continue is always on, so the top C stays a note while a question waits for an answer.
-  useHandsFree(canContinue ? next : null, { pedal, delay: 0, topC: !(browse && needsAnswer(step) && !solved[i]) })
+  // The top C stays a note where notes go somewhere: widgets (the keyboard map shows C7, the interval lab picks
+  // any note), and in a review, where Continue is always on, a question still waiting for its answer.
+  const notesUsed = step.kind === 'widget' || (step.kind === 'explain' && !!step.visual?.widget) || (browse && needsAnswer(step) && !solved[i])
+  useHandsFree(canContinue ? next : null, { pedal, delay: 0, topC: !notesUsed })
 
   const progress = (i + (canContinue ? 1 : 0)) / steps.length
   const onSolved = () => {

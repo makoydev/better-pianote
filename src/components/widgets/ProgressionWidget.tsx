@@ -23,7 +23,7 @@ import { type Marks, Piano } from '../piano/Piano'
 import { Button, IconButton } from '../ui/Button'
 import { Segmented } from '../ui/controls'
 import { useMicChords } from '../../lib/input/mic'
-import { useFitKeyboard } from './fit'
+import { useFitKeyboard, useSpaceKey } from './fit'
 
 /** Plays a chord progression in a key, lighting up each chord; transpose it and play along. */
 
@@ -141,6 +141,9 @@ export function ProgressionWidget({
     clock.current.start(0.15)
     setPlaying(true)
   }
+
+  // In a lesson, Space plays or stops the loop.
+  useSpaceKey(playing ? stop : start)
 
   // Restart cleanly when the key changes mid-play (new voicings).
   useEffect(() => {

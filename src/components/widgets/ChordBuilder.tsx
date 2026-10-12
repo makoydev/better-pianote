@@ -26,7 +26,7 @@ import { Staff } from '../staff/Staff'
 import { Button } from '../ui/Button'
 import { Segmented } from '../ui/controls'
 import { useMicChords } from '../../lib/input/mic'
-import { useFitKeyboard } from './fit'
+import { useFitKeyboard, useSpaceKey } from './fit'
 
 /** Choose a root and a chord quality and see/hear the chord, or hold a chord on your keyboard to name it. */
 
@@ -105,6 +105,9 @@ export function ChordBuilder({ root = 'C', quality = 'maj' }: { root?: string; q
       setInversion(Math.max(0, d.inversion))
     }
   })
+
+  // In a lesson, Space plays the chord.
+  useSpaceKey(() => playNotes(midis, { dur: 1.8, strum: 0.02 }))
 
   const symbol = chordSymbol(chord)
   const invOptions = INVERSION_NAMES.slice(0, toneCount).map((name, i) => ({ value: i, label: i === 0 ? 'Root' : name.replace(' inversion', '') }))

@@ -9,7 +9,7 @@ import { RichText } from '../../../components/ui/RichText'
 import type { QuizStep } from '../../../content/types'
 import { audio } from '../../../lib/audio/engine'
 import { playSequence } from '../../../lib/audio/play'
-import { isPlainKey, isTypingTarget } from '../../../lib/focus'
+import { isButtonTarget, isPlainKey, isTypingTarget } from '../../../lib/focus'
 import { burst } from '../../../lib/fx'
 import { type NoteSource, heldNow, useNoteEvents } from '../../../lib/input/bus'
 import { useMicChords } from '../../../lib/input/mic'
@@ -124,10 +124,15 @@ export function QuizStepView({
     say(`That's ${nameNote(n, naming, { octave: playable.notes.some((o) => o.midi !== null) })}.`)
   })
 
-  // Number keys 1–4 pick the answer shown in that place.
+  // Number keys 1–4 pick the answer shown in that place; Space plays the sound again (a focused button keeps Space).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!isPlainKey(e) || isTypingTarget(e.target)) return
+      if (e.code === 'Space' && step.listen && !isButtonTarget(e.target)) {
+        e.preventDefault()
+        listen()
+        return
+      }
       const n = Number(e.key)
       if (n >= 1 && n <= order.length) choose(order[n - 1])
     }
