@@ -1,4 +1,5 @@
 import {
+  BookmarkPlus,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -6,6 +7,7 @@ import {
   Eraser,
   Info,
   KeyboardMusic,
+  Library,
   Minus,
   Music2,
   Play,
@@ -38,6 +40,7 @@ import {
   type ChordLength,
   FEELS,
   FEEL_IDS,
+  LENGTH_LABEL,
   MAX_CHORDS,
   PALETTE_GROUPS,
   PRESETS,
@@ -57,9 +60,12 @@ import {
   patternHits,
   removeAt,
   replaceAt,
+  clampJamBpm,
   romanLabel,
   sameRomans,
 } from './jam'
+import { MyProgressions } from './MyProgressions'
+import { type SavedProgression, findByRomans, freeName, newSavedId, readSaved, removeFrom, saveTo } from './jamLibrary'
 import { OctavePicker } from './OctavePicker'
 import { useMicChords } from '../../lib/input/mic'
 
@@ -72,7 +78,6 @@ const PRESET_IDS = [...PRESETS.map((p) => p.id), CUSTOM]
 const KEYS = Array.from({ length: 12 }, (_, pc) => pc)
 const NO_CHORDS: string[] = []
 const UNDO_STEPS = 30
-const LENGTH_LABEL: Record<ChordLength, string> = { 4: '2 beats', 8: '1 bar', 16: '2 bars' }
 
 interface Pos {
   /** Chord index, or -1 during the count-in. */
@@ -98,7 +103,7 @@ export function ProgressionJam() {
   const [ownRomans, setOwnRomans] = usePref<string[]>('jam:romans', NO_CHORDS)
   const [tonic, setTonic] = usePref('jam:tonic', tonicPc(RIVER.tonic), KEYS)
   const [savedBpm, setBpm] = usePref('jam:bpm', 76)
-  const bpm = Math.min(160, Math.max(50, savedBpm))
+  const bpm = clampJamBpm(savedBpm)
   const [pattern, setPattern] = usePref<PatternId>('jam:feel', 'ballad', FEEL_IDS)
   const [drums, setDrums] = usePref('jam:drums', false)
   // Sit the band's bass or chords out to play that part yourself.
@@ -117,12 +122,19 @@ export function ProgressionJam() {
   // The card being edited: numerals then replace it, and ◀ ▶ move it.
   const [selected, setSelected] = useState<number | null>(null)
   const [history, setHistory] = useState<Snapshot[]>([])
-  // Set when editing a preset replaced the progression under Yours, to offer Undo.
+  // Set when editing a preset (or loading a saved one) replaced an unsaved progression under Yours, to offer Undo.
   const [replaced, setReplaced] = useState(false)
+  const [savedRaw, setSaved] = usePref<unknown>('jam:saved', [])
+  const saved = useMemo(() => readSaved(savedRaw), [savedRaw])
+  const [library, setLibrary] = useState<'browse' | 'save' | null>(null)
 
   const preset = PRESETS.find((p) => p.id === presetId) ?? null
   const own = isProgression(ownRomans) ? ownRomans : NO_CHORDS
   const romans = preset ? preset.romans : own
+  // Yours goes by its saved name once you've saved it.
+  const ownName = findByRomans(saved, own)?.name
+  // Your progression is safe to replace when it's empty or saved under a name.
+  const ownAtRisk = own.length > 0 && !ownName
   const minor = useMemo(() => isMinorProgression(romans), [romans])
   const tonicName = (pc: number) => pitchName(jamTonic(pc, minor))
   const chords = useMemo(() => jamChords(romans, tonic, minor), [romans, tonic, minor])
@@ -264,12 +276,29 @@ export function ProgressionJam() {
   const edit = (next: string[]) => {
     remember()
     // Editing a preset copies it into Yours, replacing what was there: offer Undo when that loses something.
-    setReplaced(presetId !== CUSTOM && own.length > 0 && !sameRomans(own, romans))
+    setReplaced(presetId !== CUSTOM && ownAtRisk && !sameRomans(own, romans))
     setPresetId(CUSTOM)
     setOwnRomans(next)
     setFocus((f) => Math.min(f, Math.max(0, next.length - 1)))
     if (!next.length) stop()
   }
+  /** Bring back a saved progression with its key, tempo, feel and chord length. */
+  const loadSaved = (p: SavedProgression) => {
+    remember()
+    setReplaced(ownAtRisk && !sameRomans(own, p.romans))
+    setPresetId(CUSTOM)
+    setOwnRomans(p.romans)
+    setTonic(p.tonic)
+    setBpm(p.bpm)
+    setPattern(p.feel)
+    setLength(p.length)
+    setFocus(0)
+    setSelected(null)
+    setLibrary(null)
+    retune({ pattern: p.feel, length: p.length })
+  }
+  const saveCurrent = (name: string) =>
+    setSaved(saveTo(saved, { name, romans: [...romans], tonic, bpm, feel: pattern, length: savedLength }, newSavedId()))
   const tapCard = (i: number) => {
     setFocus(i)
     if (playing) return
@@ -319,20 +348,25 @@ export function ProgressionJam() {
       <TopBar
         back="/explore"
         title="Progression Jam"
-        subtitle={<MusicText text={`${preset ? preset.name : 'Your progression'} · key of ${tonicName(tonic)}${minor ? ' minor' : ''}`} />}
+        subtitle={<MusicText text={`${preset ? preset.name : (ownName ?? 'Your progression')} · key of ${tonicName(tonic)}${minor ? ' minor' : ''}`} />}
       />
       <main className="mx-auto grid max-w-[1500px] gap-5 px-3 pt-5 sm:px-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="flex min-w-0 flex-col gap-5">
           <Card>
             <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-              {own.length > 0 && <PresetChip name="Yours" romans={own} active={presetId === CUSTOM} onClick={chooseYours} />}
+              {own.length > 0 && <PresetChip name={ownName ?? 'Yours'} romans={own} active={presetId === CUSTOM} onClick={chooseYours} />}
               {PRESETS.map((p) => (
                 <PresetChip key={p.id} name={p.name} romans={p.romans} active={p.id === presetId} onClick={() => choosePreset(p.id)} />
               ))}
             </div>
-            <p className="mt-3 min-h-6 text-ink-soft">
-              {preset ? <MusicText text={preset.about} /> : 'Your own progression. Tap a chord to change or move it, or a numeral below to add one.'}
-            </p>
+            <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+              <p className="min-h-6 min-w-0 flex-1 basis-64 text-ink-soft">
+                {preset ? <MusicText text={preset.about} /> : 'Your own progression. Tap a chord to change or move it, or a numeral below to add one.'}
+              </p>
+              <Button size="sm" variant="secondary" icon={Library} onClick={() => setLibrary('browse')}>
+                My progressions{saved.length ? ` (${saved.length})` : ''}
+              </Button>
+            </div>
             <AnimatePresence>
               {replaced && (
                 <motion.div
@@ -343,7 +377,7 @@ export function ProgressionJam() {
                   className="overflow-hidden"
                 >
                   <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-gold/30 bg-gold/10 py-1.5 pl-4 pr-1.5">
-                    <span className="min-w-0 flex-1 font-bold text-ink-soft">That replaced your earlier progression under Yours.</span>
+                    <span className="min-w-0 flex-1 font-bold text-ink-soft">That replaced your unsaved progression under Yours.</span>
                     <Button size="sm" variant="secondary" icon={Undo2} onClick={undo}>
                       Undo
                     </Button>
@@ -476,12 +510,15 @@ export function ProgressionJam() {
           <Card>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-extrabold uppercase tracking-wider text-ink-mute">Build your own</h2>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 <Button variant="ghost" size="sm" icon={Undo2} disabled={!history.length} onClick={undo}>
                   Undo
                 </Button>
                 <Button variant="ghost" size="sm" icon={Eraser} disabled={!romans.length} onClick={() => edit([])}>
                   Clear
+                </Button>
+                <Button variant="ghost" size="sm" icon={BookmarkPlus} disabled={!romans.length} onClick={() => setLibrary('save')}>
+                  Save
                 </Button>
               </div>
             </div>
@@ -655,6 +692,18 @@ export function ProgressionJam() {
           </Card>
         </aside>
       </main>
+
+      <MyProgressions
+        open={library !== null}
+        onClose={() => setLibrary(null)}
+        saved={saved}
+        current={romans.length ? { romans, tonic, bpm, feel: pattern, length: savedLength } : null}
+        suggestedName={ownName ?? (preset ? `${preset.name} in ${tonicName(tonic)}${minor ? ' minor' : ''}` : freeName(saved))}
+        focusName={library === 'save'}
+        onSave={saveCurrent}
+        onLoad={loadSaved}
+        onDelete={(id) => setSaved(removeFrom(saved, id))}
+      />
     </div>
   )
 }

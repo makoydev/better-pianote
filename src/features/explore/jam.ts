@@ -95,6 +95,9 @@ export const PALETTE_GROUPS: { title: string; romans: string[] }[] = [
 /** The longest progression you can build. */
 export const MAX_CHORDS = 16
 
+/** The Jam's tempo range (BPM). */
+export const clampJamBpm = (bpm: number) => Math.round(Math.min(160, Math.max(50, bpm)))
+
 /** Numerals with a real flat sign: "bVII" → "♭VII". */
 export const romanLabel = (rn: string) => rn.replace(/^b/, '♭').replace(/^#/, '♯')
 
@@ -260,6 +263,7 @@ export const accented = (meter: Meter, count: number) => count === 0 || (meter.i
  */
 export type ChordLength = 4 | 8 | 16
 export const CHORD_LENGTHS: ChordLength[] = [4, 8, 16]
+export const LENGTH_LABEL: Record<ChordLength, string> = { 4: '2 beats', 8: '1 bar', 16: '2 bars' }
 export const lengthsFor = (meter: Meter): ChordLength[] => (meter.id === '4/4' ? CHORD_LENGTHS : [8, 16])
 
 /** A chord's length in ticks (eighth notes) in this metre. */
