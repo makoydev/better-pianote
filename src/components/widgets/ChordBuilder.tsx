@@ -1,6 +1,6 @@
 import { AudioLines, Play } from 'lucide-react'
 import { LayoutGroup, AnimatePresence, motion } from 'motion/react'
-import { useMemo, useState, useId } from 'react'
+import { useContext, useMemo, useState, useId } from 'react'
 import { playNotes, playSequence } from '../../lib/audio/play'
 import { letterColor } from '../../lib/colors'
 import { heldNow, useNoteEvents } from '../../lib/input/bus'
@@ -26,7 +26,7 @@ import { Staff } from '../staff/Staff'
 import { Button } from '../ui/Button'
 import { Segmented } from '../ui/controls'
 import { useMicChords } from '../../lib/input/mic'
-import { useFitKeyboard, useSpaceKey } from './fit'
+import { InStep, useFitKeyboard, useShortScreen, useSpaceKey } from './fit'
 
 /** Choose a root and a chord quality and see/hear the chord, or hold a chord on your keyboard to name it. */
 
@@ -58,7 +58,11 @@ export function ChordBuilder({ root = 'C', quality = 'maj' }: { root?: string; q
   })
   const [inversion, setInversion] = useState(0)
   const [heard, setHeard] = useState<string | null>(null)
-  const [kbRef, kb] = useFitKeyboard(170, { below: 24 })
+  // A lesson step on a short screen (a 13" MacBook): the card packs its parts closer, and the gaps, the staff and
+  // the keyboard get a little smaller, so the whole lab fits.
+  const short = useShortScreen()
+  const tight = useContext(InStep) && short
+  const [kbRef, kb] = useFitKeyboard(170, { below: 24, min: tight ? 84 : 100 })
 
   const type = CHORD_TYPE[typeId]
   const chord: Chord = useMemo(() => ({ root: spellRoot(rootPc, type), type }), [rootPc, type])
@@ -112,13 +116,36 @@ export function ChordBuilder({ root = 'C', quality = 'maj' }: { root?: string; q
   const symbol = chordSymbol(chord)
   const invOptions = INVERSION_NAMES.slice(0, toneCount).map((name, i) => ({ value: i, label: i === 0 ? 'Root' : name.replace(' inversion', '') }))
 
+  const holding = (
+    <div className={`flex items-center gap-2 text-ink-soft ${tight ? 'text-sm' : 'text-base'}`}>
+      <span className="size-2 rounded-full bg-teal" />
+      {heard ? (
+        <span>
+          You’re holding <b className="text-teal"><MusicText text={heard} /></b>
+        </span>
+      ) : (
+        <span>{tight ? 'Hold a chord on your keyboard' : 'Hold any chord on your keyboard and it shows up here.'}</span>
+      )}
+    </div>
+  )
+  const hear = (
+    <div className="flex flex-wrap gap-2">
+      <Button size="md" icon={Play} onClick={() => playNotes(midis, { dur: 1.8, strum: 0.02 })}>
+        Play
+      </Button>
+      <Button size="md" variant="secondary" icon={AudioLines} onClick={() => playSequence(midis, { gap: 0.2, dur: 1.4 })}>
+        Arpeggio
+      </Button>
+    </div>
+  )
+
   // Scope animated highlights so two copies of this widget don't share them.
   const layoutGroup = useId()
   return (
     <LayoutGroup id={layoutGroup}>
-      <div className={kb.fit ? 'flex flex-1 flex-col gap-4' : 'space-y-4'}>
+      <div className={kb.fit ? `flex flex-1 flex-col ${tight ? 'gap-2.5' : 'gap-4'}` : 'space-y-4'}>
         <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-start">
-          <div className="space-y-2.5">
+          <div className={tight ? 'space-y-1.5' : 'space-y-2.5'}>
             <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Root">
               {Array.from({ length: 12 }, (_, pc) => {
                 const on = pc === rootPc
@@ -156,24 +183,38 @@ export function ChordBuilder({ root = 'C', quality = 'maj' }: { root?: string; q
               })}
             </div>
           </div>
-          {canInvert ? <Segmented size="sm" value={inv} onChange={setInversion} options={invOptions} /> : <span />}
+          {tight ? (
+            // On a short screen what you're holding goes under the inversions, where there's room, not on a row of its own.
+            <div className="flex flex-col items-end gap-2">
+              {canInvert && <Segmented size="sm" value={inv} onChange={setInversion} options={invOptions} />}
+              {holding}
+            </div>
+          ) : canInvert ? (
+            <Segmented size="sm" value={inv} onChange={setInversion} options={invOptions} />
+          ) : (
+            <span />
+          )}
         </div>
 
         <div className="grid gap-4 md:grid-cols-[1fr_1fr]">
-          <div className="rounded-2xl border border-white/8 bg-night-850 p-4">
-            <AnimatePresence mode="wait">
-              <motion.div key={`${symbol}-${inv}`} initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }}>
-                <div className="font-display text-5xl font-bold leading-none text-gold">
-                  <MusicText text={symbol} />
-                </div>
-                <p className="mt-1.5 text-lg font-bold capitalize text-ink">
-                  <MusicText text={chordLongName(chord)} />
-                  {inv > 0 && <span className="text-ink-mute"> · {INVERSION_NAMES[inv].toLowerCase()}</span>}
-                </p>
-                <p className="text-base text-ink-mute">{type.mood}</p>
-              </motion.div>
-            </AnimatePresence>
-            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <div className={`rounded-2xl border border-white/8 bg-night-850 ${tight ? 'p-3' : 'p-4'}`}>
+            <div className={tight ? 'flex items-start justify-between gap-3' : ''}>
+              <AnimatePresence mode="wait">
+                <motion.div key={`${symbol}-${inv}`} initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }}>
+                  <div className={`font-display font-bold leading-none text-gold ${tight ? 'text-4xl' : 'text-5xl'}`}>
+                    <MusicText text={symbol} />
+                  </div>
+                  <p className={`${tight ? 'mt-1' : 'mt-1.5'} text-lg font-bold capitalize text-ink`}>
+                    <MusicText text={chordLongName(chord)} />
+                    {inv > 0 && <span className="text-ink-mute"> · {INVERSION_NAMES[inv].toLowerCase()}</span>}
+                    {tight && <span className="font-semibold normal-case text-ink-mute"> · {type.mood}</span>}
+                  </p>
+                  {!tight && <p className="text-base text-ink-mute">{type.mood}</p>}
+                </motion.div>
+              </AnimatePresence>
+              {tight && hear}
+            </div>
+            <div className={`${tight ? 'mt-2' : 'mt-3'} flex flex-wrap items-center gap-1.5`}>
               {rootPos.map((t, i) => (
                 <div key={i} className="flex items-center gap-1.5">
                   {i > 0 && <span className="text-sm font-extrabold text-ink-mute">+{gaps[i - 1]}</span>}
@@ -194,32 +235,21 @@ export function ChordBuilder({ root = 'C', quality = 'maj' }: { root?: string; q
                     + <MusicText text={pitchName(t)} /> <span className="text-xs text-ink-mute">({type.degrees[rootPos.length + i]})</span>
                   </span>
                 ))}
+              {tight && <span className="ml-2 text-sm text-ink-mute">Numbers between notes = half steps.</span>}
             </div>
-            <p className="mt-2 text-sm text-ink-mute">Numbers between notes = half steps.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button size="md" icon={Play} onClick={() => playNotes(midis, { dur: 1.8, strum: 0.02 })}>
-                Play
-              </Button>
-              <Button size="md" variant="secondary" icon={AudioLines} onClick={() => playSequence(midis, { gap: 0.2, dur: 1.4 })}>
-                Arpeggio
-              </Button>
-            </div>
+            {!tight && (
+              <>
+                <p className="mt-2 text-sm text-ink-mute">Numbers between notes = half steps.</p>
+                <div className="mt-3">{hear}</div>
+              </>
+            )}
           </div>
           <div className="paper flex items-center rounded-2xl px-3 py-2">
-            <Staff clef={midis[0] < 57 ? 'grand' : 'treble'} items={[{ key: `${symbol}-${inv}`, notes: voiced, dur: 'w', chord: symbol }]} sp={16} minSlot={6} />
+            <Staff clef={midis[0] < 57 ? 'grand' : 'treble'} items={[{ key: `${symbol}-${inv}`, notes: voiced, dur: 'w', chord: symbol }]} sp={tight ? 11 : 16} minSlot={6} />
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-base text-ink-soft">
-          <span className="size-2 rounded-full bg-teal" />
-          {heard ? (
-            <span>
-              You’re holding <b className="text-teal"><MusicText text={heard} /></b>
-            </span>
-          ) : (
-            <span>Hold any chord on your keyboard and it shows up here.</span>
-          )}
-        </div>
+        {!tight && holding}
         <div ref={kbRef} className={kb.className} style={kb.style}>
           <Piano from={48} to={84} marks={marks} fingers={fingers} labels="marked" height={kb.piano} />
         </div>

@@ -1,6 +1,6 @@
 import { ChevronRight, Play, RotateCcw } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { audio } from '../../lib/audio/engine'
 import { playNotes } from '../../lib/audio/play'
 import { useNoteEvents } from '../../lib/input/bus'
@@ -9,7 +9,7 @@ import { MusicText } from '../MusicText'
 import { type Marks, Piano } from '../piano/Piano'
 import { Staff } from '../staff/Staff'
 import { Button } from '../ui/Button'
-import { useFitKeyboard, useShortScreen, useSpaceKey } from './fit'
+import { InStep, useFitKeyboard, useShortScreen, useSpaceKey } from './fit'
 
 /** Builds a scale one step at a time from its whole/half-step recipe. */
 
@@ -26,9 +26,11 @@ export function StepPattern({ tonic, scale }: { tonic: string; scale: string }) 
   const [bad, setBad] = useState<number | null>(null)
   const timers = useRef<number[]>([])
   const done = shown >= notes.length
-  const [kbRef, kb] = useFitKeyboard(170, { below: 24 })
-  // In a lesson on a short screen the staff gives up a little room so the keyboard stays in view.
+  // In a lesson on a short screen (a 13" MacBook) everything packs closer so the keyboard stays in view: the other
+  // start notes sit beside the ladder, and the staff, gaps and keyboard get a little smaller.
   const short = useShortScreen()
+  const tight = useContext(InStep) && short
+  const [kbRef, kb] = useFitKeyboard(170, { below: 24, min: tight ? 88 : 100 })
 
   const clearTimers = () => {
     timers.current.forEach((t) => window.clearTimeout(t))
@@ -82,15 +84,43 @@ export function StepPattern({ tonic, scale }: { tonic: string; scale: string }) 
 
   const starts = scale === 'major' ? MAJOR_STARTS : scale === 'minor' || scale === 'harmonic-minor' ? MINOR_STARTS : ['C4', 'G4', 'D4', 'A3', 'E4', 'F4']
   const label = `${pitchName(tonicNote)} ${type.name.toLowerCase()}`
+  const doneText = notes.length === 8 ? 'Done! Notice every letter appears exactly once.' : `Done! ${notes.length - 1} notes, then home again.`
+
+  const startPicker = (
+    <div className={tight ? 'flex flex-wrap items-center gap-2' : ''}>
+      <div className={`text-sm font-extrabold uppercase tracking-wider text-ink-mute ${tight ? '' : 'mb-2'}`}>{tight ? 'Start on' : 'Same recipe, another start note'}</div>
+      <div className={`flex flex-wrap ${tight ? 'gap-1.5' : 'gap-2'}`}>
+        {starts.map((s) => {
+          const n = safeNote(s)
+          const on = pcOf(n) === pcOf(tonicNote)
+          return (
+            <motion.button
+              key={s}
+              type="button"
+              whileTap={{ scale: 0.93 }}
+              onClick={() => reset(s)}
+              className={`h-11 rounded-xl border text-base font-extrabold ${tight ? 'min-w-11 px-2' : 'min-w-12 px-3'} ${on ? 'border-gold bg-gold text-night-900' : 'border-white/10 bg-night-750 text-ink-soft hover:text-ink'}`}
+            >
+              <MusicText text={pitchName(n)} />
+            </motion.button>
+          )
+        })}
+      </div>
+    </div>
+  )
 
   return (
-    <div className={kb.fit ? 'flex flex-1 flex-col gap-4' : 'space-y-4'}>
+    <div className={kb.fit ? `flex flex-1 flex-col ${tight ? 'gap-3' : 'gap-4'}` : 'space-y-4'}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h3 className="font-display text-3xl font-bold capitalize leading-tight">
+          <h3 className={`font-display font-bold capitalize leading-tight ${tight ? 'text-2xl' : 'text-3xl'}`}>
             <MusicText text={label} />
           </h3>
-          <p className="text-base text-ink-mute">{type.mood}</p>
+          {tight && done ? (
+            <p className="text-base font-extrabold text-good">{doneText}</p>
+          ) : (
+            <p className="text-base text-ink-mute">{type.mood}</p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="md" icon={ChevronRight} onClick={step} disabled={done}>
@@ -105,46 +135,49 @@ export function StepPattern({ tonic, scale }: { tonic: string; scale: string }) 
         </div>
       </div>
 
-      {/* Note → step → note ladder */}
-      <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-white/8 bg-night-850 p-3">
-        {notes.map((n, i) => (
-          <div key={i} className="flex items-center gap-1.5">
-            {i > 0 && (
-              <motion.span
-                className="rounded-lg px-1.5 py-1 text-sm font-extrabold"
-                animate={{
-                  opacity: i < shown ? 1 : i === shown ? 0.9 : 0.3,
-                  scale: i === shown ? [1, 1.12, 1] : 1,
-                  backgroundColor: i < shown ? (pattern[i - 1] === 'H' ? '#ffc857' : 'rgba(155,140,255,0.25)') : 'rgba(255,255,255,0.05)',
-                  color: i < shown && pattern[i - 1] === 'H' ? '#0d0c24' : '#cdc9e6',
-                }}
-              >
-                {pattern[i - 1]}
-              </motion.span>
-            )}
-            <AnimatePresence>
-              {i < shown ? (
+      {/* Note → step → note ladder (with the other start notes beside it on a short screen) */}
+      <div className={tight ? 'flex flex-wrap items-center justify-between gap-3' : ''}>
+        <div className={`flex flex-wrap items-center gap-1.5 rounded-2xl border border-white/8 bg-night-850 ${tight ? 'p-2' : 'p-3'}`}>
+          {notes.map((n, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              {i > 0 && (
                 <motion.span
-                  key="n"
-                  initial={{ scale: 0.4, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: 'spring', stiffness: 520, damping: 22 }}
-                  className="flex h-11 min-w-11 items-center justify-center rounded-xl bg-white/10 px-2 text-lg font-extrabold text-ink"
+                  className="rounded-lg px-1.5 py-1 text-sm font-extrabold"
+                  animate={{
+                    opacity: i < shown ? 1 : i === shown ? 0.9 : 0.3,
+                    scale: i === shown ? [1, 1.12, 1] : 1,
+                    backgroundColor: i < shown ? (pattern[i - 1] === 'H' ? '#ffc857' : 'rgba(155,140,255,0.25)') : 'rgba(255,255,255,0.05)',
+                    color: i < shown && pattern[i - 1] === 'H' ? '#0d0c24' : '#cdc9e6',
+                  }}
                 >
-                  <MusicText text={pitchName(n)} />
+                  {pattern[i - 1]}
                 </motion.span>
-              ) : (
-                <span className="flex h-11 min-w-11 items-center justify-center rounded-xl border-2 border-dashed border-white/12 text-lg font-extrabold text-ink-mute">?</span>
               )}
-            </AnimatePresence>
-          </div>
-        ))}
+              <AnimatePresence>
+                {i < shown ? (
+                  <motion.span
+                    key="n"
+                    initial={{ scale: 0.4, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 520, damping: 22 }}
+                    className="flex h-11 min-w-11 items-center justify-center rounded-xl bg-white/10 px-2 text-lg font-extrabold text-ink"
+                  >
+                    <MusicText text={pitchName(n)} />
+                  </motion.span>
+                ) : (
+                  <span className="flex h-11 min-w-11 items-center justify-center rounded-xl border-2 border-dashed border-white/12 text-lg font-extrabold text-ink-mute">?</span>
+                )}
+              </AnimatePresence>
+            </div>
+          ))}
+        </div>
+        {tight && startPicker}
       </div>
 
       <AnimatePresence>
-        {done && (
+        {done && !tight && (
           <motion.p initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-center text-lg font-extrabold text-good">
-            {notes.length === 8 ? 'Done! Notice every letter appears exactly once.' : `Done! ${notes.length - 1} notes, then home again.`}
+            {doneText}
           </motion.p>
         )}
       </AnimatePresence>
@@ -158,7 +191,7 @@ export function StepPattern({ tonic, scale }: { tonic: string; scale: string }) 
               : // Not reached yet: a faint natural note, so the sharp or flat appears only when the recipe needs it.
                 { key: `${start}-${i}-g`, notes: [{ ...n, acc: 0 }], dur: 'q' as const, state: 'ghost' as const },
           )}
-          sp={kb.fit && short ? 12 : 15}
+          sp={tight ? 11 : 15}
           minSlot={3.6}
         />
       </div>
@@ -167,26 +200,7 @@ export function StepPattern({ tonic, scale }: { tonic: string; scale: string }) 
         <Piano from={lo} to={hi + 1} marks={marks} labels="marked" height={kb.piano} />
       </div>
 
-      <div>
-        <div className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Same recipe, another start note</div>
-        <div className="flex flex-wrap gap-2">
-          {starts.map((s) => {
-            const n = safeNote(s)
-            const on = pcOf(n) === pcOf(tonicNote)
-            return (
-              <motion.button
-                key={s}
-                type="button"
-                whileTap={{ scale: 0.93 }}
-                onClick={() => reset(s)}
-                className={`h-11 min-w-12 rounded-xl border px-3 text-base font-extrabold ${on ? 'border-gold bg-gold text-night-900' : 'border-white/10 bg-night-750 text-ink-soft hover:text-ink'}`}
-              >
-                <MusicText text={pitchName(n)} />
-              </motion.button>
-            )
-          })}
-        </div>
-      </div>
+      {!tight && startPicker}
     </div>
   )
 }

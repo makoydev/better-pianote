@@ -1,6 +1,6 @@
 import { Play } from 'lucide-react'
 import { motion, useSpring, useTransform } from 'motion/react'
-import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { type KeyboardEvent, useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { playChord, playSequence } from '../../lib/audio/play'
 import {
   CIRCLE,
@@ -21,6 +21,7 @@ import {
 import { MusicText, SvgMusicText } from '../MusicText'
 import { Staff, type StaffItem } from '../staff/Staff'
 import { Button } from '../ui/Button'
+import { InStep, useShortScreen } from './fit'
 
 /**
  * The circle of fifths. Majors on the outside, their relative minors inside. Tap a key and the wheel
@@ -74,6 +75,8 @@ export function CircleOfFifthsWheel({ index: indexProp, mode: modeProp, onSelect
   const mode = modeProp ?? own.mode
   const showDetails = details ?? indexProp === undefined
   const uid = useId().replace(/:/g, '')
+  const inStep = useContext(InStep)
+  const short = useShortScreen()
 
   // Cumulative rotation so the wheel always turns the short way round.
   const rotTarget = useRef(-index * 30)
@@ -109,8 +112,13 @@ export function CircleOfFifthsWheel({ index: indexProp, mode: modeProp, onSelect
   const family = (i: number) => ringDistance(i, index)
 
   return (
-    <div className={className}>
-      <div className={`relative mx-auto aspect-square w-full ${indexProp === undefined ? 'max-w-[28rem]' : 'max-w-[34rem]'}`}>
+    // In a lesson step on a wide screen the key's details sit beside the wheel, and the wheel takes the height
+    // that's left, so all of it is on screen.
+    <div className={`${inStep && showDetails ? 'lg:grid lg:grid-cols-2 lg:items-center lg:gap-8' : ''} ${className}`}>
+      <div
+        className={`relative mx-auto aspect-square w-full ${indexProp === undefined ? 'max-w-[28rem]' : 'max-w-[34rem]'}`}
+        style={inStep ? { maxWidth: 'min(28rem, max(16rem, calc(100dvh - 20rem)))' } : undefined}
+      >
         <svg viewBox="-112 -112 224 224" className="size-full overflow-visible" role="group" aria-label="Circle of fifths">
           <defs>
             <radialGradient id={`${uid}-core`}>
@@ -240,13 +248,13 @@ export function CircleOfFifthsWheel({ index: indexProp, mode: modeProp, onSelect
           </text>
         </svg>
       </div>
-      {showDetails && <KeyDetails index={index} mode={mode} className="mt-5" />}
+      {showDetails && <KeyDetails index={index} mode={mode} compact={inStep && short} className={inStep ? 'mt-5 lg:mt-0' : 'mt-5'} />}
     </div>
   )
 }
 
 /** Key signature, scale and diatonic chords for a key on the circle. */
-export function KeyDetails({ index, mode, className = '' }: { index: number; mode: Mode; className?: string }) {
+export function KeyDetails({ index, mode, compact = false, className = '' }: { index: number; mode: Mode; compact?: boolean; className?: string }) {
   const key = keyAt(index, mode)
   const fifths = keyFifths(key)
   const sig = keySignature(fifths)
@@ -270,7 +278,7 @@ export function KeyDetails({ index, mode, className = '' }: { index: number; mod
   const enharmonic = CIRCLE[index].fifths === 6 ? (mode === 'major' ? 'Also written as G♭ major (6 flats).' : 'Also written as E♭ minor (6 flats).') : null
 
   return (
-    <div className={`space-y-4 ${className}`}>
+    <div className={`${compact ? 'space-y-3' : 'space-y-4'} ${className}`}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 className="font-display text-3xl font-bold">
@@ -298,7 +306,7 @@ export function KeyDetails({ index, mode, className = '' }: { index: number; mod
         </Button>
       </div>
       <div className="paper rounded-3xl px-4 py-2">
-        <Staff clef="treble" keySig={fifths} items={items} sp={16} minSlot={3.6} />
+        <Staff clef="treble" keySig={fifths} items={items} sp={compact ? 12 : 16} minSlot={3.6} />
       </div>
       <div>
         <div className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Chords in this key · tap to hear</div>

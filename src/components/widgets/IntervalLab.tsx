@@ -1,6 +1,6 @@
 import { Play, RotateCcw } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useState } from 'react'
+import { useContext, useState } from 'react'
 import { playNotes, playSequence } from '../../lib/audio/play'
 import { letterColor } from '../../lib/colors'
 import { heldNow, useNoteEvents } from '../../lib/input/bus'
@@ -20,7 +20,7 @@ import { MusicText } from '../MusicText'
 import { Piano } from '../piano/Piano'
 import { Staff } from '../staff/Staff'
 import { Button } from '../ui/Button'
-import { useFitKeyboard, useSpaceKey } from './fit'
+import { InStep, useFitKeyboard, useShortScreen, useSpaceKey } from './fit'
 
 /** Pick two notes (tap them, or play them on your keyboard) and see the interval between them. */
 
@@ -57,7 +57,11 @@ function spellPair(a: number, b: number): [Note, Note] {
 export function IntervalLab() {
   const [a, setA] = useState<number | null>(60)
   const [b, setB] = useState<number | null>(64)
-  const [kbRef, kb] = useFitKeyboard(170, { below: 24 })
+  // A lesson step on a short screen (a 13" MacBook): the card packs its parts side by side, and the gaps and the
+  // keyboard get a little smaller, so the whole lab fits.
+  const short = useShortScreen()
+  const tight = useContext(InStep) && short
+  const [kbRef, kb] = useFitKeyboard(170, { below: 24, min: tight ? 88 : 100 })
 
   const pick = (m: number) => {
     if (a === null || (a !== null && b !== null)) {
@@ -102,12 +106,26 @@ export function IntervalLab() {
     </Button>
   )
 
+  const hear = pair && (
+    <div className="flex flex-wrap gap-2">
+      <Button size="md" icon={Play} onClick={() => playSequence([midiOf(pair[0]), midiOf(pair[1])], { gap: 0.5 })}>
+        One after the other
+      </Button>
+      <Button size="md" variant="secondary" onClick={() => playNotes([midiOf(pair[0]), midiOf(pair[1])], { dur: 1.6 })}>
+        Together
+      </Button>
+    </div>
+  )
+
   return (
-    <div className={kb.fit ? 'flex flex-1 flex-col gap-4' : 'space-y-4'}>
-      <p className="text-base text-ink-soft">
-        Tap two keys, or play two notes on your keyboard. Quick picks start from middle C:
-      </p>
+    <div className={kb.fit ? `flex flex-1 flex-col ${tight ? 'gap-3' : 'gap-4'}` : 'space-y-4'}>
+      {!tight && (
+        <p className="text-base text-ink-soft">
+          Tap two keys, or play two notes on your keyboard. Quick picks start from middle C:
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-1.5">
+        {tight && <span className="mr-1 text-sm font-extrabold uppercase tracking-wider text-ink-mute">From middle C</span>}
         {QUICK.map((q) => (
           <motion.button
             key={q.label}
@@ -131,58 +149,58 @@ export function IntervalLab() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
-        <div className="rounded-2xl border border-white/8 bg-night-850 p-4">
+        <div className={`rounded-2xl border border-white/8 bg-night-850 ${tight ? 'p-3' : 'p-4'}`}>
           <AnimatePresence mode="wait">
             {pair && info ? (
               <motion.div key={`${midiOf(pair[0])}-${semis}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
-                <div className="flex flex-wrap items-baseline gap-x-3">
-                  <h3 className="font-display text-4xl font-bold leading-tight text-gold">{info.name}</h3>
-                  {semis === 6 && <span className="text-lg font-bold text-ink-mute">(the tritone)</span>}
-                </div>
-                <p className="mt-1 text-lg font-bold text-ink">
-                  <MusicText text={noteName(pair[0])} /> → <MusicText text={noteName(pair[1])} />
-                </p>
-                <div className="mt-3">
-                  <div className="mb-1 text-sm font-extrabold uppercase tracking-wider text-ink-mute">{semis} half step{semis === 1 ? '' : 's'}</div>
-                  <div className="flex flex-wrap gap-1">
-                    {Array.from({ length: semis }, (_, i) => (
-                      <motion.span
-                        key={i}
-                        className="h-3 w-5 rounded-full bg-violet"
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: i * 0.035 }}
-                      />
-                    ))}
+                <div className={tight ? 'flex flex-wrap items-start justify-between gap-x-4 gap-y-2' : ''}>
+                  <div>
+                    <div className="flex flex-wrap items-baseline gap-x-3">
+                      <h3 className={`font-display font-bold leading-tight text-gold ${tight ? 'text-3xl' : 'text-4xl'}`}>{info.name}</h3>
+                      {semis === 6 && <span className="text-lg font-bold text-ink-mute">(the tritone)</span>}
+                    </div>
+                    <p className="mt-1 text-lg font-bold text-ink">
+                      <MusicText text={noteName(pair[0])} /> → <MusicText text={noteName(pair[1])} />
+                    </p>
                   </div>
+                  {tight && hear}
                 </div>
-                <div className="mt-3">
-                  <div className="mb-1 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Count the letters → {ordinal(info.num)}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {letters.map((l, i) => (
-                      <span
-                        key={i}
-                        className="flex size-9 items-center justify-center rounded-lg text-base font-extrabold"
-                        style={{ background: `${letterColor(l)}22`, color: letterColor(l), border: `1px solid ${letterColor(l)}55` }}
-                      >
-                        {LETTERS[l]}
-                      </span>
-                    ))}
+                <div className={tight ? 'mt-2 flex flex-wrap gap-x-6 gap-y-2' : ''}>
+                  <div className={tight ? 'flex items-center gap-2' : 'mt-3'}>
+                    <div className={`text-sm font-extrabold uppercase tracking-wider text-ink-mute ${tight ? '' : 'mb-1'}`}>{semis} half step{semis === 1 ? '' : 's'}</div>
+                    <div className="flex flex-wrap gap-1">
+                      {Array.from({ length: semis }, (_, i) => (
+                        <motion.span
+                          key={i}
+                          className="h-3 w-5 rounded-full bg-violet"
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ delay: i * 0.035 }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className={tight ? 'flex items-center gap-2' : 'mt-3'}>
+                    <div className={`text-sm font-extrabold uppercase tracking-wider text-ink-mute ${tight ? '' : 'mb-1'}`}>Count the letters → {ordinal(info.num)}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {letters.map((l, i) => (
+                        <span
+                          key={i}
+                          className="flex size-9 items-center justify-center rounded-lg text-base font-extrabold"
+                          style={{ background: `${letterColor(l)}22`, color: letterColor(l), border: `1px solid ${letterColor(l)}55` }}
+                        >
+                          {LETTERS[l]}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
                 {song && (
-                  <p className="mt-3 text-base text-ink-soft">
+                  <p className={`${tight ? 'mt-2' : 'mt-3'} text-base text-ink-soft`}>
                     <span className="font-extrabold text-teal">Sounds like:</span> {song}
                   </p>
                 )}
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Button size="md" icon={Play} onClick={() => playSequence([midiOf(pair[0]), midiOf(pair[1])], { gap: 0.5 })}>
-                    One after the other
-                  </Button>
-                  <Button size="md" variant="secondary" onClick={() => playNotes([midiOf(pair[0]), midiOf(pair[1])], { dur: 1.6 })}>
-                    Together
-                  </Button>
-                </div>
+                {!tight && <div className="mt-4">{hear}</div>}
               </motion.div>
             ) : (
               <motion.p key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-6 text-center text-lg font-bold text-ink-mute">

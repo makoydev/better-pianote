@@ -1,9 +1,10 @@
 import { Play } from 'lucide-react'
 import { LayoutGroup, motion } from 'motion/react'
-import { useEffect, useRef, useState, useId } from 'react'
+import { useContext, useEffect, useRef, useState, useId } from 'react'
 import { audio } from '../../lib/audio/engine'
 import { Staff, type Duration, type StaffItem } from '../staff/Staff'
 import { Segmented } from '../ui/controls'
+import { InStep, useShortScreen } from './fit'
 
 /** Whole → half → quarter → eighth → sixteenth: each row is one bar of 4/4, tap to hear it against the beat. */
 
@@ -31,6 +32,10 @@ export function NoteValues() {
   const [active, setActive] = useState<{ row: number; idx: number } | null>(null)
   const [beat, setBeat] = useState<number | null>(null)
   const timers = useRef<number[]>([])
+  // A lesson step on a short screen (a 13" MacBook): slimmer rows, so more of the five fit at once.
+  const inStep = useContext(InStep)
+  const short = useShortScreen()
+  const tight = inStep && short
 
   const clear = () => {
     timers.current.forEach((t) => window.clearTimeout(t))
@@ -83,7 +88,7 @@ export function NoteValues() {
             ]}
           />
         </div>
-        <div className="space-y-2.5">
+        <div className={tight ? 'space-y-1.5' : 'space-y-2.5'}>
           {ROWS.map((row, r) => {
             const items: StaffItem[] = Array.from({ length: row.count }, (_, k) => ({
               key: `${mode}-${k}`,
@@ -106,7 +111,7 @@ export function NoteValues() {
                   }
                 }}
                 whileTap={{ scale: 0.985 }}
-                className={`grid w-full grid-cols-[1fr_auto] items-center gap-x-3 gap-y-2 rounded-2xl border p-3 text-left transition-colors sm:grid-cols-[8.5rem_1fr_auto] ${
+                className={`grid w-full grid-cols-[1fr_auto] items-center gap-x-3 gap-y-2 rounded-2xl border text-left transition-colors sm:grid-cols-[8.5rem_1fr_auto] ${tight ? 'p-2' : 'p-3'} ${
                   playing ? 'border-white/25 bg-white/8' : 'border-white/8 bg-night-850 hover:border-white/15'
                 }`}
               >
@@ -126,15 +131,15 @@ export function NoteValues() {
                       time={[4, 4]}
                       showClef={false}
                       spacing="proportional"
-                      sp={15}
+                      sp={tight ? 10 : 15}
                       minSp={6}
-                      reserveAbove={1.5}
-                      reserveBelow={1}
+                      reserveAbove={tight ? 1 : 1.5}
+                      reserveBelow={tight ? 0.5 : 1}
                       colorNotes={false}
                       animate={false}
                     />
                   </span>
-                  <BeatRuler row={row} activeIdx={playing ? active!.idx : null} beat={playing ? beat : null} rests={mode === 'rests'} />
+                  <BeatRuler row={row} activeIdx={playing ? active!.idx : null} beat={playing ? beat : null} rests={mode === 'rests'} tight={tight} />
                 </span>
                 <span className="col-start-2 row-start-1 flex size-12 items-center justify-center rounded-full bg-gold text-night-900 shadow-[0_4px_0_#b9761f] sm:col-start-3">
                   <Play size={22} strokeWidth={2.6} className="ml-0.5 fill-night-900" />
@@ -149,9 +154,9 @@ export function NoteValues() {
 }
 
 /** Four beat boxes with a coloured bar for each note, so you can see how long it lasts. */
-function BeatRuler({ row, activeIdx, beat, rests }: { row: Row; activeIdx: number | null; beat: number | null; rests: boolean }) {
+function BeatRuler({ row, activeIdx, beat, rests, tight }: { row: Row; activeIdx: number | null; beat: number | null; rests: boolean; tight: boolean }) {
   return (
-    <span className="relative mt-2 block h-9">
+    <span className={`relative block ${tight ? 'mt-1 h-7' : 'mt-2 h-9'}`}>
       <span className="absolute inset-0 grid grid-cols-4 gap-1">
         {[0, 1, 2, 3].map((b) => (
           <span
