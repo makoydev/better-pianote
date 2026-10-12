@@ -12,7 +12,7 @@ import { readScoreText } from './zip'
  * Bump this when a change to the importer would read files differently: songs saved on the device are re-read
  * from their original file (keeping the title, composer and level you chose).
  */
-export const IMPORTER_VERSION = 1
+export const IMPORTER_VERSION = 2
 
 export { ImportError, describeProblems } from './errors'
 export type { ImportErrorKind, ProblemGroup } from './errors'

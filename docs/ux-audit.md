@@ -173,32 +173,39 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 
 ## Songs
 
-- [ ] **45. Section practice:** tap or drag bars on the score to loop, "start from this bar", bar numbers on the score,
+- [x] **45. Section practice:** tap or drag bars on the score to loop, "start from this bar", bar numbers on the score,
   bigger loop buttons (30 px today). `M`
+  *Done:* tap or drag bars on the music to loop them, Loop around here, Start from bar N (results say so), bar numbers on the bar lines, 44 px steppers that repeat while held.
 - [x] **46. Keep your bar** when switching Practice ↔ Listen or hands (today both reset to bar 1); "Hear this bar" and
   Skip in Practice. *Where:* `SongPlayer.tsx`. `S`
   *Done:* Listen starts at the current Practice step, Practice resumes where Listen paused, and changing hands keeps the bar; Practice has Hear this bar (Space) and Skip (c05705b, c8dad37, 943b29e). Checked: Skip to bar 2 → Listen offers "plays from bar 2".
-- [ ] **47. Left-hand-only practice**, and an option for the app to play the other hand. `M`
-- [ ] **48. Remember hands, loop, tempo and last bar per song** ("Continue from bar 37"); loop practice counts toward
+- [x] **47. Left-hand-only practice**, and an option for the app to play the other hand. `M`
+  *Done:* Right / Left / Both hands (left hand has its own best), Accompany me plays the other hand, and Listen can play both, either hand or the other one.
+- [x] **48. Remember hands, loop, tempo and last bar per song** ("Continue from bar 37"); loop practice counts toward
   the streak. `S–M`
   *Partly done:* Home shows "Keep practising: <song> · from bar N" for the song you practised in the last two weeks (reads `songs:last`). The player side comes with the song player batch.
+  *Done:* each song remembers hands, loop, backing and your bar, and offers "Continue from bar 37" (Enter, pedal tap or top C).
 - [x] **49. Better tempo control:** −/+ and % presets instead of the ~80 px slider, count-in, metronome, speed up each
   loop, tempo remembered per song. *Where:* `SongPlayer.tsx`. `S`
   *Done:* −/+ buttons in 5% steps, presets 50/60/75/90/100% ("♩ = 72 · 75%"), Count-in and Metronome toggles, Speed up each loop, tempo saved per song (bb96fec). Checked: 75% preset and the count-in.
 - [ ] **50. Play along at tempo**, with timing judged. `L`
-- [ ] **51. Use the screen:** iPad portrait shows ~1.5 bars with a big empty gap above the keyboard (reproduced);
+- [x] **51. Use the screen:** iPad portrait shows ~1.5 bars with a big empty gap above the keyboard (reproduced);
   multi-line score, score size option, narrower keys for wide pieces. `M`
-- [ ] **52. Mic in songs:** hear multi-note steps as chords; in one-hand mode ignore the other hand; exact octave over
+  *Done:* the player fills the screen: up to four lines of music when there's room, S/M/L size, keys sized to fit.
+- [x] **52. Mic in songs:** hear multi-note steps as chords; in one-hand mode ignore the other hand; exact octave over
   USB. `M`
-- [ ] **53. Results that point at the problem:** mistakes per bar, "Practise these bars", run history. `M`
+  *Done:* through the mic, chord steps use chord hearing and mic slips don't count; your other hand is ignored in one-hand modes; USB and on-screen keys need the written octave.
+- [x] **53. Results that point at the problem:** mistakes per bar, "Practise these bars", run history. `M`
+  *Done:* results show wrong notes by bar with "Practise bars 12–15", a trend of your last runs, and loop passes toward "3 clean in a row".
 - [x] **54. Imported songs:** edit title, level and part; replace the file and keep progress (re-import duplicates
   today); persistent storage. `S–M`
   *Done:* a ⋯ menu on imported songs: Edit (title, composer, level, and the part re-read from the stored file), Replace file (same song, progress kept), Download original file, Remove; re-importing the same file offers "Replace (keep progress)" or "Add as new"; persistent storage is requested after the first import (de6dbbe, 26eadf9, 6d0982a).
 - [x] **55. Song list for a real library:** search, sort by recently practised, keep filter and scroll. `S–M`
   *Done:* search (title, composer, tags), sort (Recently practised, Title, Difficulty, Recently added) and a compact List view, all remembered; cards show "Practised 2 days ago · 1 run" and per-hands bests; a Continue card for the last song (148ffd6, b53a015, 9e93fa4). Checked: search "bach" shows the Prelude only.
-- [ ] **56. Score details:** original bar numbers for pieces with repeats, next notes shown faintly on the keys, import
+- [x] **56. Score details:** original bar numbers for pieces with repeats, next notes shown faintly on the keys, import
   errors that name the bar, drop files on any page. `S–M`
   *Partly done:* imports that fail list the first problems by bar with a fix, "Which files work?" only shows for files that aren't MusicXML, several files import one after another, the picker filters score files on desktop (0186d44, 454b2e2), and score files dropped on any page go to Songs (App). The bar numbers and next notes are in the song player batch.
+  *Done:* printed bar numbers ("Bar 14 (2nd time)") and the next notes shown faintly; IMPORTER_VERSION bumped to 2 so older imports get them.
 - [x] **57. Two-hand versions of the Advanced built-ins** (Minuet, Für Elise and the Prelude are right hand only). `M`
   *Done:* Minuet in G gets its left hand, Für Elise its left-hand broken chords, and the Prelude in C both hands as Bach wrote them (half-note bass plus the held second voice), transcribed bar by bar from Mutopia (Bach-Gesellschaft, Breitkopf & Härtel 1888) and checked against the Humdrum Bach-Gesellschaft encoding; every built-in song now passes the importer's song check (345b742). Checked: the Prelude's grand staff.
 
