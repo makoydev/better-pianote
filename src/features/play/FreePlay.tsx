@@ -272,7 +272,9 @@ export function FreePlay() {
       k,
     )
   }
+  // Removing or restoring chords moves the chips, so stop a playback that's lighting them up.
   const removeChord = (id: number) => {
+    stopPlayback()
     setUndo(chart)
     changeChart(chart.filter((e) => e.id !== id))
     setSelected(null)
@@ -499,6 +501,7 @@ export function FreePlay() {
           onUndo={
             undo
               ? () => {
+                  stopPlayback()
                   changeChart(undo)
                   setUndo(null)
                 }
