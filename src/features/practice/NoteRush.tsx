@@ -23,6 +23,7 @@ import { useSettings } from '../../state/settings'
 import {
   LEVELS,
   RUSH_KEYS,
+  type RushChoice,
   type RushClef,
   type RushKey,
   type RushLevel,
@@ -34,13 +35,16 @@ import {
   multiplier,
   nameMatches,
   prettyName,
+  rushChoices,
   rushGroup,
   rushItemId,
   rushStars,
 } from './noteRush/logic'
 import { tapeLayout } from './noteRush/tape'
-import { GameMain, ResultsCard, SetupCard } from './shared/GameParts'
+import { DrillButton, GameMain, ResultsCard, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame } from './shared/finish'
+import { useItemStats, usePracticeStats, weigher } from './shared/stats'
+import { type ItemAnswer, drillWeight, weakest } from './shared/weak'
 
 type Phase = 'setup' | 'countdown' | 'play' | 'results'
 type Mode = 'play' | 'name'
@@ -64,6 +68,8 @@ interface Result {
   stars: number
   /** Null when the round isn't kept (nothing right). */
   finish: FinishResult | null
+  /** A drill of notes missed before. */
+  drill: boolean
 }
 
 const ROUND_MS = 60_000
@@ -80,13 +86,20 @@ export function NoteRush() {
   const config: Config = { clef, level, mode, key }
   const [result, setResult] = useState<Result | null>(null)
   const [runId, setRunId] = useState(0)
+  // The notes a drill is made of ("treble:F#4"), or null for a normal round.
+  const [drill, setDrill] = useState<string[] | null>(null)
+  const stats = useItemStats('note-rush')
 
-  const start = () => {
+  const start = (drillIds: string[] | null = null) => {
+    setDrill(drillIds)
     setRunId((r) => r + 1)
     setPhase('countdown')
   }
 
-  const where = [LEVELS[level - 1].title, clef === 'grand' ? 'both clefs' : `${clef} clef`, key ? keyName(majorKey(key)) : ''].filter(Boolean).join(' · ')
+  const where = [drill ? 'Drill' : '', LEVELS[level - 1].title, clef === 'grand' ? 'both clefs' : `${clef} clef`, key ? keyName(majorKey(key)) : '']
+    .filter(Boolean)
+    .join(' · ')
+  const weak = phase === 'setup' ? weakest(stats, rushChoices(clef, level, key).map(rushItemId)).map((id) => missLabel(id, clef)) : []
 
   return (
     <div className="flex h-dvh flex-col">
@@ -104,7 +117,8 @@ export function NoteRush() {
               levels={LEVEL_INFO}
               level={String(level)}
               onLevel={(id) => setLevel(Number(id) as RushLevel)}
-              onStart={start}
+              onStart={() => start()}
+              weakest={weak}
             >
               <RushOptions config={config} setClef={setClef} setMode={setMode} setKey={setKey} />
             </SetupCard>
@@ -115,6 +129,7 @@ export function NoteRush() {
           <Round
             key={runId}
             config={config}
+            drill={drill}
             onFinish={(r) => {
               setResult(r)
               setPhase('results')
@@ -123,7 +138,7 @@ export function NoteRush() {
         )}
         {phase === 'results' && result && (
           <GameMain>
-            <Results result={result} clef={clef} onAgain={start} onSetup={() => setPhase('setup')} />
+            <Results result={result} clef={clef} onAgain={() => start()} onDrill={start} onSetup={() => setPhase('setup')} />
           </GameMain>
         )}
       </div>
@@ -240,10 +255,16 @@ function Countdown({ onDone }: { onDone: () => void }) {
   )
 }
 
-function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => void }) {
+function Round({ config, drill, onFinish }: { config: Config; drill: string[] | null; onFinish: (r: Result) => void }) {
   const strict = useSettings((s) => s.strictOctave)
   const uiSounds = useSettings((s) => s.uiSounds)
-  const round = useMemo(() => makeRound(config.clef, config.level, 260, Math.random, { key: config.key }), [config.clef, config.level, config.key])
+  const round = useMemo(() => {
+    const choices = rushChoices(config.clef, config.level, config.key)
+    // A drill gives the notes you missed about 60% of the round; otherwise weak and slow notes come up more often.
+    const weak = weigher('note-rush', choices.map(rushItemId))
+    const weight = drill ? drillWeight(choices, (c) => c.chance, (c) => drill.includes(rushItemId(c))) : (c: RushChoice) => weak(rushItemId(c))
+    return makeRound(config.clef, config.level, 260, Math.random, { key: config.key, weight })
+  }, [config.clef, config.level, config.key, drill])
   const [i, setI] = useState(0)
   const [score, setScore] = useState(0)
   const [combo, setCombo] = useState(0)
@@ -261,6 +282,9 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
   const [paused, setPaused] = useState(false)
   const pausedAt = useRef<number | null>(null)
   const missed = useRef<Record<string, number>>({})
+  // Each note's outcome, for your weak spots, and whether the note on screen was missed already.
+  const answers = useRef<ItemAnswer[]>([])
+  const slipped = useRef(false)
   const times = useRef<number[]>([])
   const shownAt = useRef(0)
   const endAt = useRef(Infinity)
@@ -279,11 +303,17 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
     if (finished.current) return
     finished.current = true
     const stars = rushStars(correct, wrong)
-    // A round with nothing right isn't saved: no best or last score, no XP (so no streak either). Otherwise it
-    // records "note-rush" and "note-rush:<clef>[:<key>]:<level>", with XP on the same scale as the other games.
-    const saved = correct > 0 ? finishGame('note-rush', `${rushGroup(config.clef, config.key)}:${config.level}`, score, stars) : null
+    // A round with nothing right isn't saved: no best or last score, no XP (so no streak either), no weak spots.
+    // Otherwise it records "note-rush" and "note-rush:<clef>[:<key>]:<level>" (a drill only the first), with XP on
+    // the same scale as the other games.
+    const saved = correct > 0 ? finishGame('note-rush', drill ? null : `${rushGroup(config.clef, config.key)}:${config.level}`, score, stars) : null
+    if (saved) {
+      // The note on screen when time ran out counts too if you'd already missed it.
+      if (slipped.current && current) answers.current.push({ id: rushItemId(current), missed: true })
+      usePracticeStats.getState().recordAnswers('note-rush', answers.current)
+    }
     const avgMs = times.current.length ? times.current.reduce((a, b) => a + b, 0) / times.current.length : 0
-    onFinish({ score, correct, wrong, bestCombo, avgMs, missed: missed.current, stars, finish: saved })
+    onFinish({ score, correct, wrong, bestCombo, avgMs, missed: missed.current, stars, finish: saved, drill: !!drill })
   }
 
   // The clock. While paused it stands still, and resuming moves the end time on by the pause.
@@ -349,7 +379,10 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
       setBestCombo((b) => Math.max(b, nextCombo))
       setCorrect((c) => c + 1)
       setPop({ id: performance.now(), text: `+${gained}` })
-      times.current.push(performance.now() - shownAt.current)
+      const took = performance.now() - shownAt.current
+      times.current.push(took)
+      answers.current.push({ id: rushItemId(current), missed: slipped.current, ms: slipped.current ? undefined : took })
+      slipped.current = false
       shownAt.current = performance.now()
       setMisses(0)
       setI((x) => x + 1)
@@ -363,6 +396,7 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
       setWrongFlash(true)
       window.setTimeout(() => setWrongFlash(false), 380)
       miss(current)
+      slipped.current = true
       if (midi !== undefined) flashKey(midi, 'bad')
       if (uiSounds) audio.ui('wrong')
     }
@@ -376,6 +410,8 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
     setWrong((w) => w + 1)
     setMisses(0)
     miss(current)
+    answers.current.push({ id: rushItemId(current), missed: true })
+    slipped.current = false
     setSkipped((s) => [...s, i])
     shownAt.current = performance.now()
     setI((x) => x + 1)
@@ -653,14 +689,26 @@ function missLabel(id: string, clef: RushClef): string {
   return clef === 'grand' ? `${prettyName(name)} (${staff})` : prettyName(name)
 }
 
-function Results({ result, clef, onAgain, onSetup }: { result: Result; clef: RushClef; onAgain: () => void; onSetup: () => void }) {
+function Results({
+  result,
+  clef,
+  onAgain,
+  onDrill,
+  onSetup,
+}: {
+  result: Result
+  clef: RushClef
+  onAgain: () => void
+  onDrill: (ids: string[]) => void
+  onSetup: () => void
+}) {
   const total = result.correct + result.wrong
   const accuracy = total ? Math.round((result.correct / total) * 100) : 0
   const missed = Object.entries(result.missed).sort((a, b) => b[1] - a[1]).slice(0, 6)
 
   return (
     <ResultsCard
-      title={result.stars === 3 ? 'Lightning reader!' : result.stars === 2 ? 'Nice reading!' : 'Round complete'}
+      title={result.drill ? 'Drill done!' : result.stars === 3 ? 'Lightning reader!' : result.stars === 2 ? 'Nice reading!' : 'Round complete'}
       score={result.score}
       scoreNote={result.finish ? undefined : 'No notes right this time, so this round isn’t saved.'}
       stars={result.stars}
@@ -683,6 +731,9 @@ function Results({ result, clef, onAgain, onSetup }: { result: Result; clef: Rus
                 <MusicText text={missLabel(id, clef)} /> <span className="text-sm text-ink-mute">×{n}</span>
               </span>
             ))}
+          </div>
+          <div className="mt-4 flex justify-center">
+            <DrillButton onClick={() => onDrill(missed.map(([id]) => id))} />
           </div>
         </div>
       )}

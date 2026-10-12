@@ -1,4 +1,4 @@
-import { ArrowLeft, Flame, type LucideIcon, Play, RotateCcw, SlidersHorizontal, Trophy, Volume2, Zap } from 'lucide-react'
+import { ArrowLeft, Crosshair, Flame, type LucideIcon, Play, RotateCcw, SlidersHorizontal, Trophy, Volume2, Zap } from 'lucide-react'
 import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'motion/react'
 import { type ReactNode, useEffect } from 'react'
 import { MusicText } from '../../../components/MusicText'
@@ -43,6 +43,7 @@ export function SetupCard({
   onStart,
   children,
   startLabel = 'Start',
+  weakest,
 }: {
   icon: LucideIcon
   from: string
@@ -56,6 +57,8 @@ export function SetupCard({
   onStart: () => void
   children?: ReactNode
   startLabel?: string
+  /** Your weakest items at this level, by name ("A3", "B♭m"). */
+  weakest?: string[]
 }) {
   const games = useProgress((s) => s.games)
   const index = Math.max(0, levels.findIndex((l) => l.id === level))
@@ -114,6 +117,13 @@ export function SetupCard({
           })}
         </div>
       </div>
+      {!!weakest?.length && (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-lg font-bold text-ink-soft">
+          <Crosshair size={20} className="shrink-0 text-coral" aria-hidden />
+          Weakest: <MusicText text={weakest.join(', ')} className="font-extrabold text-ink" />
+          <span className="text-sm font-semibold text-ink-mute">(they come up more often)</span>
+        </p>
+      )}
       {/* Start stays in view however many levels there are (a 13" laptop screen shows only some of them). */}
       <div className="sticky bottom-0 z-10 -mt-2 bg-linear-to-t from-night-900 from-40% to-transparent pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-4">
         <div className="glass flex items-center gap-4 rounded-3xl p-3 pl-5 shadow-[0_-14px_36px_-16px_rgba(0,0,0,.8)]">
@@ -291,8 +301,17 @@ export interface Miss {
   onPlay?: () => void
 }
 
-/** The list of misses under the results, so you know what to work on. */
-export function MissList({ misses }: { misses: Miss[] }) {
+/** Starts a round built from what you just missed. */
+export function DrillButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button size="lg" variant="secondary" icon={Crosshair} onClick={onClick}>
+      Drill these
+    </Button>
+  )
+}
+
+/** The list of misses under the results, so you know what to work on (and a drill of them). */
+export function MissList({ misses, onDrill }: { misses: Miss[]; onDrill?: () => void }) {
   if (!misses.length) return null
   const playable = misses.some((m) => m.onPlay)
   return (
@@ -341,6 +360,11 @@ export function MissList({ misses }: { misses: Miss[] }) {
           )
         })}
       </ul>
+      {onDrill && (
+        <div className="mt-4 flex justify-center">
+          <DrillButton onClick={onDrill} />
+        </div>
+      )}
     </div>
   )
 }

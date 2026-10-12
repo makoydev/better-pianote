@@ -11,6 +11,7 @@ import {
   pcOf,
   spellRoot,
 } from '../../../lib/theory'
+import { weightedRound } from '../shared/weak'
 
 /** Chord Trainer levels and the rules for "did you play this chord?". */
 
@@ -109,20 +110,12 @@ export function chordLabel(c: Chord) {
   return { symbol: chordSymbol(c), name: chordLongName(c) }
 }
 
-/** A round of chords from a pool, never the same chord twice in a row. */
-export function pickRound(pool: Chord[], n: number, rng: () => number = Math.random): Chord[] {
-  const out: Chord[] = []
-  let bag: Chord[] = []
-  while (out.length < n) {
-    if (bag.length === 0) bag = shuffle([...pool], rng)
-    const next = bag.pop()!
-    if (out.length && chordSymbol(out[out.length - 1]) === chordSymbol(next) && pool.length > 1) {
-      bag.unshift(next)
-      continue
-    }
-    out.push(next)
-  }
-  return out
+/**
+ * A round of chords from a pool: each once while there's room, then extra turns for the ones `weight` says you're
+ * weak on, never the same chord twice in a row.
+ */
+export function pickRound(pool: Chord[], n: number, rng: () => number = Math.random, weight: (c: Chord) => number = () => 1): Chord[] {
+  return weightedRound(pool, n, weight, chordSymbol, rng)
 }
 
 export function shuffle<T>(xs: T[], rng: () => number = Math.random): T[] {

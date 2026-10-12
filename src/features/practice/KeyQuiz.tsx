@@ -1,16 +1,29 @@
 import { ArrowRight, Check, Hash, X } from 'lucide-react'
 import { motion } from 'motion/react'
-import { type ReactNode, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { Staff } from '../../components/staff/Staff'
 import { Button } from '../../components/ui/Button'
 import { Segmented } from '../../components/ui/controls'
 import { burst } from '../../lib/fx'
-import { keyName } from '../../lib/theory'
-import { KEY_LEVELS, type KeyMode, type KeyQuestion, describeKeyMiss, describeSignature, explainKey, makeKeyQuestion } from './logic/keys'
+import { keyId, keyName } from '../../lib/theory'
+import {
+  KEY_LEVELS,
+  type KeyMode,
+  type KeyQuestion,
+  type QuizKey,
+  describeKeyMiss,
+  describeSignature,
+  explainKey,
+  keyItemName,
+  levelKeys,
+  makeKeyQuestion,
+} from './logic/keys'
 import { FeedbackLine, GameMain, Hud, MissList, ResultsCard, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame, remember, sfx, starsFor, store } from './shared/finish'
+import { useItemStats, usePracticeStats, weigher } from './shared/stats'
+import { type ItemAnswer, drillRound, msSince, weakest, weightedRound } from './shared/weak'
 
 const ROUND = 10
 
@@ -32,13 +45,25 @@ export function KeyQuiz() {
   const [streak, setStreak] = useState(0)
   const [finish, setFinish] = useState<FinishResult | null>(null)
   const [summary, setSummary] = useState({ clean: 0, best: 0, misses: [] as WrongPick[] })
-  const tally = useRef({ answered: 0, clean: 0, score: 0, streak: 0, best: 0, misses: [] as WrongPick[] })
+  const tally = useRef({ answered: 0, clean: 0, score: 0, streak: 0, best: 0, misses: [] as WrongPick[], answers: [] as ItemAnswer[] })
+  // The keys this round asks, in order (ids like "D" or "Bbm").
+  const plan = useRef<string[]>([])
+  // A drill of keys you missed (not a level record).
+  const [drill, setDrill] = useState(false)
+  const stats = useItemStats('key-quiz')
+  const keys = levelKeys(level)
 
-  const start = () => {
+  const start = (missed?: string[]) => {
     store('key-quiz-mode', mode)
     store('key-quiz-level', level.id)
-    tally.current = { answered: 0, clean: 0, score: 0, streak: 0, best: 0, misses: [] }
-    setQuestion(makeKeyQuestion(level, null))
+    // Every key once while there's room, then more of the ones you miss or are slow on; a drill is mostly the misses.
+    const weak = weigher('key-quiz', keys.map((k) => k.id))
+    const weight = (k: QuizKey) => k.chance * weak(k.id)
+    const drilled = missed?.flatMap((id) => keys.find((k) => k.id === id) ?? [])
+    plan.current = (drilled ? drillRound(drilled, keys, ROUND, weight, (k) => k.id) : weightedRound(keys, ROUND, weight, (k) => k.id)).map((k) => k.id)
+    setDrill(!!missed)
+    tally.current = { answered: 0, clean: 0, score: 0, streak: 0, best: 0, misses: [], answers: [] }
+    setQuestion(makeKeyQuestion(level, null, Math.random, { ask: plan.current[0] }))
     setQIndex(0)
     setScore(0)
     setStreak(0)
@@ -46,7 +71,7 @@ export function KeyQuiz() {
     setPhase('play')
   }
 
-  const answered = (q: KeyQuestion, picked: number) => {
+  const answered = (q: KeyQuestion, picked: number, ms: number) => {
     const t = tally.current
     const right = picked === q.answer
     t.answered++
@@ -56,6 +81,7 @@ export function KeyQuiz() {
       t.clean++
       t.score += 100 + 10 * Math.min(t.streak, 5)
     } else t.misses.push({ q, picked })
+    t.answers.push({ id: keyId(q.key), missed: !right, ms: right ? ms : undefined })
     setScore(t.score)
     setStreak(t.streak)
   }
@@ -63,18 +89,19 @@ export function KeyQuiz() {
   const next = () => {
     const t = tally.current
     if (t.answered >= ROUND) {
-      setFinish(finishGame('key-quiz', level.id, t.score, starsFor(t.clean / ROUND, 0.9, 0.7)))
+      setFinish(finishGame('key-quiz', drill ? null : level.id, t.score, starsFor(t.clean / ROUND, 0.9, 0.7)))
+      usePracticeStats.getState().recordAnswers('key-quiz', t.answers)
       setSummary({ clean: t.clean, best: t.best, misses: t.misses })
       setPhase('done')
       return
     }
-    setQuestion((q) => makeKeyQuestion(level, q?.fifths ?? null))
+    setQuestion((q) => makeKeyQuestion(level, q?.fifths ?? null, Math.random, { ask: plan.current[t.answered] }))
     setQIndex(t.answered)
   }
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <TopBar back="/practice" title="Key Signature Quiz" subtitle={phase === 'setup' ? 'Sharps, flats and the keys they make' : level.name} />
+      <TopBar back="/practice" title="Key Signature Quiz" subtitle={phase === 'setup' ? 'Sharps, flats and the keys they make' : drill ? `Drill · ${level.name}` : level.name} />
       {phase === 'setup' && (
         <GameMain>
           <SetupCard
@@ -87,7 +114,8 @@ export function KeyQuiz() {
             levels={KEY_LEVELS}
             level={level.id}
             onLevel={setLevelId}
-            onStart={start}
+            onStart={() => start()}
+            weakest={weakest(stats, keys.map((k) => k.id)).map(keyItemName)}
           >
             <div className="glass flex flex-wrap items-center justify-between gap-4 rounded-3xl p-5">
               <span className="text-lg font-extrabold">Question type</span>
@@ -106,13 +134,13 @@ export function KeyQuiz() {
       {phase === 'play' && question && (
         <GameMain>
           <Hud step={qIndex} total={ROUND} score={score} streak={streak} />
-          <Question key={qIndex} q={question} mode={mode} grand={level.grand} onAnswer={(picked) => answered(question, picked)} onNext={next} />
+          <Question key={qIndex} q={question} mode={mode} grand={level.grand} onAnswer={(picked, ms) => answered(question, picked, ms)} onNext={next} />
         </GameMain>
       )}
       {phase === 'done' && (
         <GameMain>
           <ResultsCard
-            title={summary.clean >= 9 ? 'Key master!' : 'Round complete'}
+            title={drill ? 'Drill done!' : summary.clean >= 9 ? 'Key master!' : 'Round complete'}
             score={score}
             stars={starsFor(summary.clean / ROUND, 0.9, 0.7)}
             result={finish}
@@ -121,10 +149,10 @@ export function KeyQuiz() {
               { label: 'Best streak', value: summary.best },
               { label: 'Mode', value: mode === 'name' ? 'Name it' : 'Find it' },
             ]}
-            onAgain={start}
+            onAgain={() => start()}
             onSetup={() => setPhase('setup')}
           >
-            <MissList misses={summary.misses.map((m) => describeKeyMiss(m.q, m.picked, mode))} />
+            <MissList misses={summary.misses.map((m) => describeKeyMiss(m.q, m.picked, mode))} onDrill={() => start(summary.misses.map((m) => keyId(m.q.key)))} />
           </ResultsCard>
         </GameMain>
       )}
@@ -132,16 +160,32 @@ export function KeyQuiz() {
   )
 }
 
-function Question({ q, mode, grand, onAnswer, onNext }: { q: KeyQuestion; mode: KeyMode; grand: boolean; onAnswer: (picked: number) => void; onNext: () => void }) {
+function Question({
+  q,
+  mode,
+  grand,
+  onAnswer,
+  onNext,
+}: {
+  q: KeyQuestion
+  mode: KeyMode
+  grand: boolean
+  onAnswer: (picked: number, ms: number) => void
+  onNext: () => void
+}) {
   const [picked, setPicked] = useState<number | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
   const right = picked === q.answer
+  const shownAt = useRef(0)
+  useEffect(() => {
+    shownAt.current = performance.now()
+  }, [])
 
   const choose = (i: number) => {
     if (picked !== null) return
     setPicked(i)
     const ok = i === q.answer
-    onAnswer(i)
+    onAnswer(i, msSince(shownAt.current))
     if (ok) {
       sfx('correct')
       burst(cardRef.current, { count: 28 })

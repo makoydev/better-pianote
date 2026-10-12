@@ -1,4 +1,5 @@
 import { CHORD_TYPE, type ChordType, INTERVAL_SONGS, SEMITONE_NAMES, fromMidi, mod, pitchName } from '../../../lib/theory'
+import { weightedPick } from '../shared/weak'
 
 /** Ear Training question generators. All notes are MIDI numbers. */
 
@@ -32,18 +33,17 @@ export const ECHO_LEVELS: (EarLevel & { length: number; scale: number[]; maxLeap
   { id: 'five', name: '5 notes', description: 'Longer tunes with leaps up to a fifth.', length: 5, scale: [0, 2, 4, 5, 7, 9, 11, 12], maxLeap: 4 },
 ]
 
-const pick = <T,>(xs: T[], rng: () => number) => xs[Math.floor(rng() * xs.length)]
-
 export interface QualityQ {
   kind: 'quality'
   root: number
   type: ChordType
 }
 
-export function makeQuality(level: (typeof QUALITY_LEVELS)[number], prev: QualityQ | null, rng: () => number = Math.random): QualityQ {
+/** `weight` (by item id, e.g. "quality:min") makes weak spots come up more often; 0 rules an option out. */
+export function makeQuality(level: (typeof QUALITY_LEVELS)[number], prev: QualityQ | null, rng: () => number = Math.random, weight: (id: string) => number = () => 1): QualityQ {
   let q: QualityQ
   do {
-    q = { kind: 'quality', root: 48 + Math.floor(rng() * 12), type: pick(level.types, rng) }
+    q = { kind: 'quality', root: 48 + Math.floor(rng() * 12), type: weightedPick(level.types, (t) => weight(`quality:${t.id}`), rng) }
   } while (prev && prev.root === q.root && prev.type === q.type)
   return q
 }
@@ -61,10 +61,11 @@ export interface IntervalQ {
   harmonic: boolean
 }
 
-export function makeInterval(level: (typeof INTERVAL_LEVELS)[number], prev: IntervalQ | null, rng: () => number = Math.random): IntervalQ {
+/** `weight` as for makeQuality, by "interval:<half steps>". */
+export function makeInterval(level: (typeof INTERVAL_LEVELS)[number], prev: IntervalQ | null, rng: () => number = Math.random, weight: (id: string) => number = () => 1): IntervalQ {
   let q: IntervalQ
   do {
-    q = { kind: 'interval', low: 55 + Math.floor(rng() * 10), semis: pick(level.semis, rng), harmonic: rng() < level.harmonic }
+    q = { kind: 'interval', low: 55 + Math.floor(rng() * 10), semis: weightedPick(level.semis, (s) => weight(`interval:${s}`), rng), harmonic: rng() < level.harmonic }
   } while (prev && prev.semis === q.semis && level.semis.length > 1 && rng() < 0.7)
   return q
 }
@@ -113,6 +114,24 @@ export interface EarOutcome {
   said?: string
   /** Echo: the notes of your first wrong try. */
   played?: number[]
+  /** From the question appearing to your answer. */
+  ms?: number
+}
+
+/** The id weak spots are kept under: "quality:min", "interval:9". Echo tunes aren't tracked. */
+export function earItemId(q: EarQuestion): string | null {
+  return q.kind === 'quality' ? `quality:${q.type.id}` : q.kind === 'interval' ? `interval:${q.semis}` : null
+}
+
+/** What a level asks, as item ids. */
+export function earItemIds(level: EarLevel & ({ types: ChordType[] } | { semis: number[] })): string[] {
+  return 'types' in level ? level.types.map((t) => `quality:${t.id}`) : level.semis.map((s) => `interval:${s}`)
+}
+
+/** "Minor", "Major 6th". */
+export function earItemName(id: string): string {
+  const [kind, v] = id.split(':')
+  return kind === 'quality' ? (QUALITY_LABEL[v] ?? v) : intervalName(Number(v))
 }
 
 /** The option id of the right answer ("min", "9"). */

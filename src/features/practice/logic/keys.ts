@@ -1,4 +1,5 @@
-import { type Key, keyName, keySignature, majorKey, relativeKey } from '../../../lib/theory'
+import { type Key, keyId, keyName, keyShort, keySignature, majorKey, parseKey, relativeKey } from '../../../lib/theory'
+import { weightedPick } from '../shared/weak'
 import { shuffle } from './chords'
 
 /** Key Signature Quiz question generators. */
@@ -38,12 +39,40 @@ function keyFor(fifths: number, minor: boolean): Key {
   return minor ? relativeKey(k) : k
 }
 
-export function makeKeyQuestion(level: KeyLevel, prev: number | null, rng: () => number = Math.random): KeyQuestion {
-  let fifths: number
-  do {
-    fifths = Math.floor(rng() * (2 * level.max + 1)) - level.max
-  } while (fifths === prev)
-  const minor = level.minor && rng() < 0.6
+/** A key a level can ask, by its id ("D", "Bbm"), with its share of the questions before weak spots count. */
+export interface QuizKey {
+  id: string
+  fifths: number
+  minor: boolean
+  chance: number
+}
+
+/** The keys a level asks. The minor level asks its minor keys a little more often than their relative majors. */
+export function levelKeys(level: KeyLevel): QuizKey[] {
+  const out: QuizKey[] = []
+  for (let f = -level.max; f <= level.max; f++) {
+    if (level.minor) out.push({ id: keyId(keyFor(f, true)), fifths: f, minor: true, chance: 0.6 })
+    out.push({ id: keyId(keyFor(f, false)), fifths: f, minor: false, chance: level.minor ? 0.4 : 1 })
+  }
+  return out
+}
+
+/** "B♭m", "F♯". */
+export const keyItemName = (id: string) => keyShort(parseKey(id))
+
+/**
+ * A question about a key: the one `ask` names (a key id), or one picked by `weight` (weak spots come up more
+ * often), never on the signature `prev` just showed.
+ */
+export function makeKeyQuestion(
+  level: KeyLevel,
+  prev: number | null,
+  rng: () => number = Math.random,
+  opts: { ask?: string; weight?: (id: string) => number } = {},
+): KeyQuestion {
+  const keys = levelKeys(level)
+  const asked = opts.ask ? keys.find((k) => k.id === opts.ask) : undefined
+  const { fifths, minor } = asked ?? weightedPick(keys.filter((k) => k.fifths !== prev), (k) => k.chance * (opts.weight?.(k.id) ?? 1), rng)
   const key = keyFor(fifths, minor)
   // Good distractors: same count of the other accidental, and neighbours on the circle.
   const candidates = [-fifths, fifths + 1, fifths - 1, fifths + 2, fifths - 2, -fifths + 1, -fifths - 1]

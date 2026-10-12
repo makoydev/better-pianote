@@ -21,6 +21,9 @@ import {
   QUALITY_LABEL,
   QUALITY_LEVELS,
   describeMiss,
+  earItemId,
+  earItemIds,
+  earItemName,
   intervalCue,
   intervalName,
   makeEcho,
@@ -33,6 +36,8 @@ import {
 } from './logic/ear'
 import { FeedbackLine, GameMain, Hud, KeysCard, type Miss, MissList, ResultsCard, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame, remember, sfx, starsFor } from './shared/finish'
+import { useItemStats, usePracticeStats, weigher } from './shared/stats'
+import { drillRound, msSince, weakest } from './shared/weak'
 
 const ROUND = 10
 
@@ -111,17 +116,31 @@ export function EarTraining() {
   const [finish, setFinish] = useState<FinishResult | null>(null)
   // Answers can arrive from timers, so the running tally lives in a ref too.
   const tally = useRef({ outcomes: [] as EarOutcome[], score: 0, streak: 0, best: 0 })
+  // A drill's questions, planned up front: item ids ("quality:min"), or for Echo the tunes themselves.
+  const plan = useRef<(string | EchoQ)[] | null>(null)
+  const [drill, setDrill] = useState(false)
+  const stats = useItemStats('ear')
 
-  const makeQuestion = (prev: EarQuestion | null): EarQuestion => {
-    const lid = level.id.slice(mode.length + 1)
-    if (mode === 'quality') return makeQuality(QUALITY_LEVELS.find((l) => l.id === lid) ?? QUALITY_LEVELS[0], prev?.kind === 'quality' ? prev : null)
-    if (mode === 'interval') return makeInterval(INTERVAL_LEVELS.find((l) => l.id === lid) ?? INTERVAL_LEVELS[0], prev?.kind === 'interval' ? prev : null)
-    return makeEcho(ECHO_LEVELS.find((l) => l.id === lid) ?? ECHO_LEVELS[0])
+  const lid = level.id.slice(mode.length + 1)
+  const qualityLevel = QUALITY_LEVELS.find((l) => l.id === lid) ?? QUALITY_LEVELS[0]
+  const intervalLevel = INTERVAL_LEVELS.find((l) => l.id === lid) ?? INTERVAL_LEVELS[0]
+  const echoLevel = ECHO_LEVELS.find((l) => l.id === lid) ?? ECHO_LEVELS[0]
+  const itemIds = mode === 'quality' ? earItemIds(qualityLevel) : mode === 'interval' ? earItemIds(intervalLevel) : []
+
+  const makeQuestion = (prev: EarQuestion | null, i: number): EarQuestion => {
+    const planned = plan.current?.[i]
+    if (mode === 'echo') return typeof planned === 'object' ? planned : makeEcho(echoLevel)
+    // A drill asks what it planned; otherwise weak spots come up more often.
+    const weight = typeof planned === 'string' ? (id: string) => (id === planned ? 1 : 0) : weigher('ear', itemIds)
+    if (mode === 'quality') return makeQuality(qualityLevel, prev?.kind === 'quality' ? prev : null, Math.random, weight)
+    return makeInterval(intervalLevel, prev?.kind === 'interval' ? prev : null, Math.random, weight)
   }
 
-  const start = () => {
+  const start = (drillPlan: (string | EchoQ)[] | null = null) => {
+    plan.current = drillPlan
+    setDrill(!!drillPlan)
     tally.current = { outcomes: [], score: 0, streak: 0, best: 0 }
-    setQuestion(makeQuestion(null))
+    setQuestion(makeQuestion(null, 0))
     setQIndex(0)
     setOutcomes([])
     setScore(0)
@@ -129,6 +148,18 @@ export function EarTraining() {
     setBestStreak(0)
     setFinish(null)
     setPhase('play')
+  }
+
+  /** A round built from the questions you just missed. */
+  const drillMissed = () => {
+    const missed = outcomes.filter((o) => !o.clean).map((o) => o.question)
+    if (mode === 'echo') {
+      const fresh = Array.from({ length: ROUND }, () => makeEcho(echoLevel))
+      return start(drillRound(missed as EchoQ[], fresh, ROUND, () => 1, (q) => q.notes.join('-')))
+    }
+    const ids = missed.flatMap((q) => earItemId(q) ?? [])
+    // With two or four answers, a strict back-and-forth would give it away, so repeats are allowed.
+    start(drillRound(ids, itemIds, ROUND, weigher('ear', itemIds), (id) => id, Math.random, mode === 'quality'))
   }
 
   const answered = (o: EarOutcome) => {
@@ -147,11 +178,18 @@ export function EarTraining() {
     const t = tally.current
     if (t.outcomes.length >= ROUND) {
       const clean = t.outcomes.filter((o) => o.clean).length
-      setFinish(finishGame('ear', level.id, t.score, starsFor(clean / ROUND, 0.9, 0.7)))
+      setFinish(finishGame('ear', drill ? null : level.id, t.score, starsFor(clean / ROUND, 0.9, 0.7)))
+      usePracticeStats.getState().recordAnswers(
+        'ear',
+        t.outcomes.flatMap((o) => {
+          const id = earItemId(o.question)
+          return id ? [{ id, missed: !o.clean, ms: o.clean ? o.ms : undefined }] : []
+        }),
+      )
       setPhase('done')
       return
     }
-    setQuestion((q) => makeQuestion(q))
+    setQuestion((q) => makeQuestion(q, t.outcomes.length))
     setQIndex(t.outcomes.length)
   }
 
@@ -160,7 +198,11 @@ export function EarTraining() {
 
   return (
     <div className="flex h-dvh flex-col">
-      <TopBar back="/practice" title="Ear Training" subtitle={phase === 'setup' ? 'Train the ear you already have' : `${modeInfo.title} · ${level.name}`} />
+      <TopBar
+        back="/practice"
+        title="Ear Training"
+        subtitle={phase === 'setup' ? 'Train the ear you already have' : `${drill ? 'Drill · ' : ''}${modeInfo.title} · ${level.name}`}
+      />
       {/* A keyboard takes the height that's left, so the page only scrolls on very short screens. */}
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         {phase === 'setup' && (
@@ -175,7 +217,8 @@ export function EarTraining() {
               levels={levels}
               level={level.id}
               onLevel={setLevelId}
-              onStart={start}
+              onStart={() => start()}
+              weakest={weakest(stats, itemIds).map(earItemName)}
             >
               <div className="grid gap-3 sm:grid-cols-3">
                 {MODES.map((m) => {
@@ -250,7 +293,7 @@ export function EarTraining() {
         {phase === 'done' && (
           <GameMain>
             <ResultsCard
-              title={clean >= 9 ? 'Golden ears!' : clean >= 7 ? 'Great listening!' : 'Round complete'}
+              title={drill ? 'Drill done!' : clean >= 9 ? 'Golden ears!' : clean >= 7 ? 'Great listening!' : 'Round complete'}
               score={score}
               stars={starsFor(clean / ROUND, 0.9, 0.7)}
               result={finish}
@@ -259,10 +302,10 @@ export function EarTraining() {
                 { label: 'Correct', value: `${outcomes.filter((o) => o.correct).length}/${ROUND}` },
                 { label: 'Best streak', value: bestStreak },
               ]}
-              onAgain={start}
+              onAgain={() => start()}
               onSetup={() => setPhase('setup')}
             >
-              <MissList misses={outcomes.filter((o) => !o.clean).map(toMiss)} />
+              <MissList misses={outcomes.filter((o) => !o.clean).map(toMiss)} onDrill={drillMissed} />
             </ResultsCard>
           </GameMain>
         )}
@@ -337,6 +380,10 @@ function ChoiceQuestion({
   const { playing, run } = usePlayback(play, `${title}-${answer}-${options.length}`)
   // Two choices: one guess. More choices: two guesses.
   const maxWrong = options.length <= 2 ? 1 : 2
+  const shownAt = useRef(0)
+  useEffect(() => {
+    shownAt.current = performance.now()
+  }, [])
 
   const choose = (id: string) => {
     if (result) {
@@ -349,7 +396,7 @@ function ChoiceQuestion({
       setResult(clean ? 'clean' : 'second')
       sfx('correct')
       burst(cardRef.current, { count: 30 })
-      onAnswer({ correct: true, clean, said: wrongs[0] })
+      onAnswer({ correct: true, clean, said: wrongs[0], ms: msSince(shownAt.current) })
       if (clean) window.setTimeout(onNext, 1500)
       return
     }

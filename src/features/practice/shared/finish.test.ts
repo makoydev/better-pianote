@@ -27,6 +27,16 @@ describe('finishing a game', () => {
     expect(p.lastDay).toBeNull()
   })
 
+  it('pays for a drill without making it a level record', () => {
+    finishGame('test', 'l1', 500, 2)
+    const r = finishGame('test', null, 900, 3)
+    expect(r).toMatchObject({ isBest: true, levelBest: false, xp: 20 })
+    const games = useProgress.getState().games
+    expect(games.test.best).toBe(900)
+    expect(games['test:l1'].best).toBe(500)
+    expect(Object.keys(games)).toEqual(['test', 'test:l1'])
+  })
+
   it('records the game and the level', () => {
     finishGame('note-rush', 'treble:3', 420, 2)
     const r = finishGame('note-rush', 'bass:1', 300, 2)

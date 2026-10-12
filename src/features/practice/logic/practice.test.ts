@@ -1,8 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { CHORD_TYPE, chordSymbol, midi, parseChord, parseKey } from '../../../lib/theory'
 import { TRAINER_LEVELS, chordRecipe, matchChord, pickRound } from './chords'
-import { ECHO_LEVELS, INTERVAL_LEVELS, type IntervalQ, type QualityQ, describeMiss, makeEcho, makeInterval, optionNotes, rightOption } from './ear'
-import { KEY_LEVELS, describeKeyMiss, makeKeyQuestion } from './keys'
+import {
+  ECHO_LEVELS,
+  INTERVAL_LEVELS,
+  type IntervalQ,
+  QUALITY_LEVELS,
+  type QualityQ,
+  describeMiss,
+  earItemId,
+  earItemIds,
+  earItemName,
+  makeEcho,
+  makeInterval,
+  makeQuality,
+  optionNotes,
+  rightOption,
+} from './ear'
+import { KEY_LEVELS, describeKeyMiss, keyItemName, levelKeys, makeKeyQuestion } from './keys'
 import { RHYTHM_LEVELS, countLabel, makePattern, onsetBeats, patternToStaff, scoreTaps, tempoBand, timingTendency } from './rhythm'
 
 const m = (...names: string[]) => names.map(midi)
@@ -43,6 +58,16 @@ describe('chord matching', () => {
     const round = pickRound(pool, 10, seeded(3))
     expect(round).toHaveLength(10)
     for (let i = 1; i < round.length; i++) expect(chordSymbol(round[i])).not.toBe(chordSymbol(round[i - 1]))
+  })
+  it('asks every chord of a small level, and weak ones more often', () => {
+    const pool = TRAINER_LEVELS[0].pool()
+    let am = 0
+    for (let s = 1; s < 60; s++) {
+      const round = pickRound(pool, 10, seeded(s), (c) => (chordSymbol(c) === 'Am' ? 4 : 1)).map(chordSymbol)
+      expect(new Set(round).size).toBe(6)
+      am += round.filter((x) => x === 'Am').length
+    }
+    expect(am / 59).toBeGreaterThan(2.2)
   })
   it('spells level pools nicely', () => {
     const majors = TRAINER_LEVELS.find((l) => l.id === 'major')!.pool().map(chordSymbol)
@@ -119,6 +144,21 @@ describe('ear training', () => {
     const level = INTERVAL_LEVELS[0]
     for (let s = 1; s < 20; s++) expect(level.semis).toContain(makeInterval(level, null, seeded(s)).semis)
   })
+  it('asks weak spots more often, or exactly what a drill planned', () => {
+    const level = QUALITY_LEVELS[1]
+    const rng = seeded(6)
+    const types = Array.from({ length: 2000 }, () => makeQuality(level, null, rng, (id) => (id === 'quality:dim' ? 2 : 1)).type.id)
+    expect(types.filter((t) => t === 'dim').length / 2000).toBeCloseTo(0.4, 1)
+    for (let s = 1; s < 10; s++) expect(makeInterval(INTERVAL_LEVELS[2], null, seeded(s), (id) => (id === 'interval:6' ? 1 : 0)).semis).toBe(6)
+  })
+  it('names what Ear Training keeps stats on', () => {
+    expect(earItemIds(QUALITY_LEVELS[0])).toEqual(['quality:maj', 'quality:min'])
+    expect(earItemIds(INTERVAL_LEVELS[1])).toEqual(['interval:3', 'interval:4', 'interval:8', 'interval:9'])
+    expect(earItemId({ kind: 'interval', low: 60, semis: 9, harmonic: false })).toBe('interval:9')
+    expect(earItemId({ kind: 'echo', notes: [60, 62] })).toBeNull()
+    expect(earItemName('quality:dim')).toBe('Diminished')
+    expect(earItemName('interval:9')).toBe('Major 6th')
+  })
 
   const minor: QualityQ = { kind: 'quality', root: midi('C#3'), type: CHORD_TYPE.min }
   const sixth: IntervalQ = { kind: 'interval', low: midi('G3'), semis: 9, harmonic: true }
@@ -152,6 +192,25 @@ describe('key quiz', () => {
         expect(Math.abs(q.fifths)).toBeLessThanOrEqual(level.max)
       }
     }
+  })
+  it('lists the keys a level asks, spelled as on the circle', () => {
+    const easy = levelKeys(KEY_LEVELS[0]).map((k) => k.id)
+    expect(easy).toEqual(['Bb', 'F', 'C', 'G', 'D'])
+    const all = levelKeys(KEY_LEVELS[2]).map((k) => k.id)
+    expect(all).toContain('Cb')
+    expect(all).toContain('C#')
+    const minor = levelKeys(KEY_LEVELS[3])
+    expect(minor.filter((k) => k.minor).map((k) => k.id)).toEqual(['Bbm', 'Fm', 'Cm', 'Gm', 'Dm', 'Am', 'Em', 'Bm', 'F#m', 'C#m', 'G#m'])
+    // Minor keys come up more often than their relative majors there.
+    expect(minor.find((k) => k.id === 'Am')!.chance).toBeGreaterThan(minor.find((k) => k.id === 'C')!.chance)
+    expect(keyItemName('Bbm')).toBe('B♭m')
+    expect(keyItemName('F#')).toBe('F♯')
+  })
+  it('asks the key a drill planned', () => {
+    const q = makeKeyQuestion(KEY_LEVELS[3], null, seeded(2), { ask: 'F#m' })
+    expect(q.fifths).toBe(3)
+    expect(q.key.mode).toBe('minor')
+    expect(q.options[q.answer].label).toBe('F♯ minor')
   })
 })
 
