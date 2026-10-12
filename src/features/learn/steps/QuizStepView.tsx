@@ -15,6 +15,7 @@ import { type NoteSource, heldNow, useNoteEvents } from '../../../lib/input/bus'
 import { useMicChords } from '../../../lib/input/mic'
 import { nameNote } from '../../../lib/naming'
 import { detectChord, fromMidi, mod } from '../../../lib/theory'
+import { useShortScreen } from '../../../components/widgets/fit'
 import { useSettings } from '../../../state/settings'
 import { optionForChord, optionsForNote, playableQuiz } from '../quizPlay'
 import { optionOrder } from '../quizOrder'
@@ -145,11 +146,14 @@ export function QuizStepView({
 
   // Three options share one row (a pair plus an orphan looks unfinished); long ones stack instead.
   const cols = step.options.length === 3 ? (step.options.some((o) => o.length > 22) ? '' : 'sm:grid-cols-3') : 'sm:grid-cols-2'
+  // A short screen (a 13" MacBook) gets smaller gaps, heading and answer buttons, so the question, picture and
+  // answers all fit.
+  const short = useShortScreen()
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+    <div className={`mx-auto flex w-full max-w-4xl flex-col ${short ? 'gap-4' : 'gap-6'}`}>
       <div className="text-center">
-        <h2 tabIndex={-1} data-step-heading className="font-display text-3xl font-bold leading-tight outline-none sm:text-4xl">
+        <h2 tabIndex={-1} data-step-heading className={`font-display font-bold leading-tight outline-none ${short ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl'}`}>
           <RichText text={step.question} />
         </h2>
         {step.body && <RichText text={step.body} className="mt-2 text-lg text-ink-soft" />}
@@ -179,7 +183,7 @@ export function QuizStepView({
               whileTap={{ scale: 0.97 }}
               animate={shake.includes(i) ? { x: [0, -10, 10, -7, 7, 0] } : isRight ? { scale: [1, 1.05, 1] } : {}}
               transition={{ duration: 0.4 }}
-              className={`flex min-h-18 items-center gap-4 rounded-2xl border-2 px-5 py-4 text-left text-xl font-extrabold transition-colors ${
+              className={`flex items-center gap-4 rounded-2xl border-2 px-5 text-left text-xl font-extrabold transition-colors ${short ? 'min-h-14 py-2.5' : 'min-h-18 py-4'} ${
                 isRight
                   ? 'border-good bg-good/15 text-good'
                   : isWrong

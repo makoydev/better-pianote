@@ -23,7 +23,7 @@ import { useDemoLights } from '../demoLights'
 import { chordMessage, wrongNoteMessage } from '../feedback'
 import { chordMatches, chordStatus, feedNote, inChord, initialMatch, targetMidis, wrongOctave } from '../match'
 import { StaffView } from '../VisualBlock'
-import { keyboardHeight, noteMidi, pianoProps } from '../visual'
+import { keyboardHeight, noteMidi, pianoProps, pictureSp } from '../visual'
 
 /** As tall as the space allows (leaving room for sparks and the middle-C label), within sensible limits. */
 function pianoHeight(area: number, from: number, to: number) {
@@ -77,9 +77,9 @@ export function PlayStepView({
   const lastWrong = useRef<{ midi: number; at: number } | null>(null)
   const kbRef = useRef<HTMLDivElement>(null)
   const [areaRef, { height: areaH }] = useElementSize<HTMLDivElement>()
-  // On short screens the staff shrinks so the keyboard always stays fully visible.
+  // On short screens (a 13" MacBook) the staff, heading and gaps shrink so the keyboard always stays fully visible.
   const vh = useViewportHeight()
-  const staffSp = vh < 720 ? 13 : vh < 880 ? 16 : 20
+  const short = vh < 880
 
   const k = step.keyboard ?? defaultKeyboard(t)
   const p = pianoProps(k)
@@ -245,23 +245,30 @@ export function PlayStepView({
     }
   }
 
+  const feedbackLine = (
+    <p aria-live="polite" className={`text-center text-lg font-bold text-ink-soft ${short ? '' : 'min-h-7'}`}>
+      {feedback && <MusicText text={feedback} />}
+    </p>
+  )
+
   return (
-    <div className="flex min-h-full flex-1 flex-col gap-4">
+    <div className={`flex min-h-full flex-1 flex-col ${short ? 'gap-3' : 'gap-4'}`}>
       <div className="text-center">
         {step.title && <div className="mb-1 text-sm font-extrabold uppercase tracking-[0.18em] text-gold">{step.title}</div>}
         <h2
           tabIndex={-1}
           data-step-heading
-          className={`mx-auto max-w-3xl font-display font-bold leading-tight outline-none ${vh < 720 ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl'}`}
+          className={`mx-auto font-display font-bold leading-tight outline-none ${short ? 'max-w-4xl text-2xl sm:text-3xl' : 'max-w-3xl text-3xl sm:text-4xl'}`}
         >
           <RichText text={step.prompt} />
         </h2>
-        {step.body && <RichText text={step.body} className="mx-auto mt-2 max-w-2xl text-lg text-ink-soft" />}
+        {step.body && <RichText text={step.body} className={`mx-auto mt-2 text-lg text-ink-soft ${short ? 'max-w-3xl' : 'max-w-2xl'}`} />}
       </div>
 
-      {staffItems && staff && <StaffView s={{ ...staff, items: staffItems }} sp={staffSp} className="mx-auto w-full max-w-4xl" />}
+      {staffItems && staff && <StaffView s={{ ...staff, items: staffItems }} sp={pictureSp(vh, staff.clef)} className="mx-auto w-full max-w-4xl" />}
 
-      <div className="mx-auto flex min-h-14 w-full max-w-3xl flex-col items-center justify-center gap-2">
+      {/* shrink-0: when room runs out the page scrolls; this never gets squeezed over the keyboard. */}
+      <div className={`mx-auto flex min-h-14 w-full shrink-0 flex-col items-center justify-center gap-2 ${short ? 'max-w-4xl' : 'max-w-3xl'}`}>
         <AnimatePresence mode="wait">
           {solved ? (
             <motion.div
@@ -291,11 +298,7 @@ export function PlayStepView({
             ))}
           </div>
         )}
-        {!solved && (
-          <p aria-live="polite" className="min-h-7 text-center text-lg font-bold text-ink-soft">
-            {feedback && <MusicText text={feedback} />}
-          </p>
-        )}
+        {!solved && !short && feedbackLine}
         {solved && onRetry && (
           <Button size="md" variant="ghost" icon={RotateCcw} onClick={onRetry}>
             Play it again
@@ -303,6 +306,8 @@ export function PlayStepView({
         )}
         {!solved && (
           <div className="flex flex-wrap items-center justify-center gap-2 text-sm font-semibold text-ink-mute">
+            {/* On a short screen what you just played shares this row too. */}
+            {short && feedbackLine}
             {onScreenChord && (mic === 'on' ? 'Play the chord and let it ring.' : 'Hold the notes together, or tap each key on screen.')}
             {onScreenChord && selected.length > 0 && (
               <Button size="sm" variant="ghost" icon={Eraser} onClick={() => setSelected([])}>
@@ -312,13 +317,15 @@ export function PlayStepView({
             <Button size="sm" variant="ghost" icon={HelpCircle} onClick={showMe}>
               Show me
             </Button>
+            {/* On a short screen the mic shares this row rather than taking one of its own. */}
+            {short && <MicPrompt />}
           </div>
         )}
-        {!solved && <MicPrompt />}
+        {!solved && !short && <MicPrompt />}
       </div>
 
       {/* The keyboard takes whatever height is left, so it's always fully on screen. */}
-      <div ref={areaRef} className="flex min-h-[190px] flex-1 flex-col justify-end">
+      <div ref={areaRef} className={`flex flex-1 flex-col justify-end ${short ? 'min-h-[140px]' : 'min-h-[190px]'}`}>
         <div ref={kbRef}>
           <Piano
             {...p}

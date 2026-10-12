@@ -21,13 +21,20 @@ export function keyboardHeight(from: number, to: number) {
   return 230
 }
 
-/** Staff size for lesson pictures: smaller on short screens, so the whole picture fits. */
-export const pictureSp = (vh: number) => (vh < 720 ? 13 : vh < 880 ? 16 : 20)
+/**
+ * Staff size for lesson pictures, play steps and quizzes: smaller on short screens, so the whole step fits. The
+ * grand staff is twice as tall, so on a short screen it shrinks further.
+ */
+export const pictureSp = (vh: number, clef?: string) =>
+  clef === 'grand' ? (vh < 720 ? 9 : vh < 880 ? 10 : 20) : vh < 720 ? 13 : vh < 880 ? 16 : 20
 
 /**
  * Pictures narrow enough to sit beside the text on a wide screen, where they get the full height: a keyboard of up
  * to 16 white keys (still 34 px a key in half the width), with or without a staff, and the tall grand staff.
  */
+/** A picture that's only a staff (perhaps with clips to hear): on a short screen it sits beside the text too. */
+export const staffOnly = (v: Visual | undefined): boolean => !!v?.staff && !v.keyboard && !v.widget
+
 export function besideText(v: Visual | undefined): boolean {
   if (!v || v.widget) return false
   if (v.keyboard) {

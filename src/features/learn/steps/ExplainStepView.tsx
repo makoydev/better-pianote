@@ -6,10 +6,13 @@ import { InStep, useShortScreen } from '../../../components/widgets/fit'
 import { WidgetView } from '../../../components/widgets/WidgetView'
 import type { ExplainStep, WidgetStep } from '../../../content/types'
 import { VisualBlock } from '../VisualBlock'
-import { besideText } from '../visual'
+import { besideText, staffOnly } from '../visual'
 
 export function ExplainStepView({ step }: { step: ExplainStep }) {
-  const beside = besideText(step.visual)
+  // On a short screen (a 13" MacBook) a staff picture sits beside the text as well, rather than under a long text
+  // where it would scroll.
+  const short = useShortScreen()
+  const beside = besideText(step.visual) || (short && staffOnly(step.visual))
   return (
     <StepFrame title={step.title} body={step.body} tip={step.tip} guitar={step.guitar} beside={beside}>
       {step.visual && <VisualBlock v={step.visual} fit center={beside} />}

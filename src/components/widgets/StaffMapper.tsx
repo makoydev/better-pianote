@@ -13,9 +13,11 @@ const RANGES = { treble: [60, 84], bass: [36, 60], grand: [41, 79] } as const
 export function StaffMapper({ clef }: { clef: 'treble' | 'bass' | 'grand' }) {
   const [played, setPlayed] = useState<{ midi: number; id: number }[]>([])
   const [from, to] = RANGES[clef]
-  const [kbRef, kb] = useFitKeyboard(170, { below: 24, room: 56 })
-  // In a lesson on a short screen the staff gives up a little room so the keyboard stays in view.
+  // In a lesson on a short screen the staff gives up some room so the keyboard stays in view (the grand staff, twice
+  // as tall, the most).
   const short = useShortScreen()
+  const [kbRef, kb] = useFitKeyboard(170, { below: 24, room: 56, min: short ? 92 : 100 })
+  const tight = kb.fit && short
 
   useNoteEvents((e) => {
     if (e.type !== 'on') return
@@ -31,16 +33,16 @@ export function StaffMapper({ clef }: { clef: 'treble' | 'bass' | 'grand' }) {
   const last = played[played.length - 1]
 
   return (
-    <div className={`glass rounded-3xl p-4 sm:p-5 ${kb.fit ? 'flex flex-1 flex-col' : ''}`}>
+    <div className={`glass rounded-3xl ${tight ? 'p-3' : 'p-4 sm:p-5'} ${kb.fit ? 'flex flex-1 flex-col' : ''}`}>
       <div className="grid items-center gap-4 lg:grid-cols-[1fr_auto]">
         <Paper>
           <Staff
             clef={clef}
             items={items.length ? items : [{ key: 'empty', dur: 'w', hidden: true }]}
-            sp={kb.fit && short ? 15 : 19}
+            sp={tight ? (clef === 'grand' ? 11 : 15) : 19}
             minSlot={5}
-            reserveAbove={3.5}
-            reserveBelow={3.5}
+            reserveAbove={tight ? 3 : 3.5}
+            reserveBelow={tight ? 3 : 3.5}
           />
         </Paper>
         <div className="min-w-40 text-center">

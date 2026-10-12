@@ -1,6 +1,6 @@
 import { Check, Minus, Play, Plus, Square } from 'lucide-react'
 import { LayoutGroup, motion } from 'motion/react'
-import { useEffect, useMemo, useRef, useState, useId } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState, useId } from 'react'
 import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { playNotes } from '../../lib/audio/play'
@@ -23,7 +23,7 @@ import { type Marks, Piano } from '../piano/Piano'
 import { Button, IconButton } from '../ui/Button'
 import { Segmented } from '../ui/controls'
 import { useMicChords } from '../../lib/input/mic'
-import { useFitKeyboard, useSpaceKey } from './fit'
+import { InStep, useFitKeyboard, useShortScreen, useSpaceKey } from './fit'
 
 /** Plays a chord progression in a key, lighting up each chord; transpose it and play along. */
 
@@ -83,6 +83,10 @@ export function ProgressionWidget({
   const [current, setCurrent] = useState(0)
   const [matched, setMatched] = useState<number[]>([])
   const [kbRef, kb] = useFitKeyboard(150)
+  // A lesson step on a short screen (a 13" MacBook): Play joins the header and the tip joins the key picker's label,
+  // so the keyboard keeps its room.
+  const short = useShortScreen()
+  const tight = useContext(InStep) && short
 
   const key = useMemo(() => safeKey(keyStr), [keyStr])
   const chords = useMemo(() => romans.map((r) => safeRoman(r, key)), [romans, key])
@@ -166,13 +170,23 @@ export function ProgressionWidget({
 
   // Scope animated highlights so two copies of this widget don't share them.
   const layoutGroup = useId()
+  const playButton = (
+    <Button size="md" variant={playing ? 'secondary' : 'primary'} icon={playing ? Square : Play} onClick={playing ? stop : start}>
+      {playing ? 'Stop' : 'Play loop'}
+    </Button>
+  )
+  const tip = 'Play along: hold the lit-up chord on your keyboard to tick it off.'
+
   return (
     <LayoutGroup id={layoutGroup}>
-      <div className={kb.fit ? 'flex flex-1 flex-col gap-4' : 'space-y-4'}>
+      <div className={kb.fit ? `flex flex-1 flex-col ${tight ? 'gap-3' : 'gap-4'}` : 'space-y-4'}>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="font-display text-2xl font-bold leading-tight">
-            In <MusicText text={keyName(key)} />
-          </h3>
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="font-display text-2xl font-bold leading-tight">
+              In <MusicText text={keyName(key)} />
+            </h3>
+            {tight && playButton}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <Segmented
               size="sm"
@@ -192,7 +206,8 @@ export function ProgressionWidget({
           </div>
         </div>
 
-        <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-none">
+        {/* Room inside the scroller for the playing chord, which grows and lifts (the margins keep it aligned). */}
+        <div className="-mx-1.5 -mt-2 flex gap-2.5 overflow-x-auto px-1.5 pb-1 pt-2 scrollbar-none">
           {chords.map((c, i) => {
             const on = i === current
             return (
@@ -205,7 +220,7 @@ export function ProgressionWidget({
                 }}
                 animate={{ scale: on ? 1.06 : 1, y: on ? -3 : 0 }}
                 transition={{ type: 'spring', stiffness: 420, damping: 24 }}
-                className={`relative flex min-w-[5.5rem] flex-1 flex-col items-center rounded-2xl border-2 px-3 py-3 ${
+                className={`relative flex min-w-[5.5rem] flex-1 flex-col items-center rounded-2xl border-2 px-3 ${tight ? 'py-2' : 'py-3'} ${
                   on ? 'border-gold bg-gold/15 shadow-[0_0_28px_-6px_rgba(255,200,87,.6)]' : 'border-white/10 bg-night-850'
                 }`}
               >
@@ -225,19 +240,22 @@ export function ProgressionWidget({
           })}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Button size="md" variant={playing ? 'secondary' : 'primary'} icon={playing ? Square : Play} onClick={playing ? stop : start}>
-            {playing ? 'Stop' : 'Play loop'}
-          </Button>
-          <span className="text-sm text-ink-mute">Play along: hold the lit-up chord on your keyboard to tick it off.</span>
-        </div>
+        {!tight && (
+          <div className="flex flex-wrap items-center gap-3">
+            {playButton}
+            <span className="text-sm text-ink-mute">{tip}</span>
+          </div>
+        )}
 
         <div ref={kbRef} className={kb.className} style={kb.style}>
           <Piano from={36} to={84} marks={marks} labels="c" height={kb.piano} middleC={false} />
         </div>
 
         <div>
-          <div className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Same progression, another key</div>
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <span className="text-sm font-extrabold uppercase tracking-wider text-ink-mute">Same progression, another key</span>
+            {tight && <span className="text-sm text-ink-mute">{tip}</span>}
+          </div>
           <div className="flex flex-wrap gap-2">
             {keys.map((k) => {
               const kk = safeKey(k)

@@ -92,7 +92,7 @@ export function VisualBlock({ v, lights = true, fit = false, center = false }: {
     <InStep value={fit}>
       <div className={fit ? `flex flex-1 flex-col gap-5 ${center ? 'justify-center' : ''}` : 'space-y-5'}>
         {v.widget && <WidgetView widget={v.widget} />}
-        {v.staff && <StaffView s={v.staff} sp={fit ? pictureSp(vh) : 20} />}
+        {v.staff && <StaffView s={v.staff} sp={pictureSp(vh, v.staff.clef)} />}
         {v.audio && <AudioButtons clips={v.audio} onPlay={lights && v.keyboard ? demo.show : undefined} />}
         {v.keyboard && <KeyboardView k={v.keyboard} lit={demo.lit} />}
       </div>

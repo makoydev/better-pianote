@@ -245,7 +245,13 @@ export function ChordBuilder({ root = 'C', quality = 'maj' }: { root?: string; q
             )}
           </div>
           <div className="paper flex items-center rounded-2xl px-3 py-2">
-            <Staff clef={midis[0] < 57 ? 'grand' : 'treble'} items={[{ key: `${symbol}-${inv}`, notes: voiced, dur: 'w', chord: symbol }]} sp={tight ? 11 : 16} minSlot={6} />
+            {/* A chord that reaches below middle C needs the grand staff, twice as tall: smaller still on a short screen. */}
+            <Staff
+              clef={midis[0] < 57 ? 'grand' : 'treble'}
+              items={[{ key: `${symbol}-${inv}`, notes: voiced, dur: 'w', chord: symbol }]}
+              sp={tight ? (midis[0] < 57 ? 8 : 11) : 16}
+              minSlot={6}
+            />
           </div>
         </div>
 

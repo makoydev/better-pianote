@@ -1,11 +1,12 @@
 import { Minus, Play, Plus, Square } from 'lucide-react'
 import { LayoutGroup, AnimatePresence, motion } from 'motion/react'
-import { useEffect, useRef, useState, useId } from 'react'
+import { useContext, useEffect, useRef, useState, useId } from 'react'
 import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { useNoteEvents } from '../../lib/input/bus'
 import { Button, IconButton } from '../ui/Button'
 import { Segmented, Slider } from '../ui/controls'
+import { InStep, useShortScreen } from './fit'
 
 /** A metronome you can tap along to: it tells you if each tap was early, late or right on the beat. */
 
@@ -133,9 +134,12 @@ export function MetronomeWidget({ bpm: startBpm = 80, beats: startBeats = 4 }: {
 
   // Scope animated highlights so two copies of this widget don't share them.
   const layoutGroup = useId()
+  // A lesson step on a short screen (a 13" MacBook): smaller gaps and tap pad, so it all fits.
+  const short = useShortScreen()
+  const tight = useContext(InStep) && short
   return (
     <LayoutGroup id={layoutGroup}>
-      <div className="space-y-5">
+      <div className={tight ? 'space-y-3' : 'space-y-5'}>
         <div className="grid items-center gap-5 sm:grid-cols-[auto_1fr]">
           <div className="relative mx-auto flex size-40 items-center justify-center">
             <motion.span
@@ -203,7 +207,7 @@ export function MetronomeWidget({ bpm: startBpm = 80, beats: startBeats = 4 }: {
             else tap(e.timeStamp || performance.now())
           }}
           whileTap={{ scale: 0.97 }}
-          className="relative flex h-32 w-full select-none flex-col items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed border-white/15 bg-night-850 text-center"
+          className={`relative flex w-full select-none flex-col items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed border-white/15 bg-night-850 text-center ${tight ? 'h-24' : 'h-32'}`}
           style={{ touchAction: 'manipulation' }}
         >
           <AnimatePresence mode="popLayout">
