@@ -1,8 +1,19 @@
+import { Check, Mic, Trophy } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { MusicText } from '../../components/MusicText'
 import { type Chord, chordSymbol } from '../../lib/theory'
 import { type Meter, accented, nashville, romanLabel } from './jam'
+import type { Played } from './playAlong'
+
+/** How a pass through the progression went. `timed` is false when the mic heard it (no beat check). */
+export interface LoopScore {
+  loop: number
+  played: number
+  onTime: number
+  total: number
+  timed: boolean
+}
 
 /** Where the band is: the chord (-1 during the count-in), the count within the chord, and the count within the bar. */
 export interface JamPos {
@@ -104,6 +115,48 @@ export function JamStage({
         {children && <div className="min-w-0 flex-1">{children}</div>}
       </div>
     </div>
+  )
+}
+
+/** "✓ On the beat", "✓ 120 ms early": how you came in on the chord you just played. */
+export function Verdict({ played, chord }: { played: Played; chord: Chord | undefined }) {
+  const ms = played.error === null ? null : Math.round(Math.abs(played.error) * 1000)
+  const text = played.timing === null ? 'played' : played.timing === 'on' ? 'on the beat' : `${ms} ms ${played.timing}`
+  const good = played.timing === null || played.timing === 'on'
+  return (
+    <motion.span
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 520, damping: 22 }}
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-extrabold ${good ? 'bg-good/15 text-good' : 'bg-gold/15 text-gold'}`}
+      role="status"
+    >
+      <Check size={16} strokeWidth={3} />
+      {chord && <MusicText text={chordSymbol(chord)} />}
+      <span>{text}</span>
+    </motion.span>
+  )
+}
+
+/** "Loop 2: 7 of 8 chords · 5 on the beat". */
+export function ScorePill({ score, label }: { score: LoopScore; label: string }) {
+  const all = score.played === score.total && (!score.timed || score.onTime === score.total)
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-extrabold ${all ? 'bg-gold/15 text-gold' : 'bg-white/8 text-ink-soft'}`}>
+      {all && <Trophy size={16} />}
+      {label}: {score.played} of {score.total} chords{score.timed ? ` · ${score.onTime} on the beat` : ''}
+    </span>
+  )
+}
+
+/** Until the mic stops ignoring the app's own sound, say why chords may not tick through it. */
+export function MicNote() {
+  return (
+    <p className="flex items-start gap-1.5 text-sm font-semibold text-ink-mute">
+      <Mic size={16} className="mt-0.5 shrink-0 text-violet" />
+      Through the mic, the band’s own sound stops it listening for now, so your chords may not tick off. A USB cable works, or turn the band’s
+      bass, chords and drums off.
+    </p>
   )
 }
 

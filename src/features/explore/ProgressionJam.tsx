@@ -13,6 +13,7 @@ import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { playNotes } from '../../lib/audio/play'
 import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
+import { heldNow, useNoteEvents } from '../../lib/input/bus'
 import { useMicChords } from '../../lib/input/mic'
 import { type Chord, bassFor, chordPcs, chordSymbol, mod, parseNote, pcOf, pitchName, voiceProgression } from '../../lib/theory'
 import { heldMidis, useLive } from '../../state/live'
@@ -46,10 +47,12 @@ import {
   romanLabel,
   sameRomans,
 } from './jam'
+import { MIC_CHORD_DELAY, heardTime } from './heard'
 import { type SavedProgression, findByRomans, freeName, newSavedId, readSaved, removeFrom, saveTo } from './jamLibrary'
 import { JamSettings } from './JamSettings'
-import { type JamPos, JamStage } from './JamStage'
+import { type JamPos, JamStage, type LoopScore, MicNote, ScorePill, Verdict } from './JamStage'
 import { MyProgressions } from './MyProgressions'
+import { ChordJudge, type Played, earlyGrace, neededTones } from './playAlong'
 
 const tonicPc = (name: string) => pcOf(parseNote(name))
 
@@ -104,6 +107,14 @@ export function ProgressionJam() {
   const [sheet, setSheet] = useState(false)
   const [kbArea, { height: kbH }] = useElementSize<HTMLDivElement>()
   const strip = useRef<HTMLDivElement>(null)
+  // Playing along: the chords you've played in this pass (✓), how you came in on the latest, and each pass's score.
+  const judge = useRef(new ChordJudge())
+  const [ticks, setTicks] = useState<{ loop: number; byIndex: Record<number, Played> }>({ loop: 0, byIndex: {} })
+  const [lastPlayed, setLastPlayed] = useState<(Played & { id: number }) | null>(null)
+  const [loopScore, setLoopScore] = useState<LoopScore | null>(null)
+  const timedRun = useRef(true)
+  const usb = useLive((s) => s.midi === 'ready' && s.midiDevices.length > 0)
+  const micOn = useLive((s) => s.mic === 'on')
 
   const preset = PRESETS.find((p) => p.id === presetId) ?? null
   const own = isProgression(ownRomans) ? ownRomans : NO_CHORDS
@@ -123,11 +134,12 @@ export function ProgressionJam() {
   const voicings = useMemo(() => voiceProgression(chords, { center: 64, low: 57, high: 79 }), [chords])
   const basses = useMemo(() => chords.map((c) => bassFor(c, 40)), [chords])
   const pcsList = useMemo(() => chords.map((c) => chordPcs(c)), [chords])
+  const needs = useMemo(() => chords.map((c) => ({ need: neededTones(c, false), needMic: neededTones(c, true) })), [chords])
 
   // The scheduler reads the latest settings on every tick, so changes apply while playing.
-  const live = useRef({ voicings, basses, pcsList, pattern, drums, bassOn, chordsOn, loop, length, bpm, countIn })
+  const live = useRef({ voicings, basses, pcsList, needs, pattern, drums, bassOn, chordsOn, loop, length, bpm, countIn })
   useEffect(() => {
-    live.current = { voicings, basses, pcsList, pattern, drums, bassOn, chordsOn, loop, length, bpm, countIn }
+    live.current = { voicings, basses, pcsList, needs, pattern, drums, bassOn, chordsOn, loop, length, bpm, countIn }
   })
 
   const clock = useRef<Clock | null>(null)
@@ -153,6 +165,14 @@ export function ProgressionJam() {
     const ui = (time: number, fn: () => void) => {
       timers.current = [...timers.current.slice(-40), audio.at(time, fn)]
     }
+    judge.current.reset()
+    timedRun.current = true
+    setTicks({ loop: 0, byIndex: {} })
+    setLastPlayed(null)
+    setLoopScore(null)
+    /** Score a finished pass once the music gets there (notes up to then still count). */
+    const scoreAt = (time: number, loopNo: number) =>
+      ui(time, () => setLoopScore({ loop: loopNo, ...judge.current.score(loopNo), timed: timedRun.current }))
     const c = new Clock({
       interval: () => 60 / live.current.bpm / m.beat,
       onTick: (i, time) => {
@@ -173,11 +193,22 @@ export function ProgressionJam() {
         const chordNo = Math.floor(j / per)
         if (!L.loop && chordNo >= n) {
           clock.current?.stop()
+          scoreAt(time, 0)
           ui(time + tick, stop)
           return
         }
         const ci = chordNo % n
         const t = j % per
+        if (t === 0) {
+          // Each chord as the band plays it, for ticking off yours; a new pass scores the one before.
+          const loopNo = Math.floor(chordNo / n)
+          if (ci === 0 && loopNo > 0) {
+            scoreAt(time, loopNo - 1)
+            ui(time, () => setTicks({ loop: loopNo, byIndex: {} }))
+          }
+          judge.current.setGrace(earlyGrace(60 / L.bpm))
+          judge.current.add({ loop: loopNo, index: ci, start: time, need: L.needs[ci].need, needMic: L.needs[ci].needMic, tones: L.pcsList[ci] })
+        }
         for (const h of patternHits(L.pattern, L.voicings[ci], L.basses[ci], L.pcsList[ci], per)) {
           if (h.tick !== t || !(h.part === 'bass' ? L.bassOn : L.chordsOn)) continue
           playNotes(h.notes, { delay: Math.max(0, time - audio.now), dur: h.dur * tick, vel: h.vel })
@@ -320,6 +351,17 @@ export function ProgressionJam() {
   // Enter, a deliberate pedal tap or the top C starts the band. Never stops it: you pedal while you play.
   useHandsFree(playing || !n || dialog ? null : start)
 
+  // Tick off the chords you play along. The mic hears chords too late to judge the beat, so it only ticks them.
+  useNoteEvents((e) => {
+    if (e.type !== 'on' || !playing) return
+    const mic = e.source === 'mic'
+    const p = judge.current.note(e.midi, heardTime(e.time) - (mic ? MIC_CHORD_DELAY : 0), heldNow(), { mic, timed: !mic })
+    if (!p) return
+    if (mic) timedRun.current = false
+    setTicks((tk) => (tk.loop === p.loop ? { loop: tk.loop, byIndex: { ...tk.byIndex, [p.index]: p } } : tk))
+    setLastPlayed({ ...p, id: e.time })
+  })
+
   const editing = !playing && selected !== null && selected < n ? selected : null
   const keys = cardKeys(romans)
   const cur = pos && pos.chord >= 0 ? pos.chord : Math.min(focus, Math.max(0, n - 1))
@@ -449,28 +491,53 @@ export function ProgressionJam() {
 
           {playing && n > 0 && (
             <>
-              <JamStage chords={chords} romans={romans} pos={pos} cur={cur} next={next} hasNext={hasNext} lastBeat={lastBeat} meter={meter} beats={beats} />
-              <div ref={strip} className="scrollbar-none -mx-1 flex shrink-0 gap-2 overflow-x-auto px-1 py-1">
-                {chords.map((ch, i) => (
-                  <div
-                    key={keys[i]}
-                    data-chord={i}
-                    className={`flex min-w-[4.25rem] shrink-0 flex-col items-center rounded-2xl border px-3 py-1.5 transition-colors ${
-                      i === cur && pos && pos.chord >= 0
-                        ? 'border-gold bg-gold/15 shadow-[0_0_24px_-8px_#ffc857]'
-                        : i === next && lastBeat
-                          ? 'border-white/40 bg-night-700'
-                          : 'border-white/8 bg-night-800/85'
-                    }`}
-                  >
-                    <span className="font-display text-2xl font-bold leading-tight">
-                      <MusicText text={chordSymbol(ch)} />
-                    </span>
-                    <span className="text-xs font-extrabold text-gold">
-                      <MusicText text={romanLabel(romans[i])} />
-                    </span>
+              <JamStage chords={chords} romans={romans} pos={pos} cur={cur} next={next} hasNext={hasNext} lastBeat={lastBeat} meter={meter} beats={beats}>
+                <div className="flex flex-wrap items-center gap-2">
+                  {lastPlayed && <Verdict key={lastPlayed.id} played={lastPlayed} chord={chords[lastPlayed.index]} />}
+                  {loopScore && <ScorePill score={loopScore} label={`Loop ${loopScore.loop + 1}`} />}
+                </div>
+                {micOn && !usb && (
+                  <div className="mt-2">
+                    <MicNote />
                   </div>
-                ))}
+                )}
+              </JamStage>
+              <div ref={strip} className="scrollbar-none -mx-1 flex shrink-0 gap-2 overflow-x-auto px-1 pb-1 pt-2.5">
+                {chords.map((ch, i) => {
+                  const done = ticks.byIndex[i]
+                  return (
+                    <div
+                      key={keys[i]}
+                      data-chord={i}
+                      className={`relative flex min-w-[4.25rem] shrink-0 flex-col items-center rounded-2xl border px-3 py-1.5 transition-colors ${
+                        i === cur && pos && pos.chord >= 0
+                          ? 'border-gold bg-gold/15 shadow-[0_0_24px_-8px_#ffc857]'
+                          : i === next && lastBeat
+                            ? 'border-white/40 bg-night-700'
+                            : 'border-white/8 bg-night-800/85'
+                      }`}
+                    >
+                      {done && (
+                        <motion.span
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className={`absolute -right-1.5 -top-1.5 flex size-6 items-center justify-center rounded-full text-night-900 ${
+                            done.timing === 'early' || done.timing === 'late' ? 'bg-gold' : 'bg-good'
+                          }`}
+                          title={done.timing === null ? 'Played' : done.timing === 'on' ? 'Played on the beat' : `Played, a little ${done.timing}`}
+                        >
+                          <Check size={15} strokeWidth={3} />
+                        </motion.span>
+                      )}
+                      <span className="font-display text-2xl font-bold leading-tight">
+                        <MusicText text={chordSymbol(ch)} />
+                      </span>
+                      <span className="text-xs font-extrabold text-gold">
+                        <MusicText text={romanLabel(romans[i])} />
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             </>
           )}
@@ -615,7 +682,11 @@ export function ProgressionJam() {
               <div className="text-sm font-extrabold text-ink-mute">
                 {lastBeat ? 'Next chord coming up: the outlined keys' : 'Play along: right hand on the lit keys, left hand on the root'}
               </div>
-              <PlayAlong pcs={n ? pcsList[cur] : []} />
+              <div className="flex flex-wrap items-center gap-2">
+                {/* After a run, how the last pass went. */}
+                {!playing && loopScore && <ScorePill score={loopScore} label="Last time" />}
+                <PlayAlong pcs={n ? pcsList[cur] : []} />
+              </div>
             </div>
             <div ref={kbArea} className={playing ? 'flex min-h-0 flex-1 flex-col justify-end-safe' : ''}>
               {/* Names only on the chord's keys, spelled for the chord: you play along by them, so not reading help. */}
