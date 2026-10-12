@@ -66,11 +66,24 @@ export function StepPlayer({ steps, title, icon, color, pedal = true, browse = f
   const canContinue = browse || !needsAnswer(step) || !!solved[i]
   const answered = () => Object.keys(solved).map(Number).filter((k) => solved[k])
 
-  // Remember your place as you go.
+  // Remember your place as you go, and once more when you leave (or the iPad puts the app away), so the time spent
+  // on the last step counts too.
   const report = useEffectEvent(() => {
     if (!done.current) onProgress?.({ step: i, solved: answered(), slips, secs: elapsed(), of: steps.length })
   })
   useEffect(() => report(), [i, solved, slips])
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') report()
+    }
+    window.addEventListener('pagehide', onHide)
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      window.removeEventListener('pagehide', onHide)
+      document.removeEventListener('visibilitychange', onHide)
+      report()
+    }
+  }, [])
 
   const finish = (slipsNow: Record<number, number>) => {
     if (done.current) return

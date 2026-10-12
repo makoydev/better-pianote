@@ -1,4 +1,5 @@
 import { getPref, setPref, usePrefs } from '../../state/prefs'
+import { useProgress } from '../../state/progress'
 
 /**
  * Where you are in an unfinished lesson, so leaving it (or an iPad reload) doesn't send you back to step 1.
@@ -18,6 +19,14 @@ export interface Resume {
 }
 
 const KEY = 'learn:resume'
+
+// Resetting your progress (Settings) forgets where you were in lessons too. Progress otherwise only grows, so
+// finished lessons or XP dropping to none means a reset. (A backup import sets progress before prefs, so the places
+// in the file are kept.)
+useProgress.subscribe((s, prev) => {
+  const lessonsWiped = Object.keys(prev.lessons).length > 0 && Object.keys(s.lessons).length === 0
+  if (lessonsWiped || (prev.xp > 0 && s.xp === 0)) setPref(KEY, {})
+})
 
 const isCount = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0
 

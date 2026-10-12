@@ -116,8 +116,8 @@ export function LessonComplete({
             <ListChecks size={18} /> {mistakes} slip{mistakes === 1 ? '' : 's'} along the way
           </div>
           <ul className="space-y-1 text-sm text-ink-mute">
-            {result.slips.slice(0, 3).map((s) => (
-              <li key={s.label} className="flex justify-between gap-3">
+            {result.slips.slice(0, 3).map((s, k) => (
+              <li key={k} className="flex justify-between gap-3">
                 <span className="min-w-0 truncate">{s.label}</span>
                 <span className="shrink-0 font-bold">×{s.n}</span>
               </li>

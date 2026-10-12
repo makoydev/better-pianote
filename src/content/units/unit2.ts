@@ -412,6 +412,7 @@ You already know one: middle C, one ledger line below the treble staff. **A5** s
         {
           kind: 'play',
           prompt: 'Now a low one. Play this note.',
+          review: 'Play this note.',
           target: { type: 'note', notes: ['E2'] },
           staff: { clef: 'bass', items: [w('E2')], labels: false },
           keyboard: { from: 'C2', to: 'C4', labels: 'c' },

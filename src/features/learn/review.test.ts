@@ -27,7 +27,7 @@ describe('quick review', () => {
     for (const { lesson, step } of steps) {
       const text = step.kind === 'quiz' ? step.question : step.kind === 'play' ? step.prompt : ''
       // "And this one?", "This starts on C too", "Now down: …", "Bar 2 starts…" make no sense on their own.
-      if (/^(And |Now (down|on|[A-G]\b|\d)|Come back|Together,|Bar \d)|starts on [A-G] too/.test(text)) {
+      if (/^(And |Now |Come back|Together,|Bar \d)|starts on [A-G] too/.test(text)) {
         expect(step.kind === 'quiz' || step.kind === 'play' ? step.review : 'n/a', `${lesson.id}: ${text}`).toBeTruthy()
       }
       const r = reviewStep(step)

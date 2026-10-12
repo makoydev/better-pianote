@@ -39,6 +39,7 @@ describe('quizzes you can answer by playing', () => {
 
   it('covers the note and chord quizzes in the lessons', () => {
     const playable = quizzes.filter((q) => q.playable)
+    // The audit counted 19; update this when lessons gain or lose note and chord quizzes.
     expect(playable.map((q) => q.where)).toHaveLength(19)
     expect(find('Which white key sits just to the left of a group of two black keys?').playable?.kind).toBe('note')
     expect(find('What is the second note?').playable?.kind).toBe('note')
@@ -108,6 +109,10 @@ describe('a held chord', () => {
 
   it('forgives a missing 5th through the mic for the right chord only', () => {
     expect(optionForChord(q, m('A3', 'C4'), true)).toBe(0)
+    // …unless the notes heard are just as much a part of a wrong option: C E is C, or Am missing its A.
+    const iv = playableQuiz(['C', 'D', 'Am', 'Em'], 0)!
+    expect(optionForChord(iv, m('C4', 'E4'), true)).toBeNull()
+    expect(optionForChord(iv, m('C4', 'E4', 'G4'), true)).toBe(0)
     // E G heard through the mic could be a lot of things: it doesn't count as Em.
     expect(optionForChord(q, m('E3', 'G3'), true)).toBeNull()
     expect(optionForChord(q, m('E3', 'G3', 'B3'), true)).toBe(1)

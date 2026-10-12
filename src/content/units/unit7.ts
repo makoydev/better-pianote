@@ -71,7 +71,7 @@ Rolling it as 1-5-8-5 gives a flowing, ballad feel. It's the kind of rolling lef
           review: 'Left hand, 1-5-8 on A minor: A – E – A.',
           target: { type: 'sequence', notes: ['A2', 'E3', 'A3'] },
           keyboard: { from: 'A2', to: 'C4', labels: 'all', fingers: { A2: 5, E3: 2, A3: 1 } },
-          hint: 'Same shape, moved down to A: pinky on A, finger 2 on E, thumb on the A above.',
+          hint: 'The same 1-5-8 shape on A: pinky on A, finger 2 on E, thumb on the A above.',
         },
         {
           kind: 'widget',

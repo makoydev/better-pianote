@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest'
 import { setPref } from '../../state/prefs'
+import { useProgress } from '../../state/progress'
 import { isFresh, loadResume, saveResume } from './resume'
 
 const place = { step: 6, solved: [1, 2, 4], slips: { 2: 1 }, secs: 95, of: 9 }
@@ -33,6 +34,15 @@ describe('resuming a lesson', () => {
     })
     for (const id of ['a', 'b', 'c', 'd', 'e', 'missing']) expect(loadResume(id, 9), id).toBeNull()
     setPref('learn:resume', ['not', 'a', 'map'])
+    expect(loadResume('u1-l2', 9)).toBeNull()
+  })
+
+  it('forgets every place when your progress is reset', () => {
+    useProgress.setState({ xp: 40, lessons: { 'u1-l1': { stars: 3, completedAt: 1 } } })
+    saveResume('u1-l2', place)
+    useProgress.getState().addXp(5)
+    expect(loadResume('u1-l2', 9)).toEqual(place)
+    useProgress.getState().resetAll()
     expect(loadResume('u1-l2', 9)).toBeNull()
   })
 

@@ -75,12 +75,19 @@ export function optionsForNote(q: PlayableQuiz, midi: number, mic = false): numb
 
 /**
  * The option a held chord makes, or null. Octaves, order and doublings don't matter; a slash chord needs its bass
- * note lowest. Through the mic the right chord may be missing its perfect 5th (see micHearsChord), but a wrong
- * option has to be heard in full before it counts against you.
+ * note lowest. Through the mic the right chord may be missing its perfect 5th (see micHearsChord), as long as what
+ * was heard isn't just as much a part of another option (C E could be C or Am); a wrong option has to be heard in
+ * full before it counts against you.
  */
 export function optionForChord(q: PlayableQuiz, midis: number[], mic = false): number | null {
-  if (q.kind !== 'chord' || new Set(midis.map((m) => mod(m, 12))).size < 2) return null
-  const fits = (c: Chord, k: number) => (mic && k === q.answer ? micHearsChord(midis, c) : matchChord(midis, c) === 'correct')
+  const heard = new Set(midis.map((m) => mod(m, 12)))
+  if (q.kind !== 'chord' || heard.size < 2) return null
+  const within = (c: Chord) => {
+    const pcs = chordPcs(c)
+    return [...heard].every((p) => pcs.includes(p))
+  }
+  const forgiven = (c: Chord, k: number) => micHearsChord(midis, c) && !q.chords.some((o, j) => j !== k && within(o))
+  const fits = (c: Chord, k: number) => (mic && k === q.answer ? forgiven(c, k) : matchChord(midis, c) === 'correct')
   const hits = q.chords.flatMap((c, k) => (fits(c, k) ? [k] : []))
   // "C/E" is more specific than "C" when both fit.
   return hits.find((k) => q.chords[k].bass) ?? hits[0] ?? null

@@ -109,6 +109,8 @@ export function QuizStepView({
     if (!playable || solved) return
     if (e.type === 'off') {
       stale.current.delete(e.midi)
+      // Letting go of a key can leave the chord you mean held (A C E G → C E G): look again.
+      if (playable.kind === 'chord' && heldNow().filter((m) => !stale.current.has(m)).length >= 3) setChordNote((c) => ({ n: (c?.n ?? 0) + 1, source: e.source }))
       return
     }
     if (playable.kind === 'chord') {

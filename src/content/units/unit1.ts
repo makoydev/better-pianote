@@ -35,6 +35,7 @@ Look at the black keys: they come in **groups of two** and **groups of three**, 
         {
           kind: 'play',
           prompt: 'Now play all three black keys in a group of three.',
+          review: 'Play all three black keys in a group of three.',
           target: { type: 'set', notes: ['F#4', 'G#4', 'A#4'], anyOctave: true },
           keyboard: { from: 'C3', to: 'B4', labels: 'none' },
           hint: 'The group of three comes right after the group of two.',
