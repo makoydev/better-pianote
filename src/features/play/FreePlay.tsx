@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Eraser, Footprints, Layers, Sparkles, Wand2 } from 'lucide-react'
+import { ArrowUpRight, ChevronLeft, ChevronRight, Sparkles, Wand2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
@@ -7,23 +7,25 @@ import { Piano } from '../../components/piano/Piano'
 import { Staff, type StaffItem } from '../../components/staff/Staff'
 import { IconButton } from '../../components/ui/Button'
 import { Paper } from '../../components/ui/Card'
-import { Modal } from '../../components/ui/Modal'
 import { useElementSize } from '../../hooks/useElementSize'
-import { playChord } from '../../lib/audio/play'
+import { Clock } from '../../lib/audio/clock'
+import { audio } from '../../lib/audio/engine'
+import { playChord, playNotes } from '../../lib/audio/play'
 import { noteColor } from '../../lib/colors'
+import { toast } from '../../lib/fx'
 import { heldNow, useNoteEvents } from '../../lib/input/bus'
 import { useMicChords } from '../../lib/input/mic'
 import {
   ALL_MAJOR_KEYS,
   ALL_MINOR_KEYS,
-  CHORD_TYPES,
-  type Chord,
   type DetectedChord,
   INVERSION_NAMES,
   type Key,
   type Note,
+  bassFor,
   chordSymbol,
   chordToRoman,
+  findKey,
   guessKey,
   intervalBetween,
   keyFifths,
@@ -34,25 +36,27 @@ import {
   parseKey,
   pitchName,
   spellInKey,
+  voiceProgression,
 } from '../../lib/theory'
 import { useLive } from '../../state/live'
 import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
+import { openChord, openJamWith } from '../explore/links'
+import { type ChartEntry, addToChart, chartLoop, chartText, collectionGroups, fromEntry, homeKey, inCollection, plainChord, readChart } from './chart'
+import { ChordChart } from './ChordChart'
+import { Collection } from './Collection'
 import { Sounding, nameSounding, withinChord } from './sounding'
-
-interface HistoryItem {
-  id: number
-  chord: Chord
-  symbol: string
-}
 
 const KEY_OPTIONS = [...ALL_MAJOR_KEYS, ...ALL_MINOR_KEYS]
 const KEY_CHOICES = ['auto', 'none', ...KEY_OPTIONS.map(keyId)]
+const NO_CHART: ChartEntry[] = []
 
 /** Narrower than this, all 61 keys come out under ~30px wide: too small to tap. */
 const FULL_KEYBOARD_WIDTH = 1100
 /** Where the two-octave keyboard can start: C2 … C5, so it stays within the CT-S1's C2–C7. */
 const COMPACT_OCTAVES = [2, 3, 4, 5]
+/** Seconds per chord when the chart plays back. */
+const PLAY_ALL_GAP = 1.4
 
 /** A few notes that aren't a chord, in words: "E5", "C + E · Major 3rd", "C D E". */
 function describeNotes(notes: Note[]): string {
@@ -66,16 +70,21 @@ export function FreePlay() {
   const mic = useLive((s) => s.mic)
   const midiKeyboards = useLive((s) => s.midiDevices.length)
   const found = useProgress((s) => s.chordsFound)
+  // Each sound once (older builds saved B♭ and A♯ as two finds).
+  const foundCount = useMemo(() => collectionGroups(found).reduce((n, g) => n + g.chords.length, 0), [found])
   const [octave, setOctave] = usePref('free-play:octave', 3, COMPACT_OCTAVES)
   const [keyChoice, setKeyChoice] = usePref('free-play:key', 'auto', KEY_CHOICES)
-  const [history, setHistory] = useState<HistoryItem[]>([])
+  const [savedChart, setChart] = usePref<ChartEntry[]>('free-play:chart', NO_CHART)
   const [discovered, setDiscovered] = useState<string | null>(null)
   const [showCollection, setShowCollection] = useState(false)
   const [area, { height: areaH, width: areaW }] = useElementSize<HTMLDivElement>()
-  const nextId = useRef(1)
 
   // The mic hears whole chords here (not just single notes).
   useMicChords()
+
+  // The chart of what you've played, kept between visits.
+  const chart = readChart(savedChart)
+  const chords = chart.map(fromEntry)
 
   // What's sounding: held keys, plus notes ringing under the pedal or played as a broken chord.
   const [tracker] = useState(() => {
@@ -111,7 +120,7 @@ export function FreePlay() {
     return () => window.clearTimeout(id)
   }, [sound, tracker, look])
 
-  const guessed = useMemo(() => guessKey(history.slice(-8).map((h) => h.chord)), [history])
+  const guessed = useMemo(() => guessKey(readChart(savedChart).map(fromEntry).slice(-8)), [savedChart])
   const key: Key | null = keyChoice === 'none' ? null : keyChoice === 'auto' ? guessed : parseKey(keyChoice)
   const prefer = key ? (keyFifths(key) < 0 ? 'flat' : keyFifths(key) > 0 ? 'sharp' : undefined) : undefined
 
@@ -124,17 +133,23 @@ export function FreePlay() {
   // Remembered as you play (React's "information from previous renders" pattern, no effect needed).
   if (current && current.symbol !== last?.symbol) setLast(current)
 
-  // Once a chord has been held steadily for a moment, add it to the history (and the collection).
+  // Once a chord has been held steadily for a moment, add it to the chart (and the collection, by sound).
+  const [undo, setUndo] = useState<ChartEntry[] | null>(null)
   const realSymbol = real?.symbol ?? null
   const commitChord = useEffectEvent(() => {
     if (!real) return
-    setHistory((h) => (h[h.length - 1]?.symbol === real.symbol ? h : [...h.slice(-23), { id: nextId.current++, chord: real.chord, symbol: real.symbol }]))
-    const base = chordSymbol({ ...real.chord, bass: undefined })
+    const next = addToChart(chart, real.chord)
+    if (next !== chart) {
+      setChart(next)
+      setUndo(null)
+    }
     const p = useProgress.getState()
-    if (p.findChord(base)) {
+    if (inCollection(p.chordsFound, real.chord)) return
+    const name = chordSymbol(plainChord(real.chord))
+    if (p.findChord(name)) {
       p.addXp(5)
-      setDiscovered(base)
-      window.setTimeout(() => setDiscovered((d) => (d === base ? null : d)), 2600)
+      setDiscovered(name)
+      window.setTimeout(() => setDiscovered((d) => (d === name ? null : d)), 2600)
     }
   })
   useEffect(() => {
@@ -142,6 +157,71 @@ export function FreePlay() {
     const id = window.setTimeout(commitChord, 260)
     return () => window.clearTimeout(id)
   }, [realSymbol])
+
+  // Play the chart back in time.
+  const clock = useRef<Clock | null>(null)
+  const timers = useRef<number[]>([])
+  const [playingAt, setPlayingAt] = useState<number | null>(null)
+  const stopPlayback = useCallback(() => {
+    clock.current?.stop()
+    clock.current = null
+    timers.current.forEach((t) => window.clearTimeout(t))
+    timers.current = []
+    setPlayingAt(null)
+  }, [])
+  useEffect(() => stopPlayback, [stopPlayback])
+  const playAll = () => {
+    stopPlayback()
+    if (!chords.length) return
+    const list = chords
+    const voicings = voiceProgression(list, { center: 64, low: 57, high: 79 })
+    const basses = list.map((c) => bassFor(c, 40))
+    const c = new Clock({
+      interval: () => PLAY_ALL_GAP,
+      onTick: (i, time) => {
+        const at = (fn: () => void) => timers.current.push(audio.at(time, fn))
+        if (i >= list.length) {
+          c.stop()
+          at(() => setPlayingAt(null))
+          return
+        }
+        playNotes([basses[i], ...voicings[i]], { delay: Math.max(0, time - audio.now), dur: PLAY_ALL_GAP * 0.95, strum: 0.02 })
+        at(() => setPlayingAt(i))
+      },
+    })
+    clock.current = c
+    c.start(0.1)
+  }
+
+  const [selected, setSelected] = useState<number | null>(null)
+  const [copied, setCopied] = useState(false)
+  const copyChart = async () => {
+    try {
+      await navigator.clipboard.writeText(chartText(chords, key))
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast({ kind: 'info', title: 'Couldn’t copy the chart', detail: 'The browser said no. Tap the page and try again.' })
+    }
+  }
+  const loopInJam = () => {
+    if (!chords.length) return
+    const loop = chartLoop(chords)
+    stopPlayback()
+    // In the key you're in; failing that, the key the loop sounds like, or its first chord's.
+    openJamWith(loop, key ?? findKey([], loop)?.key ?? homeKey(loop[0]) ?? { tonic: loop[0].root, mode: 'major' })
+  }
+  const removeChord = (id: number) => {
+    setUndo(chart)
+    setChart(chart.filter((e) => e.id !== id))
+    setSelected(null)
+  }
+  const clearChart = () => {
+    stopPlayback()
+    setUndo(chart)
+    setChart([])
+    setSelected(null)
+  }
 
   // What the big name shows: the chord you're playing, else the last one (dimmed), else the notes.
   const head = current ?? last
@@ -182,7 +262,11 @@ export function FreePlay() {
       <TopBar back="/" title="Free Play" subtitle="Play anything. See what it is.">
         <select
           value={keyChoice}
-          onChange={(e) => setKeyChoice(e.target.value)}
+          onChange={(e) => {
+            setKeyChoice(e.target.value)
+            // Letters play notes here, so don't leave them choosing keys in the list.
+            e.target.blur()
+          }}
           aria-label="Key"
           className="hidden h-11 rounded-full border border-white/10 bg-night-750 px-4 text-sm font-extrabold text-ink-soft sm:block"
         >
@@ -199,7 +283,12 @@ export function FreePlay() {
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-3 pt-4 sm:px-6">
         <div className="grid shrink-0 gap-4 lg:grid-cols-[1.1fr_1fr]">
           {/* What you're playing */}
-          <div className="glass relative flex min-h-52 flex-col items-center justify-center overflow-hidden rounded-[2rem] p-5 pb-10 text-center">
+          <div className="glass relative flex min-h-52 flex-col items-center justify-center overflow-hidden rounded-[2rem] p-5 pb-12 text-center">
+            {keyChoice === 'auto' && guessed && (
+              <span className="absolute left-4 top-4 inline-flex gap-1 rounded-full bg-violet/15 px-3 py-1.5 text-sm font-extrabold text-[#c9c0ff]">
+                Sounds like <MusicText text={keyName(guessed)} />
+              </span>
+            )}
             <AnimatePresence mode="popLayout">
               {headline ? (
                 <motion.div
@@ -218,14 +307,25 @@ export function FreePlay() {
                   <div className={`mt-3 text-xl font-bold first-letter:uppercase ${now ? 'text-ink' : 'text-ink-soft'} ${dim && !now ? 'opacity-60' : ''}`}>
                     <MusicText text={now || sub} />
                   </div>
-                  {roman && (
-                    <div
-                      className={`mt-3 inline-flex items-center gap-2 rounded-full bg-violet/15 px-4 py-1.5 font-display text-2xl font-bold text-[#c9c0ff] transition-opacity ${dim ? 'opacity-60' : ''}`}
-                    >
-                      <MusicText text={roman} />
-                      <span className="font-sans text-sm font-bold text-ink-mute">
-                        in <MusicText text={keyName(key!)} />
-                      </span>
+                  {head && (
+                    <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                      {roman && (
+                        <span
+                          className={`inline-flex items-center gap-2 rounded-full bg-violet/15 px-4 py-1 font-display text-2xl font-bold text-[#c9c0ff] transition-opacity ${dim ? 'opacity-60' : ''}`}
+                        >
+                          <MusicText text={roman} />
+                          <span className="font-sans text-sm font-bold text-ink-mute">
+                            in <MusicText text={keyName(key!)} />
+                          </span>
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => openChord(head.chord, Math.max(0, head.inversion))}
+                        className="flex min-h-11 items-center gap-1.5 rounded-full bg-white/6 px-4 text-sm font-extrabold text-ink-soft transition-colors hover:bg-white/10 hover:text-ink"
+                      >
+                        Explore it <ArrowUpRight size={16} />
+                      </button>
                     </div>
                   )}
                 </motion.div>
@@ -245,7 +345,7 @@ export function FreePlay() {
                   initial={{ y: -40, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   exit={{ y: -20, opacity: 0 }}
-                  className="absolute left-1/2 top-4 flex -translate-x-1/2 items-center gap-2 rounded-full bg-linear-to-r from-gold to-coral px-4 py-2 text-sm font-extrabold text-night-900 shadow-lg"
+                  className="absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-linear-to-r from-gold to-coral px-4 py-2 text-sm font-extrabold text-night-900 shadow-lg"
                 >
                   <Wand2 size={18} /> New chord discovered: <MusicText text={discovered} /> · +5 XP
                 </motion.div>
@@ -262,52 +362,34 @@ export function FreePlay() {
           </Paper>
         </div>
 
-        {/* Progression history */}
-        <div className="flex shrink-0 items-center gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto py-1 scrollbar-none">
-            <span className="shrink-0 text-sm font-extrabold uppercase tracking-widest text-ink-mute">You played</span>
-            {history.length === 0 && <span className="text-sm text-ink-mute">Chords you hold will line up here, like a chord chart.</span>}
-            <AnimatePresence initial={false}>
-              {history.map((h) => (
-                <motion.button
-                  key={h.id}
-                  layout
-                  initial={{ scale: 0.5, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  type="button"
-                  onClick={() => playChord(h.chord)}
-                  className="flex shrink-0 flex-col items-center rounded-xl border border-white/10 bg-night-750 px-3 py-1.5 hover:border-gold/50"
-                >
-                  <span className="font-display text-xl font-bold leading-tight">
-                    <MusicText text={h.symbol} />
-                  </span>
-                  {key && (
-                    <span className="text-xs font-bold text-[#c9c0ff]">
-                      <MusicText text={chordToRoman(h.chord, key)} />
-                    </span>
-                  )}
-                </motion.button>
-              ))}
-            </AnimatePresence>
-          </div>
-          {keyChoice === 'auto' && guessed && (
-            <span className="hidden shrink-0 gap-1 rounded-full bg-violet/15 px-3 py-1.5 text-sm font-extrabold text-[#c9c0ff] md:inline-flex">
-              Sounds like <MusicText text={keyName(guessed)} />
-            </span>
-          )}
-          {history.length > 0 && (
-            <button type="button" onClick={() => setHistory([])} className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-bold text-ink-mute hover:bg-white/5 hover:text-ink">
-              <Eraser size={16} /> Clear
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setShowCollection(true)}
-            className="flex shrink-0 items-center gap-1.5 rounded-full bg-white/6 px-3 py-1.5 text-sm font-extrabold text-ink-soft hover:bg-white/10"
-          >
-            <Layers size={16} /> {found.length} found
-          </button>
-        </div>
+        <ChordChart
+          entries={chart}
+          chords={chords}
+          keyOf={key}
+          selected={selected}
+          playingAt={playingAt}
+          copied={copied}
+          found={foundCount}
+          onTap={(i) => {
+            playChord(chords[i])
+            setSelected((s) => (s === chart[i].id ? null : chart[i].id))
+          }}
+          onRemove={removeChord}
+          onPlayAll={playAll}
+          onStop={stopPlayback}
+          onCopy={() => void copyChart()}
+          onJam={loopInJam}
+          onClear={clearChart}
+          onUndo={
+            undo
+              ? () => {
+                  setChart(undo)
+                  setUndo(null)
+                }
+              : null
+          }
+          onCollection={() => setShowCollection(true)}
+        />
 
         <div ref={area} className="flex min-h-[200px] flex-1 flex-col justify-end">
           {/* Octave buttons for the two-octave keyboard, drawn over the light trails that rise behind them. */}
@@ -340,40 +422,5 @@ export function FreePlay() {
 
       <Collection open={showCollection} onClose={() => setShowCollection(false)} found={found} />
     </div>
-  )
-}
-
-function Collection({ open, onClose, found }: { open: boolean; onClose: () => void; found: string[] }) {
-  // Group what you've found by chord type, using the symbol suffix.
-  const groups = CHORD_TYPES.map((t) => ({
-    type: t,
-    chords: found.filter((s) => {
-      const suffix = s.replace(/^[A-G](♯|♭)?/, '')
-      return suffix === t.suffix
-    }),
-  })).filter((g) => g.chords.length)
-  return (
-    <Modal open={open} onClose={onClose} title={`Your chord collection (${found.length})`} wide>
-      {found.length === 0 ? (
-        <p className="text-ink-soft">Every new chord you play in Free Play gets added here. Hold three or more notes to discover your first one!</p>
-      ) : (
-        <div className="space-y-4">
-          {groups.map((g) => (
-            <div key={g.type.id}>
-              <div className="mb-2 flex items-center gap-2 text-sm font-extrabold uppercase tracking-widest text-ink-mute">
-                <Footprints size={14} /> {g.type.name}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {g.chords.map((c) => (
-                  <span key={c} className="rounded-xl border border-white/10 bg-night-750 px-3 py-1.5 font-display text-lg font-bold">
-                    <MusicText text={c} />
-                  </span>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </Modal>
   )
 }
