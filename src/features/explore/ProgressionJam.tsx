@@ -744,7 +744,7 @@ function PresetChip({ name, romans, active, onClick }: { name: string; romans: s
         active ? 'border-gold bg-gold text-night-900' : 'border-white/10 bg-night-750 text-ink-soft hover:border-white/25 hover:text-ink'
       }`}
     >
-      <span className="block text-base font-extrabold leading-tight">{name}</span>
+      <MusicText text={name} className="block text-base font-extrabold leading-tight" />
       <span className={`block text-xs font-bold ${active ? 'text-night-700' : 'text-ink-mute'}`}>
         <MusicText text={romans.slice(0, 4).map(romanLabel).join('–') + (romans.length > 4 ? '…' : '')} />
       </span>

@@ -114,12 +114,12 @@ function SaveAndLoad({
           <AnimatePresence mode="wait">
             {savedAs !== null ? (
               <motion.p key="saved" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="mt-2 flex items-center gap-1.5 font-extrabold text-good" role="status">
-                <Check size={18} /> Saved as “{savedAs}”.
+                <Check size={18} /> <MusicText text={`Saved as “${savedAs}”.`} />
               </motion.p>
             ) : (
               clash && (
                 <motion.p key="clash" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-sm font-bold text-gold">
-                  You already have “{clash.name}”: saving replaces it.
+                  <MusicText text={`You already have “${clash.name}”: saving replaces it.`} />
                 </motion.p>
               )
             )}
@@ -140,7 +140,7 @@ function SaveAndLoad({
                 onClick={() => onLoad(p)}
                 className="min-h-16 min-w-0 flex-1 rounded-2xl border border-white/10 bg-night-750 px-4 py-2.5 text-left transition-colors hover:border-gold/50"
               >
-                <span className="block truncate text-lg font-extrabold">{p.name}</span>
+                <MusicText text={p.name} className="block truncate text-lg font-extrabold" />
                 <span className="block text-sm font-semibold text-ink-mute">
                   <MusicText text={summary(p)} />
                 </span>

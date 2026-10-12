@@ -149,13 +149,13 @@ export function ScorePill({ score, label }: { score: LoopScore; label: string })
   )
 }
 
-/** Until the mic stops ignoring the app's own sound, say why chords may not tick through it. */
+/** The mic hears the band too (playing your very notes), so say why chords may not tick through it. */
 export function MicNote() {
   return (
     <p className="flex items-start gap-1.5 text-sm font-semibold text-ink-mute">
       <Mic size={16} className="mt-0.5 shrink-0 text-violet" />
-      Through the mic, the band’s own sound stops it listening for now, so your chords may not tick off. A USB cable works, or turn the band’s
-      bass, chords and drums off.
+      Through the mic, the band’s own sound gets in the way of hearing you, so your chords may not tick off. A USB cable works, or turn the
+      band’s bass, chords and drums off.
     </p>
   )
 }
