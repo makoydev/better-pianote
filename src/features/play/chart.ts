@@ -5,6 +5,7 @@ import {
   type ChordType,
   type Key,
   type Note,
+  type PlayedNote,
   chordQuality,
   chordSymbol,
   chordToRoman,
@@ -128,4 +129,16 @@ export function homeKey(chord: Chord): Key | null {
   const q = chordQuality(chord.type)
   if (q === 'dim' || q === 'aug') return null
   return { tonic: { ...chord.root, oct: 4 }, mode: q === 'minor' ? 'minor' : 'major' }
+}
+
+export interface NoteSpan {
+  midi: number
+  /** performance.now() times in ms; `off` is null while the key is down. */
+  on: number
+  off: number | null
+}
+
+/** Recent notes for key finding, weighted by how long they sounded (a fifth of a second up to two seconds). */
+export function noteWeights(notes: NoteSpan[], now: number): PlayedNote[] {
+  return notes.map((n) => ({ midi: n.midi, weight: Math.min(2, Math.max(0.2, ((n.off ?? now) - n.on) / 1000)) }))
 }

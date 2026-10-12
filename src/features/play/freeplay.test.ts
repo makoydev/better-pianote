@@ -10,6 +10,7 @@ import {
   fromEntry,
   homeKey,
   inCollection,
+  noteWeights,
   readChart,
   toEntry,
 } from './chart'
@@ -98,5 +99,17 @@ describe('free play helpers', () => {
     expect(home('Dsus4')).toBe('D major')
     expect(home('Bdim')).toBeNull()
     expect(home('Caug')).toBeNull()
+  })
+
+  it('weighs notes by how long they sounded', () => {
+    const w = noteWeights(
+      [
+        { midi: 60, on: 0, off: 50 },
+        { midi: 64, on: 0, off: 1000 },
+        { midi: 67, on: 0, off: null },
+      ],
+      5000,
+    )
+    expect(w.map((n) => n.weight)).toEqual([0.2, 1, 2])
   })
 })

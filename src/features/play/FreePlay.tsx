@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
-import { Piano } from '../../components/piano/Piano'
+import { type KeyMark, Piano } from '../../components/piano/Piano'
 import { Staff, type StaffItem } from '../../components/staff/Staff'
 import { IconButton } from '../../components/ui/Button'
 import { Paper } from '../../components/ui/Card'
@@ -21,19 +21,23 @@ import {
   type DetectedChord,
   INVERSION_NAMES,
   type Key,
+  type KeyFound,
   type Note,
   bassFor,
   chordSymbol,
   chordToRoman,
   findKey,
-  guessKey,
   intervalBetween,
   keyFifths,
   keyId,
   keyName,
+  keyScale,
   midiOf,
+  mod,
+  nextChords,
   noteName,
   parseKey,
+  pcOf,
   pitchName,
   spellInKey,
   voiceProgression,
@@ -41,10 +45,26 @@ import {
 import { useLive } from '../../state/live'
 import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
+import { guitarVoicings } from '../explore/guitar'
+import { GuitarDiagram } from '../explore/GuitarDiagram'
 import { openChord, openJamWith } from '../explore/links'
-import { type ChartEntry, addToChart, chartLoop, chartText, collectionGroups, fromEntry, homeKey, inCollection, plainChord, readChart } from './chart'
 import { ChordChart } from './ChordChart'
 import { Collection } from './Collection'
+import {
+  type ChartEntry,
+  type NoteSpan,
+  addToChart,
+  chartLoop,
+  chartText,
+  collectionGroups,
+  fromEntry,
+  homeKey,
+  inCollection,
+  noteWeights,
+  plainChord,
+  readChart,
+} from './chart'
+import { KeyBar } from './KeyBar'
 import { Sounding, nameSounding, withinChord } from './sounding'
 
 const KEY_OPTIONS = [...ALL_MAJOR_KEYS, ...ALL_MINOR_KEYS]
@@ -55,6 +75,9 @@ const NO_CHART: ChartEntry[] = []
 const FULL_KEYBOARD_WIDTH = 1100
 /** Where the two-octave keyboard can start: C2 … C5, so it stays within the CT-S1's C2–C7. */
 const COMPACT_OCTAVES = [2, 3, 4, 5]
+/** Notes remembered for finding the key: the last 64, from the last minute and a half. */
+const KEY_NOTES = 64
+const KEY_MEMORY_MS = 90_000
 /** Seconds per chord when the chart plays back. */
 const PLAY_ALL_GAP = 1.4
 
@@ -75,6 +98,8 @@ export function FreePlay() {
   const [octave, setOctave] = usePref('free-play:octave', 3, COMPACT_OCTAVES)
   const [keyChoice, setKeyChoice] = usePref('free-play:key', 'auto', KEY_CHOICES)
   const [savedChart, setChart] = usePref<ChartEntry[]>('free-play:chart', NO_CHART)
+  const [showKey, setShowKey] = usePref('free-play:show-key', false)
+  const [guitar, setGuitar] = usePref('free-play:guitar', false)
   const [discovered, setDiscovered] = useState<string | null>(null)
   const [showCollection, setShowCollection] = useState(false)
   const [area, { height: areaH, width: areaW }] = useElementSize<HTMLDivElement>()
@@ -82,7 +107,6 @@ export function FreePlay() {
   // The mic hears whole chords here (not just single notes).
   useMicChords()
 
-  // The chart of what you've played, kept between visits.
   const chart = readChart(savedChart)
   const chords = chart.map(fromEntry)
 
@@ -96,9 +120,28 @@ export function FreePlay() {
   })
   const [sound, setSound] = useState(() => ({ all: tracker.notes(performance.now()), held: tracker.heldNotes() }))
   const look = useCallback(() => setSound({ all: tracker.notes(performance.now()), held: tracker.heldNotes() }), [tracker])
+
+  // The key you're in, found from recent notes (and how long each sounded) plus the chart's last chords.
+  const spans = useRef<NoteSpan[]>([])
+  const [heard, setHeard] = useState<KeyFound | null>(null)
+  const listen = (chartNow: ChartEntry[]) =>
+    setHeard((prev) => findKey(noteWeights(spans.current, performance.now()), chartNow.map(fromEntry).slice(-12), prev?.key ?? null))
+  const changeChart = (next: ChartEntry[]) => {
+    setChart(next)
+    listen(next)
+  }
+
   useNoteEvents((e) => {
-    if (e.type === 'on') tracker.noteOn(e.midi, e.time)
-    else tracker.noteOff(e.midi, e.time)
+    if (e.type === 'on') {
+      tracker.noteOn(e.midi, e.time)
+      const keep = spans.current.filter((n) => e.time - n.on < KEY_MEMORY_MS).slice(-(KEY_NOTES - 1))
+      spans.current = [...keep, { midi: e.midi, on: e.time, off: null }]
+    } else {
+      tracker.noteOff(e.midi, e.time)
+      const open = spans.current.findLast((n) => n.midi === e.midi && n.off === null)
+      if (open) open.off = e.time
+      listen(chart)
+    }
     look()
   })
   // The pedal, straight from the input store: lifting it stops what was ringing.
@@ -120,8 +163,8 @@ export function FreePlay() {
     return () => window.clearTimeout(id)
   }, [sound, tracker, look])
 
-  const guessed = useMemo(() => guessKey(readChart(savedChart).map(fromEntry).slice(-8)), [savedChart])
-  const key: Key | null = keyChoice === 'none' ? null : keyChoice === 'auto' ? guessed : parseKey(keyChoice)
+  // The key: the one heard, unless you've locked one (or chosen none).
+  const key: Key | null = keyChoice === 'none' ? null : keyChoice === 'auto' ? (heard?.key ?? null) : parseKey(keyChoice)
   const prefer = key ? (keyFifths(key) < 0 ? 'flat' : keyFifths(key) > 0 ? 'sharp' : undefined) : undefined
 
   // Name it. A partial arpeggio of the last chord (or its bass struck again) is still that chord; once you let
@@ -140,7 +183,7 @@ export function FreePlay() {
     if (!real) return
     const next = addToChart(chart, real.chord)
     if (next !== chart) {
-      setChart(next)
+      changeChart(next)
       setUndo(null)
     }
     const p = useProgress.getState()
@@ -213,13 +256,13 @@ export function FreePlay() {
   }
   const removeChord = (id: number) => {
     setUndo(chart)
-    setChart(chart.filter((e) => e.id !== id))
+    changeChart(chart.filter((e) => e.id !== id))
     setSelected(null)
   }
   const clearChart = () => {
     stopPlayback()
     setUndo(chart)
-    setChart([])
+    changeChart([])
     setSelected(null)
   }
 
@@ -247,6 +290,10 @@ export function FreePlay() {
     sub = 'Not a standard chord name. Try moving one note.'
   }
   const roman = head && key ? chordToRoman(head.chord, key) : null
+  const voicing = guitar && head ? guitarVoicings(head.chord)[0] : null
+  // Without a key, suggest as if the chord were home.
+  const nextKey = key ?? (head ? homeKey(head.chord) : null)
+  const suggestions = head && nextKey ? nextChords(head.chord, nextKey) : []
 
   const staffNotes = spelledNow.length ? spelledNow : (last?.notes ?? [])
   const staffItems: StaffItem[] = staffNotes.length ? [{ key: 'now', notes: staffNotes.map((n) => noteName(n)), dur: 'w' }] : [{ key: 'empty', dur: 'w', hidden: true }]
@@ -255,7 +302,15 @@ export function FreePlay() {
   // keys on an iPad) two big octaves that ◀ ▶ move along. Phones always get the two octaves.
   const compact = areaW > 0 && (areaW < 640 || (midiKeyboards === 0 && areaW < FULL_KEYBOARD_WIDTH))
   const from = compact ? (octave + 1) * 12 : 36
+  const to = compact ? from + 24 : 96
   const pianoH = Math.round(compact ? Math.max(120, Math.min(240, areaH - 100)) : Math.max(120, Math.min(200, areaH - 40)))
+
+  // "Show key": a dot on every note of the key, named the way the key spells it.
+  const marks: Record<number, KeyMark> = {}
+  if (showKey && key) {
+    const pcs = new Set(keyScale(key).map(pcOf))
+    for (let m = from; m <= to; m++) if (pcs.has(mod(m, 12))) marks[m] = { kind: 'scale', label: pitchName(spellInKey(m, key)) }
+  }
 
   return (
     <div className="flex h-dvh flex-col">
@@ -283,82 +338,123 @@ export function FreePlay() {
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-3 pt-4 sm:px-6">
         <div className="grid shrink-0 gap-4 lg:grid-cols-[1.1fr_1fr]">
           {/* What you're playing */}
-          <div className="glass relative flex min-h-52 flex-col items-center justify-center overflow-hidden rounded-[2rem] p-5 pb-12 text-center">
-            {keyChoice === 'auto' && guessed && (
-              <span className="absolute left-4 top-4 inline-flex gap-1 rounded-full bg-violet/15 px-3 py-1.5 text-sm font-extrabold text-[#c9c0ff]">
-                Sounds like <MusicText text={keyName(guessed)} />
-              </span>
-            )}
-            <AnimatePresence mode="popLayout">
-              {headline ? (
-                <motion.div
-                  key={headline}
-                  initial={{ scale: 0.85, opacity: 0, y: 8 }}
-                  animate={{ scale: 1, opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 1.05 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                >
-                  <div
-                    className={`font-display text-6xl font-bold leading-none transition-opacity duration-300 sm:text-7xl [@media(min-height:820px)]:sm:text-8xl ${dim ? 'opacity-50' : ''}`}
-                    style={{ color: head ? '#f7f3ea' : spelledNow[0] ? noteColor(sound.all[0]) : undefined, textShadow: head && !dim ? '0 0 40px rgba(255,200,87,.35)' : undefined }}
+          <div className="glass relative flex flex-col gap-2 overflow-hidden rounded-[2rem] p-4">
+            <KeyBar
+              choice={keyChoice}
+              found={heard}
+              keyOf={key}
+              onLock={(k) => setKeyChoice(keyId(k))}
+              onAuto={() => setKeyChoice('auto')}
+              showKey={showKey}
+              onShowKey={setShowKey}
+              guitar={guitar}
+              onGuitar={setGuitar}
+            />
+            <div className="flex min-h-40 flex-1 items-center justify-center gap-5 text-center">
+              <AnimatePresence mode="popLayout">
+                {headline ? (
+                  <motion.div
+                    key={headline}
+                    initial={{ scale: 0.85, opacity: 0, y: 8 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 1.05 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                    className="min-w-0"
                   >
-                    <MusicText text={headline} />
-                  </div>
-                  <div className={`mt-3 text-xl font-bold first-letter:uppercase ${now ? 'text-ink' : 'text-ink-soft'} ${dim && !now ? 'opacity-60' : ''}`}>
-                    <MusicText text={now || sub} />
-                  </div>
-                  {head && (
-                    <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                      {roman && (
-                        <span
-                          className={`inline-flex items-center gap-2 rounded-full bg-violet/15 px-4 py-1 font-display text-2xl font-bold text-[#c9c0ff] transition-opacity ${dim ? 'opacity-60' : ''}`}
-                        >
-                          <MusicText text={roman} />
-                          <span className="font-sans text-sm font-bold text-ink-mute">
-                            in <MusicText text={keyName(key!)} />
-                          </span>
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => openChord(head.chord, Math.max(0, head.inversion))}
-                        className="flex min-h-11 items-center gap-1.5 rounded-full bg-white/6 px-4 text-sm font-extrabold text-ink-soft transition-colors hover:bg-white/10 hover:text-ink"
-                      >
-                        Explore it <ArrowUpRight size={16} />
-                      </button>
+                    <div
+                      className={`font-display text-5xl font-bold leading-none transition-opacity duration-300 sm:text-6xl [@media(min-height:900px)]:sm:text-7xl ${dim ? 'opacity-50' : ''}`}
+                      style={{ color: head ? '#f7f3ea' : spelledNow[0] ? noteColor(sound.all[0]) : undefined, textShadow: head && !dim ? '0 0 40px rgba(255,200,87,.35)' : undefined }}
+                    >
+                      <MusicText text={headline} />
                     </div>
-                  )}
-                </motion.div>
-              ) : (
-                <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="max-w-md">
-                  <Sparkles className="mx-auto mb-3 text-gold" size={40} />
-                  <div className="font-display text-4xl font-bold">Play anything</div>
-                  <p className="mt-2 text-lg text-ink-soft">
-                    A chord you know, a song you play by ear, a random cluster. This shows its name and how it’s written, live.
-                  </p>
-                </motion.div>
+                    <div className={`mt-2 text-lg font-bold first-letter:uppercase ${now ? 'text-ink' : 'text-ink-soft'} ${dim && !now ? 'opacity-60' : ''}`}>
+                      <MusicText text={now || sub} />
+                    </div>
+                    {head && (
+                      <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                        {roman && (
+                          <span
+                            className={`inline-flex items-center gap-2 rounded-full bg-violet/15 px-4 py-1 font-display text-2xl font-bold text-[#c9c0ff] transition-opacity ${dim ? 'opacity-60' : ''}`}
+                          >
+                            <MusicText text={roman} />
+                            <span className="font-sans text-sm font-bold text-ink-mute">
+                              in <MusicText text={keyName(key!)} />
+                            </span>
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => openChord(head.chord, Math.max(0, head.inversion))}
+                          className="flex min-h-11 items-center gap-1.5 rounded-full bg-white/6 px-4 text-sm font-extrabold text-ink-soft transition-colors hover:bg-white/10 hover:text-ink"
+                        >
+                          Explore it <ArrowUpRight size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="max-w-md">
+                    <Sparkles className="mx-auto mb-2 text-gold" size={36} />
+                    <div className="font-display text-4xl font-bold">Play anything</div>
+                    <p className="mt-2 text-base text-ink-soft">
+                      A chord you know, a song you play by ear, a random cluster. This shows its name and how it’s written, live.
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              {voicing && (
+                <div className={`shrink-0 transition-opacity ${dim ? 'opacity-50' : ''}`} title="On guitar">
+                  <GuitarDiagram voicing={voicing} size={92} />
+                </div>
               )}
-            </AnimatePresence>
+            </div>
+            <div className="flex min-h-11 flex-wrap items-center gap-2">
+              {suggestions.length > 0 && (
+                <>
+                  <span className="text-xs font-extrabold uppercase tracking-widest text-ink-mute">
+                    Try next{!key && nextKey ? ' (if it’s home)' : ''}
+                  </span>
+                  {suggestions.map((s) => (
+                    <motion.button
+                      key={s.roman}
+                      type="button"
+                      whileTap={{ scale: 0.94 }}
+                      onClick={() => playChord(s.chord)}
+                      aria-label={`Try ${chordSymbol(s.chord)}, ${s.roman}: play it`}
+                      className="flex min-h-11 items-center gap-1.5 rounded-xl border border-white/10 bg-night-750 px-3 transition-colors hover:border-gold/50"
+                    >
+                      <span className="font-display text-lg font-bold">
+                        <MusicText text={chordSymbol(s.chord)} />
+                      </span>
+                      <span className="text-xs font-bold text-[#c9c0ff]">
+                        <MusicText text={s.roman} />
+                      </span>
+                    </motion.button>
+                  ))}
+                </>
+              )}
+              <span className="flex-1" />
+              <span className={`rounded-full px-3 py-1 text-sm font-bold transition-colors ${sustain ? 'bg-teal/20 text-teal' : 'bg-white/5 text-ink-mute'}`}>
+                Pedal {sustain ? 'down' : 'up'}
+              </span>
+            </div>
             <AnimatePresence>
               {discovered && (
                 <motion.div
                   initial={{ y: -40, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   exit={{ y: -20, opacity: 0 }}
-                  className="absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-linear-to-r from-gold to-coral px-4 py-2 text-sm font-extrabold text-night-900 shadow-lg"
+                  className="absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-linear-to-r from-gold to-coral px-4 py-2 text-sm font-extrabold text-night-900 shadow-lg"
                 >
                   <Wand2 size={18} /> New chord discovered: <MusicText text={discovered} /> · +5 XP
                 </motion.div>
               )}
             </AnimatePresence>
-            <div className="absolute bottom-4 right-5 flex items-center gap-2 text-sm font-bold">
-              <span className={`rounded-full px-3 py-1 transition-colors ${sustain ? 'bg-teal/20 text-teal' : 'bg-white/5 text-ink-mute'}`}>Pedal {sustain ? 'down' : 'up'}</span>
-            </div>
           </div>
 
           {/* On the staff (the last chord, faded, once you let go) */}
           <Paper className={`flex items-center transition-opacity ${!sound.all.length && last ? 'opacity-60' : ''}`}>
-            <Staff clef="grand" items={staffItems} sp={16} minSlot={6} reserveAbove={2.6} reserveBelow={2.6} animate={false} />
+            <Staff clef="grand" items={staffItems} sp={14} minSlot={6} reserveAbove={2.4} reserveBelow={2.4} animate={false} />
           </Paper>
         </div>
 
@@ -383,7 +479,7 @@ export function FreePlay() {
           onUndo={
             undo
               ? () => {
-                  setChart(undo)
+                  changeChart(undo)
                   setUndo(null)
                 }
               : null
@@ -408,15 +504,7 @@ export function FreePlay() {
               />
             </div>
           )}
-          <Piano
-            from={from}
-            to={compact ? from + 24 : 96}
-            trails
-            trailHeight={Math.max(60, areaH - pianoH - 30)}
-            height={pianoH}
-            minKeyWidth={20}
-            octaveLabels={compact}
-          />
+          <Piano from={from} to={to} marks={marks} trails trailHeight={Math.max(60, areaH - pianoH - 30)} height={pianoH} minKeyWidth={20} octaveLabels={compact} />
         </div>
       </div>
 
