@@ -249,44 +249,9 @@ function Question({
   })
 
   const modeWord = q.key.mode === 'minor' ? 'minor' : 'major'
-  return (
-    <motion.div ref={cardRef} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-5">
-      {mode === 'name' ? (
-        <>
-          <div className="glass flex flex-col items-center gap-3 rounded-3xl p-5 text-center">
-            <h2 className="font-display text-3xl font-bold sm:text-4xl">Which {modeWord} key is this?</h2>
-            <div className="paper w-full max-w-md rounded-3xl px-4 py-2">
-              <Staff clef={grand ? 'grand' : 'treble'} items={[]} keySig={q.fifths} sp={grand ? 20 : 26} className="flex justify-center" reserveAbove={1.5} reserveBelow={1.5} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {q.options.map((o, i) => (
-              <OptionButton key={o.label} state={picked === null ? 'idle' : i === q.answer ? 'right' : i === picked ? 'wrong' : 'off'} onClick={() => choose(i)}>
-                <span className="font-display text-2xl font-bold">
-                  <MusicText text={o.label} />
-                </span>
-              </OptionButton>
-            ))}
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="glass rounded-3xl p-5 text-center">
-            <h2 className="font-display text-3xl font-bold sm:text-4xl">
-              Which signature is <MusicText text={keyName(q.key)} className="text-gold" />?
-            </h2>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {q.options.map((o, i) => (
-              <OptionButton key={o.fifths} state={picked === null ? 'idle' : i === q.answer ? 'right' : i === picked ? 'wrong' : 'off'} onClick={() => choose(i)} label={describeSignature(o.fifths)}>
-                <span className="paper block w-full rounded-2xl px-2 py-1">
-                  <Staff clef="treble" items={[]} keySig={o.fifths} sp={16} className="flex justify-center" reserveAbove={1} reserveBelow={1} />
-                </span>
-              </OptionButton>
-            ))}
-          </div>
-        </>
-      )}
+  // What follows the answers: how it went, the mic, and once answered, why and Next.
+  const tail = (
+    <>
       <FeedbackLine tone={picked === null ? (stray === null ? 'neutral' : 'info') : right ? 'good' : 'bad'} id={picked === null ? `q${stray}` : 'a'}>
         {picked !== null ? (
           right ? (
@@ -318,6 +283,51 @@ function Question({
             Next
           </Button>
         </div>
+      )}
+    </>
+  )
+  return (
+    <motion.div ref={cardRef} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-5">
+      {mode === 'name' ? (
+        // Side by side on a laptop, so a grand staff and every answer fit the window.
+        <div className="flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:items-start">
+          <div className="glass flex flex-col items-center gap-3 rounded-3xl p-5 text-center">
+            <h2 className="font-display text-3xl font-bold sm:text-4xl">Which {modeWord} key is this?</h2>
+            <div className="paper w-full max-w-md rounded-3xl px-4 py-2">
+              <Staff clef={grand ? 'grand' : 'treble'} items={[]} keySig={q.fifths} sp={grand ? 20 : 26} className="flex justify-center" reserveAbove={1.5} reserveBelow={1.5} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-5">
+            <div className="grid grid-cols-2 gap-3">
+              {q.options.map((o, i) => (
+                <OptionButton key={o.label} state={picked === null ? 'idle' : i === q.answer ? 'right' : i === picked ? 'wrong' : 'off'} onClick={() => choose(i)}>
+                  <span className="font-display text-2xl font-bold">
+                    <MusicText text={o.label} />
+                  </span>
+                </OptionButton>
+              ))}
+            </div>
+            {tail}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="glass rounded-3xl p-5 text-center">
+            <h2 className="font-display text-3xl font-bold sm:text-4xl">
+              Which signature is <MusicText text={keyName(q.key)} className="text-gold" />?
+            </h2>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {q.options.map((o, i) => (
+              <OptionButton key={o.fifths} state={picked === null ? 'idle' : i === q.answer ? 'right' : i === picked ? 'wrong' : 'off'} onClick={() => choose(i)} label={describeSignature(o.fifths)}>
+                <span className="paper block w-full rounded-2xl px-2 py-1">
+                  <Staff clef="treble" items={[]} keySig={o.fifths} sp={16} className="flex justify-center" reserveAbove={1} reserveBelow={1} />
+                </span>
+              </OptionButton>
+            ))}
+          </div>
+          {tail}
+        </>
       )}
     </motion.div>
   )
