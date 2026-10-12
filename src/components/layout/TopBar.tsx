@@ -3,6 +3,8 @@ import type { ReactNode } from 'react'
 import { goBack } from '../../router'
 import { IconButton } from '../ui/Button'
 import { ConnectionPill } from './ConnectionPill'
+// The app-wide metronome shows up in every header while it runs.
+import { MetronomeMini } from '../../features/explore/MetronomeMini'
 
 /** Header for full-screen pages (lessons, games, tools): back, title, connection status. */
 export function TopBar({
@@ -33,6 +35,7 @@ export function TopBar({
         )}
         <div className="flex shrink-0 items-center gap-2">
           {children}
+          <MetronomeMini />
           <span className="hidden sm:inline-flex">
             <ConnectionPill />
           </span>

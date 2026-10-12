@@ -1,16 +1,15 @@
-import { Hand, Minus, Play, Plus, Square } from 'lucide-react'
+import { Gauge, Hand, Minus, Play, Plus, Square } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
 import { Button, IconButton } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Chips, Slider, Toggle } from '../../components/ui/controls'
-import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
 import { pauseComputerKeys } from '../../lib/input/keys'
 import { getPref, setPref, usePref, usePrefs } from '../../state/prefs'
-import { softTick } from './drums'
+import { type Trainer, restartMetronome, startMetronome, stopMetronome, toggleMetronome, trainerPref, useMetronome } from './metronomeEngine'
 import { MAX_BPM, METERS, MIN_BPM, clampBpm, tapTempo, tempoName } from './tempo'
 
 const SUBDIVISIONS = [
@@ -43,60 +42,20 @@ export function Metronome() {
   const [meterId, setMeterId] = usePref('metronome:meter', '4/4', METER_IDS)
   const [sub, setSub] = usePref('metronome:sub', 1, SUB_VALUES)
   const [accent, setAccent] = usePref('metronome:accent', true)
-  const [running, setRunning] = useState(false)
-  const [beat, setBeat] = useState(-1)
-  const [swing, setSwing] = useState(0)
+  // The clock itself lives in metronomeEngine, so it keeps going when you leave this page.
+  const running = useMetronome((s) => s.running)
+  const beat = useMetronome((s) => s.beat)
+  const swing = useMetronome((s) => s.count)
+  usePrefs((p) => p.values['metronome:trainer'])
+  const trainer = trainerPref()
+  const setTrainer = (patch: Partial<Trainer>) => setPref('metronome:trainer', { ...trainer, ...patch })
   const taps = useRef<number[]>([])
   const meter = METERS.find((m) => m.id === meterId) ?? METERS[2]
-
-  const live = useRef({ bpm, meter, sub, accent })
-  useEffect(() => {
-    live.current = { bpm, meter, sub, accent }
-  })
-
-  const clock = useRef<Clock | null>(null)
-  const timers = useRef<number[]>([])
-  const stop = useCallback(() => {
-    clock.current?.stop()
-    clock.current = null
-    timers.current.forEach((t) => window.clearTimeout(t))
-    timers.current = []
-    setRunning(false)
-    setBeat(-1)
-  }, [])
-  useEffect(() => stop, [stop])
-
-  const start = useCallback(() => {
-    stop()
-    const c = new Clock({
-      interval: () => 60 / live.current.bpm / live.current.sub,
-      onTick: (i, time) => {
-        const L = live.current
-        if (i % L.sub !== 0) {
-          softTick(time)
-          return
-        }
-        const n = Math.floor(i / L.sub)
-        const b = n % L.meter.beats
-        audio.click(L.accent && L.meter.accents.includes(b), time)
-        timers.current = [
-          ...timers.current.slice(-16),
-          audio.at(time, () => {
-            setBeat(b)
-            setSwing(n)
-          }),
-        ]
-      },
-    })
-    clock.current = c
-    c.start(0.08)
-    setRunning(true)
-  }, [stop])
 
   // Subdivision or metre changes restart the count from beat 1.
   const restartWith = <T,>(set: (v: T) => void) => (v: T) => {
     set(v)
-    if (clock.current) window.setTimeout(start, 0)
+    restartMetronome()
   }
 
   const tap = () => {
@@ -121,8 +80,7 @@ export function Metronome() {
         // A button focused with Tab gets Space as its click.
         if (isButtonTarget(e.target)) return
         e.preventDefault()
-        if (clock.current) stop()
-        else start()
+        toggleMetronome()
       } else if (e.code === 'KeyT') tap()
     }
     window.addEventListener('keydown', onKey)
@@ -169,11 +127,11 @@ export function Metronome() {
           </div>
           <div className="relative mt-8 flex w-full max-w-md gap-3 px-4">
             {running ? (
-              <Button size="xl" variant="danger" icon={Square} block onClick={stop}>
+              <Button size="xl" variant="danger" icon={Square} block onClick={stopMetronome}>
                 Stop
               </Button>
             ) : (
-              <Button size="xl" icon={Play} block onClick={start}>
+              <Button size="xl" icon={Play} block onClick={startMetronome}>
                 Start
               </Button>
             )}
@@ -220,10 +178,36 @@ export function Metronome() {
             </p>
           </Card>
           <Card>
-            <p className="text-ink-soft">
-              <b className="text-ink">Practice tip:</b> learn a hard passage slowly, at a tempo where you make no mistakes. Then go up by 4 BPM at a time. Slow
-              and clean beats fast and messy.
+            <label className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">
+                <Gauge size={18} /> Speed trainer
+              </span>
+              <Toggle checked={trainer.on} onChange={(on) => setTrainer({ on })} label="Speed trainer" />
+            </label>
+            <p className="mt-2 text-ink-soft">
+              Learn a passage slowly, then let the metronome speed up by itself: slow and clean beats fast and messy.
             </p>
+            {trainer.on && (
+              <div className="mt-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-2 font-bold text-ink-soft">
+                  Add
+                  <Chips value={trainer.step} onChange={(step) => setTrainer({ step })} options={[2, 4, 6, 8].map((v) => ({ value: v, label: `+${v}` }))} />
+                  BPM
+                </div>
+                <div className="flex flex-wrap items-center gap-2 font-bold text-ink-soft">
+                  every
+                  <Chips value={trainer.every} onChange={(every) => setTrainer({ every })} options={[2, 4, 8].map((v) => ({ value: v, label: String(v) }))} />
+                  bars
+                </div>
+                <div className="flex items-center gap-3 font-bold text-ink-soft">
+                  up to
+                  <IconButton icon={Minus} label="Lower target" size={48} onClick={() => setTrainer({ target: clampBpm(trainer.target - 4) })} />
+                  <span className="w-14 text-center font-display text-2xl text-ink">{trainer.target}</span>
+                  <IconButton icon={Plus} label="Higher target" size={48} onClick={() => setTrainer({ target: clampBpm(trainer.target + 4) })} />
+                  BPM
+                </div>
+              </div>
+            )}
           </Card>
         </div>
       </main>

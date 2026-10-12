@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { go, usePath } from '../../router'
 import { IconButton } from '../ui/Button'
 import { ConnectionPill } from './ConnectionPill'
+import { MetronomeMini } from '../../features/explore/MetronomeMini'
 
 /** Standard page for the main tabs: big title, optional subtitle, content. */
 export function Page({ title, subtitle, actions, children }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode }) {
@@ -16,6 +17,7 @@ export function Page({ title, subtitle, actions, children }: { title: ReactNode;
         </div>
         <div className="flex items-center gap-2">
           {actions}
+          <MetronomeMini />
           <ConnectionPill />
           {/* No sidebar below 768px (phones, iPad Split View), so Settings lives here. */}
           {path !== '/settings' && <IconButton icon={Settings} label="Settings" onClick={() => go('/settings')} className="md:hidden" />}

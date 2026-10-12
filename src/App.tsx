@@ -14,6 +14,7 @@ import { LearnPath } from './features/learn/LearnPath'
 import { useWakeLock } from './hooks/useWakeLock'
 import { audio } from './lib/audio/engine'
 import { stopDemos } from './lib/audio/play'
+import { stopMetronome } from './features/explore/metronomeEngine'
 import { matchPath, navKind, usePath } from './router'
 import { useSettings } from './state/settings'
 
@@ -134,6 +135,10 @@ export function App() {
   // A demo started on one screen shouldn't keep playing over the next (stopped as you leave, before the new
   // screen plays anything of its own).
   useEffect(() => () => stopDemos(), [path])
+  // The app-wide metronome keeps going across screens, except into ones that keep their own time.
+  useEffect(() => {
+    if (path === '/practice/rhythm' || path === '/explore/progressions') stopMetronome()
+  }, [path])
   // Lessons, games, songs and tools: you're at the piano, not touching the screen.
   useWakeLock(!!route.focus && keepAwake)
 

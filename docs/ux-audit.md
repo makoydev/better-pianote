@@ -200,7 +200,8 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   chord; Free Play chord → explore it. `M`
 - [ ] **62. Progression Jam:** save progressions, replace/reorder chords in place, more chords (I7, sus4, slash chords),
   mute the band's chords, 3/4 and 6/8, tick off chords as you play. `M`
-- [ ] **63. A metronome that keeps running across screens**, plus a speed trainer. `M`
+- [x] **63. A metronome that keeps running across screens**, plus a speed trainer. `M`
+  *Done:* the metronome's clock moved into `metronomeEngine.ts`, so it keeps clicking when you leave the page; a chip in every header shows the beat and BPM, opens the Metronome and stops it (`MetronomeMini.tsx`). It stops itself in Rhythm Tap and the Jam, which keep their own time. A speed trainer adds +2/4/6/8 BPM every 2/4/8 bars up to a target (remembered). Checked: started on the Metronome page, chip on Scale Explorer, stopped from the chip.
 - [ ] **64. Scale practice in time**, over two octaves, hands together. `M`
 - [ ] **65. Guitar shapes for every chord** (20 of 48 basic chords have one; F♯m from River Flows is missing), capo
   view. `M`
