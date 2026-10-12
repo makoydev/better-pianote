@@ -31,6 +31,14 @@ export interface SongVoice {
   bars: SongEvent[][]
 }
 
+/** A bar's number as printed in the score it was imported from. */
+export interface BarNumber {
+  /** The measure number in the score ("14"). */
+  number: string
+  /** Which time through that measure this bar is, when repeats are written out (1 the first time, 2 the second …). */
+  pass: number
+}
+
 /** A key or time signature change at the start of a bar. */
 export interface SongChange {
   bar: number
@@ -76,6 +84,11 @@ export interface Song extends Omit<SongSource, 'rh' | 'lh'> {
   voices?: SongVoice[]
   /** Key or time signature changes after the first bar. */
   changes?: SongChange[]
+  /**
+   * Imported scores: each bar's number as printed, one per bar. Repeats are written out, so the 30th bar can be
+   * "bar 14, 2nd time" on paper. Built-in songs count their bars straight through.
+   */
+  barNumbers?: BarNumber[]
   /** Set for songs you imported yourself (stored on this device). */
   imported?: { fileName: string; at: number }
 }

@@ -254,6 +254,7 @@ describe('bars, repeats and jumps', () => {
     const { song } = imp(one(implicit(0, start({ time: [3, 4] }), n('G4', 'quarter')), measure(1, n('C5', 'half', { dots: 1 }))))
     expect(song.pickup).toBe(1)
     expect(song.rh.length).toBe(2)
+    expect(song.barNumbers!.map((b) => b.number)).toEqual(['0', '1'])
   })
 
   it('writes out repeats and first/second endings', () => {
@@ -268,6 +269,8 @@ describe('bars, repeats and jumps', () => {
     )
     expect(res.song.rh.map(names).join(' ')).toBe('C4 D4 E4 C4 D4 F4 G4')
     expect(res.warnings.join(' ')).toMatch(/5 bars play as 7/)
+    // Each bar keeps its printed number, and which time through it is.
+    expect(res.song.barNumbers!.map((b) => `${b.number}/${b.pass}`)).toEqual(['1/1', '2/1', '3/1', '1/2', '2/2', '4/1', '5/1'])
   })
 
   it('follows D.S. al Coda', () => {

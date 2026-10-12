@@ -18,7 +18,8 @@ import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
 import { burst, celebrate } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
 import { letterColor } from '../../lib/colors'
-import { type Chord, bassFor, noteName, parseNote, voiceLead } from '../../lib/theory'
+import { nameNote } from '../../lib/naming'
+import { type Chord, bassFor, parseNote, voiceLead } from '../../lib/theory'
 import { go } from '../../router'
 import { useLive } from '../../state/live'
 import { useLibrary } from '../../state/library'
@@ -27,6 +28,7 @@ import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import { type SongResult, SongResults } from './SongResults'
 import { TempoPresets, TempoStepper } from './TempoControl'
+import { barLabel, barName, barTitle, countedStraight } from './bars'
 import { LISTEN_PARTS, type ListenPart, accompaniment, handFilter, listenHand, otherHand } from './accompany'
 import { type CountIn, type Cue, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
 import { type Run, carryOn, endPass, newRun, stepAt, stepsInBars, tally } from './practice'
@@ -162,6 +164,7 @@ function Player({ song }: { song: Song }) {
 
   const mic = useLive((s) => s.mic)
   const staffLabels = useSettings((s) => s.staffLabels)
+  const naming = useSettings((s) => s.naming)
   const uiSounds = useSettings((s) => s.uiSounds)
   const setSettings = useSettings((s) => s.set)
   const best = useProgress((s) => handsBest(s.games, song.id, hands))
@@ -590,6 +593,12 @@ function Player({ song }: { song: Song }) {
   )
   const marks: Marks = {}
   const fingers: Record<number, number> = {}
+  // The step after this one shows faintly (with its fingers), so you can see where your hand goes next.
+  const upNext = step ? (steps[stepIdx + 1] ?? (loop && steps[0] !== step ? steps[0] : undefined)) : undefined
+  for (const n of upNext?.notes ?? []) {
+    marks[n.midi] = 'hint'
+    if (n.finger) fingers[n.midi] = n.finger
+  }
   if (step) {
     for (const n of step.notes) {
       if (satisfied.has(n.id)) continue
@@ -601,8 +610,7 @@ function Player({ song }: { song: Song }) {
   for (const [m, f] of Object.entries(flash)) marks[Number(m)] = f
   const pianoHeight = Math.round(Math.max(110, Math.min(210, vh * (showBass ? 0.18 : 0.21))))
 
-  const barLabel = (i: number) => (song.pickup ? (i === 0 ? 'Pickup' : `${i}`) : `${i + 1}`)
-  const barName = (i: number) => (i < firstFullBar ? 'the pickup' : `bar ${i - firstFullBar + 1}`)
+  const straight = useMemo(() => countedStraight(song), [song])
   const fullBars = song.rh.length - firstFullBar
   const curBar = mode === 'wait' ? (steps[stepIdx]?.bar ?? song.rh.length - 1) : barAt(tl, listenAt)
   const progress = mode === 'wait' ? (finished ? 1 : stepIdx / Math.max(1, steps.length)) : tl.total ? Math.min(1, listenAt / tl.total) : 0
@@ -729,14 +737,14 @@ function Player({ song }: { song: Song }) {
               <span className="flex items-center gap-1.5 text-sm font-extrabold">
                 <Stepper
                   label="First bar"
-                  text={barLabel(loopBars[0])}
+                  text={barLabel(song, loopBars[0])}
                   onMinus={() => changeLoopBars([Math.max(0, loopBars[0] - 1), loopBars[1]])}
                   onPlus={() => changeLoopBars([Math.min(loopBars[1], loopBars[0] + 1), loopBars[1]])}
                 />
                 <span className="text-ink-mute">to</span>
                 <Stepper
                   label="Last bar"
-                  text={barLabel(loopBars[1])}
+                  text={barLabel(song, loopBars[1])}
                   onMinus={() => changeLoopBars([loopBars[0], Math.max(loopBars[0], loopBars[1] - 1)])}
                   onPlus={() => changeLoopBars([loopBars[0], Math.min(song.rh.length - 1, loopBars[1] + 1)])}
                 />
@@ -848,6 +856,11 @@ function Player({ song }: { song: Song }) {
                 {step.notes.map((n) => (
                   <NotePill key={n.id} note={n} done={satisfied.has(n.id)} tagHand={hands === 'both'} />
                 ))}
+                {upNext && (
+                  <span className="text-sm font-bold text-ink-mute">
+                    then: <MusicText text={upNext.notes.map((n) => nameNote(parseNote(n.name), naming, { octave: true })).join(' ')} />
+                  </span>
+                )}
               </motion.div>
             </AnimatePresence>
           ) : mode === 'wait' && finished ? (
@@ -862,7 +875,7 @@ function Player({ song }: { song: Song }) {
               {playing
                 ? 'Watch the notes light up and follow along.'
                 : pausedMidway
-                  ? `Resume (or Space) plays from ${barName(barAt(tl, listenAt))}; ⏮ plays it from the beginning.`
+                  ? `Resume (or Space) plays from ${barName(song, barAt(tl, listenAt))}; ⏮ plays it from the beginning.`
                   : 'Press Play (or Space) to hear it at your tempo.'}
             </span>
           ) : null}
@@ -885,7 +898,8 @@ function Player({ song }: { song: Song }) {
             )}
             {mode === 'wait' && loop && loops > 0 && <span className="text-sm font-extrabold text-teal">Loop ×{loops}</span>}
             <span className="text-sm font-extrabold text-ink-soft">
-              {curBar < firstFullBar ? 'Pickup' : `Bar ${curBar - firstFullBar + 1} of ${fullBars}`}
+              {/* As printed on the score: "Bar 14 (2nd time)" for an imported piece whose repeats are written out. */}
+              {straight && curBar >= firstFullBar ? `Bar ${curBar - firstFullBar + 1} of ${fullBars}` : barTitle(song, curBar)}
             </span>
             {mode === 'wait' && (
               <span className={`inline-flex items-center gap-1 text-sm font-extrabold ${mistakes ? 'text-bad' : 'text-ink-mute'}`} title="Wrong notes">
@@ -933,6 +947,7 @@ function Stepper({ label, text, onMinus, onPlus }: { label: string; text: string
 }
 
 function NotePill({ note, done, tagHand }: { note: TimedNote; done: boolean; tagHand: boolean }) {
+  const naming = useSettings((s) => s.naming)
   const n = parseNote(note.name)
   const color = letterColor(n.letter)
   return (
@@ -941,7 +956,7 @@ function NotePill({ note, done, tagHand }: { note: TimedNote; done: boolean; tag
       className={`inline-flex items-center gap-2 rounded-2xl border px-3 py-1 text-lg font-extrabold transition-opacity ${done ? 'opacity-40' : ''}`}
       style={{ color, borderColor: `${color}66`, background: `${color}1c` }}
     >
-      <MusicText text={noteName(n)} />
+      <MusicText text={nameNote(n, naming, { octave: true })} />
       {tagHand && note.hand === 'lh' && <span className="rounded-md bg-white/10 px-1.5 text-xs text-ink-soft">left hand</span>}
       {note.finger !== undefined && (
         <span className="flex size-6 items-center justify-center rounded-full bg-ink text-sm text-night-900" title="Finger">

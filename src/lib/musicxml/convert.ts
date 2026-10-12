@@ -487,6 +487,13 @@ export function convertScore(score: ParsedScore, fileName: string, opts: { partI
     if (m.time[0] !== prev.time[0] || m.time[1] !== prev.time[1]) ch.time = m.time
     if (ch.keySig !== undefined || ch.time) changes.push(ch)
   })
+  // Each bar's number as printed, and which time through it this is (so the app can say "bar 14, 2nd time").
+  const passes = new Map<number, number>()
+  const barNumbers = order.map((mi) => {
+    const pass = (passes.get(mi) ?? 0) + 1
+    passes.set(mi, pass)
+    return { number: ms[mi].number, pass }
+  })
   const firstLen = barLength(first)
   const pickup = lt(firstLen, first.timeLen) ? toNum(firstLen) : undefined
   const bpm = Math.round(Math.max(40, Math.min(160, score.tempo ?? 90)))
@@ -509,6 +516,7 @@ export function convertScore(score: ParsedScore, fileName: string, opts: { partI
     ...(lh ? { lh } : {}),
     ...(voices.length ? { voices } : {}),
     ...(changes.length ? { changes } : {}),
+    barNumbers,
     imported: { fileName, at: Date.now() },
   }
   const stats = {
