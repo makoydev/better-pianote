@@ -13,7 +13,7 @@ import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { playNotes } from '../../lib/audio/play'
 import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
-import { burst, celebrate } from '../../lib/fx'
+import { burst, celebrate, toast } from '../../lib/fx'
 import { recentNotes, useNoteEvents } from '../../lib/input/bus'
 import { useMicChords } from '../../lib/input/mic'
 import { micHearsNotes } from '../../lib/input/micMatch'
@@ -26,18 +26,19 @@ import { useLibrary } from '../../state/library'
 import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
+import { LoopControls, LoopPasses } from './LoopControls'
 import { ScoreView } from './ScoreView'
 import { type SongResult, SongResults } from './SongResults'
 import { TempoPresets, TempoStepper } from './TempoControl'
-import { LoopControls } from './LoopControls'
-import { barName, barTitle, countedStraight } from './bars'
 import { LISTEN_PARTS, type ListenPart, accompaniment, handFilter, listenHand, otherHand } from './accompany'
+import { barName, barTitle, countedStraight } from './bars'
 import { handSpans, judgeKey, micChordHeard, otherHandKey } from './hearing'
+import { useSongRuns } from './history'
 import { type CountIn, type Cue, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
-import { type Run, aroundBar, carryOn, endPass, firstStepIn, newRun, runFrom, stepAt, stepsInBars, tally } from './practice'
+import { CLEAN_GOAL, type Run, aroundBar, carryOn, endPass, firstStepIn, newRun, runFrom, stepAt, stepsInBars, tally, worstStretch } from './practice'
 import { type Hands, accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
 import { MIN_KEY_WIDTH, SCORE_SIZES, type ScoreSize, keyboardHeight } from './systems'
-import { clampTempo, loopSpeedUp } from './tempo'
+import { clampTempo, loopSpeedUp, tempoPct } from './tempo'
 import { type Step, type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, plays } from './timeline'
 
 const TICK = 0.25 // listen mode wakes up every sixteenth note (and plays what's due inside it at exact times)
@@ -135,6 +136,9 @@ function Player({ song }: { song: Song }) {
   const run = useRef<Run>(newRun(hands))
   /** The bar the run started from, when you chose one (Start from this bar). */
   const [fromBar, setFromBar] = useState<number | undefined>(undefined)
+  /** Looping: how the last passes went, and clean ones in a row. */
+  const [passes, setPasses] = useState<number[]>([])
+  const [cleanInARow, setCleanInARow] = useState(0)
   const sync = () => {
     const r = run.current
     if (r.idx !== syncedIdx.current) {
@@ -147,6 +151,8 @@ function Player({ song }: { song: Song }) {
     setCombo(r.combo)
     setLoops(r.loops)
     setFromBar(r.fromBar)
+    setPasses(r.passes)
+    setCleanInARow(r.cleanInARow)
   }
 
   // Listen mode (and Practice's "Hear this bar")
@@ -315,8 +321,31 @@ function Player({ song }: { song: Song }) {
     const xp = Math.round(((first ? 20 : 6) + stars * (first ? 5 : 2) + (hands === 'both' ? 10 : 0)) * share)
     prog.addXp(xp)
     const isBest = r.whole && recordSongRun(song.id, hands, Math.round(accuracy * 100))
-    const from = r.fromBar === undefined ? undefined : barName(song, r.fromBar)
-    setResult({ stars, accuracy, mistakes: r.mistakes, seconds, xp, isBest, bestCombo: r.best, hands, whole: r.whole, from })
+    const pct = tempoPct(bpm, song.bpm)
+    useSongRuns.getState().addRun(song.id, {
+      at: Date.now(),
+      hands,
+      accuracy: Math.round(accuracy * 100),
+      bpm: Math.round(bpm),
+      pct,
+      ...(r.fromBar === undefined ? {} : { from: r.fromBar }),
+    })
+    setResult({
+      stars,
+      accuracy,
+      mistakes: r.mistakes,
+      seconds,
+      xp,
+      isBest,
+      bestCombo: r.best,
+      hands,
+      whole: r.whole,
+      from: r.fromBar === undefined ? undefined : barName(song, r.fromBar),
+      slips: tl.bars.map((_, b) => r.barSlips[b] ?? 0),
+      played: [r.fromBar ?? steps[0]?.bar ?? 0, steps[steps.length - 1]?.bar ?? tl.bars.length - 1],
+      worst: worstStretch(r.barSlips),
+      pct,
+    })
     setFinished(true)
     if (uiSounds) audio.ui('complete')
     if (stars === 3) celebrate()
@@ -338,7 +367,11 @@ function Player({ song }: { song: Song }) {
         loopXp.current += xp
         useProgress.getState().addXp(xp)
       }
-      burst(paperRef.current, { count: 30 })
+      if (r.cleanInARow === CLEAN_GOAL) {
+        celebrate()
+        if (uiSounds) audio.ui('complete')
+        toast({ kind: 'info', title: `${CLEAN_GOAL} clean passes in a row!`, detail: 'Try it a little faster, or loop the next bars.' })
+      } else burst(paperRef.current, { count: 30 })
       return
     }
     r.done = true
@@ -362,7 +395,7 @@ function Player({ song }: { song: Song }) {
     if (mode !== 'wait' || r.done || !steps[r.idx]) return
     stopAccompaniment()
     startClock()
-    tally(r, 'slip')
+    tally(r, 'slip', steps[r.idx].bar)
     r.combo = 0
     nextStep()
     sync()
@@ -421,7 +454,7 @@ function Player({ song }: { song: Song }) {
     }
     // Pressed again, the other hand's part, or (through the mic) most likely an overtone or a note still ringing.
     if (verdict !== 'wrong' || viaMic) return
-    tally(r, 'slip')
+    tally(r, 'slip', cur.bar)
     r.combo = 0
     sync()
     flashKey(e.midi, 'bad')
@@ -935,7 +968,7 @@ function Player({ song }: { song: Song }) {
                 )}
               </AnimatePresence>
             )}
-            {mode === 'wait' && loop && loops > 0 && <span className="text-sm font-extrabold text-teal">Loop ×{loops}</span>}
+            {mode === 'wait' && loop && loops > 0 && <LoopPasses loops={loops} passes={passes} clean={cleanInARow} />}
             <span className="text-sm font-extrabold text-ink-soft">
               {/* As printed on the score: "Bar 14 (2nd time)" for an imported piece whose repeats are written out. */}
               {straight && curBar >= firstFullBar ? `Bar ${curBar - firstFullBar + 1} of ${fullBars}` : barTitle(song, curBar)}
@@ -969,6 +1002,7 @@ function Player({ song }: { song: Song }) {
         onAgain={() => reset()}
         onClose={() => setResult(null)}
         onSongs={() => go('/songs')}
+        onPractise={pickBars}
       />
     </div>
   )

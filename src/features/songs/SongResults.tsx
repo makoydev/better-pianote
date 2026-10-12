@@ -1,4 +1,4 @@
-import { ListMusic, RotateCcw, Timer, Trophy, Zap } from 'lucide-react'
+import { ListMusic, Repeat, RotateCcw, Timer, Trophy, Zap } from 'lucide-react'
 import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { Button } from '../../components/ui/Button'
@@ -6,6 +6,9 @@ import { GoalProgress } from '../../components/ui/GoalProgress'
 import { Modal } from '../../components/ui/Modal'
 import { Stars } from '../../components/ui/progress'
 import type { Song } from '../../content/songs'
+import { RunTrend, SlipStrip } from './ResultCharts'
+import { barsName } from './bars'
+import { trendRuns, useSongRuns } from './history'
 import { type Hands, clockTime } from './results'
 
 export interface SongResult {
@@ -21,6 +24,12 @@ export interface SongResult {
   whole: boolean
   /** Started from a bar you chose ("bar 12"): from there to the end. */
   from?: string
+  /** Slips in each bar of the song, the bars the run went through, and the stretch with the most slips. */
+  slips: number[]
+  played: [number, number]
+  worst: [number, number] | null
+  /** The tempo, as a % of the song's. */
+  pct: number
 }
 
 const TITLES = ['Nice try!', 'You played it!', 'Lovely playing!', 'Perfect!']
@@ -32,13 +41,18 @@ export function SongResults({
   onAgain,
   onClose,
   onSongs,
+  onPractise,
 }: {
   song: Song
   result: SongResult | null
   onAgain: () => void
   onClose: () => void
   onSongs: () => void
+  /** Loop these bars and practise them. */
+  onPractise: (bars: [number, number]) => void
 }) {
+  const runs = useSongRuns((s) => s.runs[song.id])
+  const trend = result ? trendRuns(runs, result.hands) : []
   return (
     <Modal open={!!result} onClose={onClose}>
       {result && (
@@ -50,6 +64,7 @@ export function SongResults({
           <p className="mt-1 text-lg text-ink-soft">
             {song.title}
             {song.lh ? ` · ${HANDS_NAME[result.hands]}` : ''}
+            {result.pct !== 100 ? ` · ${result.pct}% tempo` : ''}
           </p>
           {result.isBest && (
             <motion.p
@@ -73,6 +88,33 @@ export function SongResults({
             <Stat label="Wrong notes" value={String(result.mistakes)} />
             <Stat label="Time" value={clockTime(result.seconds)} icon={<Timer size={16} />} />
           </div>
+          {result.slips.some((s) => s > 0) && (
+            <div className="mt-3 w-full rounded-2xl bg-night-850 px-4 py-3 text-left">
+              <p className="mb-2 text-sm font-extrabold text-ink-soft">Wrong notes by bar</p>
+              <SlipStrip song={song} slips={result.slips} played={result.played} worst={result.worst} />
+              {result.worst && (
+                <Button size="sm" variant="secondary" icon={Repeat} className="mt-3 w-full" onClick={() => onPractise(result.worst!)}>
+                  Practise {barsName(song, ...result.worst)}
+                </Button>
+              )}
+            </div>
+          )}
+          {trend.length >= 2 && (
+            <div className="mt-3 w-full rounded-2xl bg-night-850 px-4 py-3 text-left">
+              <div className="mb-2 flex items-baseline justify-between gap-3 text-sm font-extrabold">
+                <span className="text-ink-soft">Your last {trend.length} runs</span>
+                <span className="text-ink-mute">
+                  {trend[0].accuracy}% → {trend[trend.length - 1].accuracy}%
+                </span>
+              </div>
+              <RunTrend runs={trend} />
+              {trend[0].pct !== trend[trend.length - 1].pct && (
+                <p className="mt-1 text-xs font-bold text-ink-mute">
+                  Tempo {trend[0].pct}% → {trend[trend.length - 1].pct}%
+                </p>
+              )}
+            </div>
+          )}
           <div className="mt-3 flex w-full items-center justify-between rounded-2xl bg-night-850 px-4 py-3 text-left">
             <span className="text-ink-soft">
               Longest streak: <b className="text-ink">{result.bestCombo} notes</b>

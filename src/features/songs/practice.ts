@@ -29,6 +29,12 @@ export interface Run extends Tally {
   ms: number
   /** The bar you chose to start from (Start from this bar, Continue), so the results can say "from bar 12". */
   fromBar?: number
+  /** Slips (wrong notes and skips) in each bar, by bar index: the results show where they were. */
+  barSlips: Record<number, number>
+  /** Accuracy (0–1) of the latest passes round the loop played all the way round, oldest first. */
+  passes: number[]
+  /** Clean passes round the loop in a row (the goal is CLEAN_GOAL). */
+  cleanInARow: number
 }
 
 const fresh = (): Tally => ({ notes: 0, mistakes: 0, whole: true })
@@ -44,13 +50,17 @@ export const newRun = (hands: Hands): Run => ({
   hands,
   pass: fresh(),
   ms: 0,
+  barSlips: {},
+  passes: [],
+  cleanInARow: 0,
 })
 
-/** A note played right, or a slip: counted for the run and for this time round the loop. */
-export function tally(r: Run, kind: 'note' | 'slip') {
+/** A note played right, or a slip (in bar `bar`): counted for the run and for this time round the loop. */
+export function tally(r: Run, kind: 'note' | 'slip', bar?: number) {
   const key = kind === 'note' ? 'notes' : 'mistakes'
   r[key]++
   r.pass[key]++
+  if (kind === 'slip' && bar !== undefined) r.barSlips[bar] = (r.barSlips[bar] ?? 0) + 1
 }
 
 /** Steps inside the looped bars (all of them when not looping). */
@@ -98,12 +108,44 @@ export function carryOn(r: Run, i: number, hands: Hands, looping: boolean): Run 
 /** Looping a section never finishes, so each clean pass earns a little XP, up to a cap per visit to the song. */
 export const LOOP_XP = 2
 export const LOOP_XP_MAX = 20
+/** Passes whose accuracy is shown while looping, and clean passes in a row to aim for. */
+export const PASSES_SHOWN = 5
+export const CLEAN_GOAL = 3
 
-/** Round the loop once more: XP for the pass just played (clean = all of it, with no slips), and a fresh pass. */
+/**
+ * Round the loop once more: note how the pass went (only a pass played all the way round counts, not one you
+ * joined part-way), and the XP for it (clean = all of it, with no slips). A fresh pass starts.
+ */
 export function endPass(r: Run, earned: number): number {
-  const clean = r.pass.whole && r.pass.notes > 0 && r.pass.mistakes === 0
+  const p = r.pass
+  const clean = p.whole && p.notes > 0 && p.mistakes === 0
+  if (p.whole && p.notes + p.mistakes > 0) {
+    r.passes = [...r.passes, p.notes / (p.notes + p.mistakes)].slice(-PASSES_SHOWN)
+    r.cleanInARow = clean ? r.cleanInARow + 1 : 0
+  }
   r.loops++
   r.idx = 0
   r.pass = fresh()
   return clean ? Math.max(0, Math.min(LOOP_XP, LOOP_XP_MAX - earned)) : 0
+}
+
+/**
+ * The bars to practise after a run: the stretch of up to `maxLen` bars with the most slips in it, starting and
+ * ending on a bar with slips (the shorter, then the earlier, on a tie). Null when there were none.
+ */
+export function worstStretch(slips: Record<number, number>, maxLen = 4): [number, number] | null {
+  const bars = Object.keys(slips)
+    .map(Number)
+    .filter((b) => slips[b] > 0)
+    .sort((a, b) => a - b)
+  let best: { from: number; to: number; total: number } | null = null
+  for (let i = 0; i < bars.length; i++) {
+    let total = 0
+    for (let j = i; j < bars.length && bars[j] - bars[i] < maxLen; j++) {
+      total += slips[bars[j]]
+      const shorter = best !== null && bars[j] - bars[i] < best.to - best.from
+      if (!best || total > best.total || (total === best.total && shorter)) best = { from: bars[i], to: bars[j], total }
+    }
+  }
+  return best && [best.from, best.to]
 }

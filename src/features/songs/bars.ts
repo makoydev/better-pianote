@@ -34,6 +34,13 @@ export function barName(song: Song, i: number): string {
   return b ? `bar ${b.number}${again(b.pass)}` : 'the pickup'
 }
 
+/** A stretch of bars in a sentence: "bar 12", "bars 12–15", "the pickup to bar 2". */
+export function barsName(song: Song, from: number, to: number): string {
+  if (from === to) return barName(song, from)
+  if (!barNumber(song, from)) return `the pickup to ${barName(song, to)}`
+  return `bars ${barLabel(song, from)}–${barLabel(song, to)}`
+}
+
 /** Starting a line: "Pickup", "Bar 14 (2nd time)". */
 export function barTitle(song: Song, i: number): string {
   const b = barNumber(song, i)

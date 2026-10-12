@@ -4,6 +4,7 @@ import { Button, IconButton } from '../../components/ui/Button'
 import { Toggle } from '../../components/ui/controls'
 import type { Song } from '../../content/songs'
 import { barName, barNumber, ordinal } from './bars'
+import { CLEAN_GOAL } from './practice'
 
 /**
  * Section practice: loop some bars (picked here, or by tapping or dragging across bars on the music), loop around
@@ -57,6 +58,31 @@ export function LoopControls({
         </>
       )}
     </div>
+  )
+}
+
+/** While looping: passes so far, how the latest went, and clean passes in a row towards the goal. */
+export function LoopPasses({ loops, passes, clean }: { loops: number; passes: number[]; clean: number }) {
+  const reached = clean >= CLEAN_GOAL
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-extrabold">
+      <span className="text-teal">Loop ×{loops}</span>
+      {passes.length > 0 && (
+        <span className="inline-flex items-center gap-1" title="Accuracy of your latest passes">
+          {passes.map((p, i) => (
+            <span key={i} className={`rounded-md px-1.5 ${i === passes.length - 1 ? 'bg-white/10 text-ink' : 'text-ink-mute'}`}>
+              {Math.round(p * 100)}%
+            </span>
+          ))}
+        </span>
+      )}
+      <span className={`inline-flex items-center gap-1 ${reached ? 'text-gold' : 'text-ink-mute'}`} aria-label={`${Math.min(clean, CLEAN_GOAL)} of ${CLEAN_GOAL} clean passes in a row`}>
+        {Array.from({ length: CLEAN_GOAL }, (_, i) => (
+          <span key={i} aria-hidden className={`size-2.5 rounded-full ${i < clean ? 'bg-good' : 'bg-white/15'}`} />
+        ))}
+        <span className="ml-1">{reached ? 'Goal reached!' : `${CLEAN_GOAL} clean in a row`}</span>
+      </span>
+    </span>
   )
 }
 

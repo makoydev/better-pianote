@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import { type Song, parseBars } from '../../content/songs'
-import { LOOP_XP, LOOP_XP_MAX, aroundBar, carryOn, endPass, firstStepIn, newRun, runFrom, stepAt, stepsInBars, tally } from './practice'
+import {
+  CLEAN_GOAL,
+  LOOP_XP,
+  LOOP_XP_MAX,
+  PASSES_SHOWN,
+  aroundBar,
+  carryOn,
+  endPass,
+  firstStepIn,
+  newRun,
+  runFrom,
+  stepAt,
+  stepsInBars,
+  tally,
+  worstStretch,
+} from './practice'
 import { buildSteps, buildTimeline } from './timeline'
 
 const song = (rh: string, lh: string): Song => ({
@@ -95,6 +110,48 @@ describe('practice runs', () => {
     expect(endPass(r, LOOP_XP_MAX - 1)).toBe(1)
     tally(r, 'note')
     expect(endPass(r, LOOP_XP_MAX)).toBe(0)
+  })
+
+  it('counts slips per bar, and finds the stretch with the most', () => {
+    const r = newRun('rh')
+    tally(r, 'slip', 12)
+    tally(r, 'slip', 12)
+    tally(r, 'note')
+    tally(r, 'slip', 3)
+    expect(r.barSlips).toEqual({ 3: 1, 12: 2 })
+    expect(r.mistakes).toBe(3)
+    // Bars 12, 13 and 15 together beat bar 3 alone (and stay within four bars).
+    expect(worstStretch({ 3: 1, 12: 3, 13: 2, 15: 1 })).toEqual([12, 15])
+    // A tie: the shorter stretch, then the earlier one.
+    expect(worstStretch({ 2: 2, 9: 2 })).toEqual([2, 2])
+    expect(worstStretch({ 4: 1, 5: 1, 20: 2 })).toEqual([20, 20])
+    expect(worstStretch({ 1: 0 })).toBe(null)
+  })
+
+  it('keeps how each pass round the loop went, and clean passes in a row', () => {
+    const r = newRun('rh')
+    const pass = (notes: number, slips: number) => {
+      for (let k = 0; k < notes; k++) tally(r, 'note')
+      for (let k = 0; k < slips; k++) tally(r, 'slip', 0)
+      endPass(r, 0)
+    }
+    pass(9, 1)
+    pass(10, 0)
+    pass(10, 0)
+    expect(r.passes).toEqual([0.9, 1, 1])
+    expect(r.cleanInARow).toBe(2)
+    pass(10, 0)
+    expect(r.cleanInARow).toBe(CLEAN_GOAL)
+    pass(8, 2)
+    expect(r.cleanInARow).toBe(0)
+    pass(10, 0)
+    pass(10, 0)
+    expect(r.passes.length).toBe(PASSES_SHOWN)
+    // A pass joined part-way doesn't count either way.
+    const joined = carryOn({ ...r, notes: 5 }, 2, 'rh', true)
+    tally(joined, 'note')
+    endPass(joined, 0)
+    expect(joined.cleanInARow).toBe(2)
   })
 
   it('only pays for a pass played all the way round', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type Song, parseBars } from '../../content/songs'
-import { barLabel, barName, barTitle, countedStraight, ordinal, shownBar } from './bars'
+import { barLabel, barName, barTitle, barsName, countedStraight, ordinal, shownBar } from './bars'
 
 const song = (rh: string, extra: Partial<Song> = {}): Song => ({
   id: 't',
@@ -27,6 +27,9 @@ describe('bar names', () => {
     expect(countedStraight(s)).toBe(true)
     expect(shownBar(s, 0)).toBe(1)
     expect(shownBar(s, 2)).toBe(2)
+    expect(barsName(s, 1, 2)).toBe('bars 1–2')
+    expect(barsName(s, 0, 1)).toBe('the pickup to bar 1')
+    expect(barsName(s, 2, 2)).toBe('bar 2')
   })
 
   it('uses the numbers printed on an imported score, with the time through a repeat', () => {
