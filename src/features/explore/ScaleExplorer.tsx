@@ -17,12 +17,11 @@ import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
 import { burst } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
 import { SCALE_TYPE, SCALE_TYPES, keyFifths, midiOf, mod, parseNote, pcOf, pitchName, stepPattern } from '../../lib/theory'
-import { useLive } from '../../state/live'
 import { getPref, setPref, usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import { OctavePicker } from './OctavePicker'
-import { MicTimingNote, TimedResult, TimingStrip } from './ScaleTimed'
+import { TimedResult, TimingStrip } from './ScaleTimed'
 import { type Hands, type Octaves, runScore, scaleRun, stepOfId } from './scales'
 import { bestKey, readBests } from './scaleTiming'
 import { type RunSummary, useTimedRun } from './useTimedRun'
@@ -68,7 +67,6 @@ export function ScaleExplorer() {
   const scoreRef = useRef<HTMLDivElement>(null)
   const addXp = useProgress((s) => s.addXp)
   const strict = useSettings((s) => s.strictOctave)
-  const micOnly = useLive((s) => s.mic === 'on' && !(s.midi === 'ready' && s.midiDevices.length > 0))
 
   const type = SCALE_TYPE[typeId]
   // The tonic's name; scaleRun picks the octaves each hand plays in.
@@ -341,7 +339,6 @@ export function ScaleExplorer() {
                   Click while I play
                   <Toggle checked={click} onChange={setClick} label="Click while I play" />
                 </label>
-                {micOnly && <MicTimingNote />}
               </>
             )}
           </Card>

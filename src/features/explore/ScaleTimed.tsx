@@ -1,4 +1,4 @@
-import { type LucideIcon, ArrowLeft, ArrowRight, Check, Hand, Minus, Mic, RotateCcw, Trophy, X } from 'lucide-react'
+import { type LucideIcon, ArrowLeft, ArrowRight, Check, Hand, Minus, RotateCcw, Trophy, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Button } from '../../components/ui/Button'
 import { timingTendency } from '../practice/logic/rhythm'
@@ -86,16 +86,5 @@ export function TimedResult({
         Again
       </Button>
     </div>
-  )
-}
-
-/** The click makes the mic deaf for a moment, right on the beat, until that's fixed. */
-export function MicTimingNote() {
-  return (
-    <p className="flex items-start gap-1.5 text-sm font-semibold text-ink-mute">
-      <Mic size={16} className="mt-0.5 shrink-0 text-violet" />
-      Through the mic, each click stops it listening for a moment, so notes right on the beat can come out late or go unheard. Turn the click off (the
-      count-in still clicks), or use a USB cable.
-    </p>
   )
 }

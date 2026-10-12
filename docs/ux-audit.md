@@ -96,6 +96,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   it again in games, songs, tools and the lesson complete screen. A shortcut sheet (`?`), and a spare key (top C7)
   as Continue for mic users without a pedal. `M`
   *Partly done:* the shared pieces: `useHandsFree(action)` runs a screen's main action on Enter, a deliberate pedal tap (`lib/input/pedalTap.ts`) or the top C (C7, a setting, on by default); `?` opens a shortcut sheet (also in Settings). Lessons use it; the other screens are wired in the area batches.
+  *Partly done:* the Jam (Space starts/stops; Enter, a pedal tap or top C start it but never stop it mid-song) and Scale Explorer (Space and the hands-free scheme start a run).
 - [x] **21. Remember choices.** Note Rush setup, Rhythm Tap tempo/click, Ear Training level per mode, every Explore
   tool and the song list filter reset on each visit; game preferences aren't in Export. `S`
   *Partly done:* Note Rush, Rhythm Tap and Ear Training (4108ba9) and Free Play plus every Explore tool (981ab3b) remember their choices in the prefs store, which Export carries (e688569). The song list filter comes with the Songs batch.
@@ -107,6 +108,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **23. Fit screens to the window.** On a 13" MacBook, lesson pictures, Chord Explorer and Jam push the keyboard
   below the fold, and Start is below the fold on game setup screens (reproduced). Sticky action bar, measured
   heights. `M`
+  *Partly done:* the Jam fits the screen while the band plays (Now/Next, beat dots, strip, keyboard sized to what's left; settings in a sheet below xl). Lessons, games, Chord Explorer and the song player come with their batches.
 - [x] **24. Work offline.** No service worker: the iPad app needs the network on every cold launch and re-downloads
   the 2 MB piano. Precache the shell and samples, show "New version – Reload". `M`
   *Done:* a service worker (written at build time by `vite.config.ts` from `scripts/service-worker.js`) keeps the whole build on the device: 132 files, 3.8 MB including the piano. A new build installs in the background and "A new version of Tonic is ready · Reload" lets you switch when you like (`lib/offline.ts`, `UpdateBanner.tsx`). Checked with the production build: installed, updated through the banner, and loaded with the server stopped.
@@ -203,11 +205,13 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   "try next" chord suggestions. `M`
 - [ ] **61. Link the tools:** Circle → practise this scale / jam in this key; Chord Explorer → keys containing this
   chord; Free Play chord → explore it. `M`
-- [ ] **62. Progression Jam:** save progressions, replace/reorder chords in place, more chords (I7, sus4, slash chords),
+- [x] **62. Progression Jam:** save progressions, replace/reorder chords in place, more chords (I7, sus4, slash chords),
   mute the band's chords, 3/4 and 6/8, tick off chords as you play. `M`
+  *Done:* Jam: more chips (I7, IV7, sus4, I/3, V/3, II, III) with correct slash spellings and chord-tone bass patterns; tap a card to replace or move it (◀ ▶), step-by-step Undo and an Undo banner when a preset would replace yours; save, load and delete your own progressions; Bass / Chords / Drums toggles; Waltz 3/4, Ballad 6/8 and 2-bar chords; play-along ✓ per chord with an on-the-beat check and a score per loop. Checked: the new chips, and Now/Next with the keyboard fully visible while playing.
 - [x] **63. A metronome that keeps running across screens**, plus a speed trainer. `M`
   *Done:* the metronome's clock moved into `metronomeEngine.ts`, so it keeps clicking when you leave the page; a chip in every header shows the beat and BPM, opens the Metronome and stops it (`MetronomeMini.tsx`). It stops itself in Rhythm Tap and the Jam, which keep their own time. A speed trainer adds +2/4/6/8 BPM every 2/4/8 bars up to a target (remembered). Checked: started on the Metronome page, chip on Scale Explorer, stopped from the chip.
-- [ ] **64. Scale practice in time**, over two octaves, hands together. `M`
+- [x] **64. Scale practice in time**, over two octaves, hands together. `M`
+  *Done:* Scale Explorer practises one or two octaves (scale-book fingerings, tested for all 12 majors and the minors), right, left or both hands on the grand staff, and an optional in-time run with count-in and click that grades every note early/late like Rhythm Tap and saves your best clean tempo per scale.
 - [ ] **65. Guitar shapes for every chord** (20 of 48 basic chords have one; F♯m from River Flows is missing), capo
   view. `M`
 - [x] **66. Free Play and the tools respect the reading settings** (note names under the staff, key labels), and Free
@@ -235,6 +239,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   screen-reader announcements, Do-Re-Mi naming everywhere. `S–M`
   *Partly done:* shared controls: switches, small toggles and small buttons are 44 px, the dialog close button 48 px, dialogs take focus, keep Tab inside and give it back, and lesson note chips follow the Do Re Mi setting (`lib/naming.ts`).
   *Partly done:* screen readers hear chord names once ("F sharp m", not the drawn letters too: `MusicText`), every Settings switch row toggles from its text, and the compact connection pill has a spoken label. Screen-specific sizes and ✓/✗ cues come with the area batches.
+  *Partly done:* the Jam's transpose buttons are 48 px and its × 44 px; the octave picker's black keys have a 44 px tap area.
 - [x] **73. Performance:** with the mic on, hidden connect sheets re-render 25 times a second; pause the animated
   background on full-screen pages. `S`
   *Done:* the connect sheet's live parts only exist while it's open (no more hidden re-renders 25×/s), and the background lights hold still on full-screen pages (`Aurora calm`).
