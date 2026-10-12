@@ -109,6 +109,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   below the fold, and Start is below the fold on game setup screens (reproduced). Sticky action bar, measured
   heights. `M`
   *Partly done:* the Jam fits the screen while the band plays (Now/Next, beat dots, strip, keyboard sized to what's left; settings in a sheet below xl). Lessons, games, Chord Explorer and the song player come with their batches.
+  *Partly done:* lesson pictures fit the window (checked: u1-l1 step 1's 61-key map is fully visible at 1440×813); a few widget steps still scroll a little.
 - [x] **24. Work offline.** No service worker: the iPad app needs the network on every cold launch and re-downloads
   the 2 MB piano. Precache the shell and samples, show "New version – Reload". `M`
   *Done:* a service worker (written at build time by `vite.config.ts` from `scripts/service-worker.js`) keeps the whole build on the device: 132 files, 3.8 MB including the piano. A new build installs in the background and "A new version of Tonic is ready · Reload" lets you switch when you like (`lib/offline.ts`, `UpdateBanner.tsx`). Checked with the production build: installed, updated through the banner, and loaded with the server stopped.
@@ -130,7 +131,8 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 
 ## Learn
 
-- [ ] **28. Resume a lesson where you left off** (leaving or an iPad reload restarts at step 1). `S–M`
+- [x] **28. Resume a lesson where you left off** (leaving or an iPad reload restarts at step 1). `S–M`
+  *Done:* lessons save your place as you go; reopening resumes there with a one-tap Start over, and the Learn path and Home show "step 5 of 9".
 - [x] **29. Say what went wrong:** "That's D", "Right notes – now put E at the bottom", "wrong octave"; keep the progress
   dots visible when the hint appears. *Where:* `PlayStepView.tsx`, `learn/match.ts`. `S`
   *Done:* a feedback line names what you played ("That's D.", "right note, wrong octave") and, for chords, what's left ("2 of 3 notes… keep going.", "Now put E at the bottom.", "play exactly the keys written"); a wrong-octave chord note isn't a slip; the dots stay visible with the hint (`learn/feedback.ts`, `match.ts`, tests).
@@ -139,14 +141,18 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   *Done:* one slip per attempt (700 ms window), the first "Show me" costs a slip and replays are free, and the complete screen lists the steps you slipped on.
 - [ ] **31. Rhythm lessons that check rhythm.** "Show me" plays even notes today; play the written durations, add a
   count-in and grade timing (reuse Rhythm Tap's `scoreTaps`). `M–L`
-- [ ] **32. Answer note and chord quizzes by playing them** (19 quizzes fit). `M`
-- [ ] **33. Review mode** for finished lessons (Continue always on, step strip) and a quick mixed review weighted to
+- [x] **32. Answer note and chord quizzes by playing them** (19 quizzes fit). `M`
+  *Done:* 19 note/chord quizzes accept a played answer (MIDI, mic, computer keys); ear quizzes don't, so hunting for the sound on the keyboard stays free.
+- [x] **33. Review mode** for finished lessons (Continue always on, step strip) and a quick mixed review weighted to
   low-star lessons. `M`
+  *Done:* finished lessons offer Review (jump around, nothing scored) next to Replay for stars, and Quick review mixes up to 10 questions from finished lessons, weighted to low stars and oldest.
 - [x] **34. End of lesson and unit:** a unit-complete moment; "Next" goes to the first unfinished lesson; lesson text
   can link to the matching game; a real button instead of the tiny "Back to all lessons" link. `S`
   *Done:* unit-complete banner and extra confetti; "Next" goes to the next unfinished lesson; Enter or a pedal tap goes there from the complete screen; "All lessons" is a real button; lesson tips link to Note Rush, Rhythm Tap, Chord Trainer and Free Play (`[text](/path)` markup in RichText).
-- [ ] **35. Demos light up the keys** in time with the sound. `M`
-- [ ] **36. Learn page navigation:** a unit jump strip and lesson search. `S–M`
+- [x] **35. Demos light up the keys** in time with the sound. `M`
+  *Done:* Show me and listen clips light each key in time with the sound (quiz pictures don't, so they can't give answers away).
+- [x] **36. Learn page navigation:** a unit jump strip and lesson search. `S–M`
+  *Done:* sticky unit chips 1–7 with progress, and a lesson search over titles and step titles. Checked in the browser.
 
 ## Practice
 

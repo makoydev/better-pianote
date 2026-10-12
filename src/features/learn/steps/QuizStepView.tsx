@@ -39,8 +39,9 @@ export function QuizStepView({
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([])
   // Shown order (indices into step.options), fixed for this visit to the question.
   const [order] = useState(() => optionOrder(step.options, step.ordered))
-  // Note and chord questions can be answered on the keyboard too.
-  const playable = useMemo(() => playableQuiz(step.options, step.answer), [step.options, step.answer])
+  // Note and chord questions can be answered on the keyboard too, except ear questions: there, hunting for the sound
+  // on the keyboard is part of learning it, so playing is free and you tap your answer.
+  const playable = useMemo(() => (step.listen ? null : playableQuiz(step.options, step.answer)), [step.listen, step.options, step.answer])
   useMicChords(playable?.kind === 'chord')
   // What you played when it isn't one of the options ("That's G.").
   const [heard, setHeard] = useState<string | null>(null)

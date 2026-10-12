@@ -10,6 +10,7 @@ import { ProgressBar, ProgressRing } from '../../components/ui/progress'
 import { ALL_LESSONS, UNITS, nextLesson } from '../../content'
 import { startMic } from '../../lib/input/mic'
 import { levelFor } from '../../lib/levels'
+import { useResumeStep } from '../learn/resume'
 import { go } from '../../router'
 import { useLive } from '../../state/live'
 import { usePrefs } from '../../state/prefs'
@@ -38,6 +39,8 @@ export function Home() {
   const [connectOpen, setConnectOpen] = useState(false)
   const level = levelFor(xp)
   const next = nextLesson(lessons)
+  // Left part-way through the next lesson? Say where you'll pick up.
+  const resumeStep = useResumeStep(next?.lesson.id ?? '', next?.lesson.steps.length ?? 0)
   const doneCount = ALL_LESSONS.filter((x) => lessons[x.lesson.id]).length
   const started = doneCount > 0
   const connected = midi === 'ready' && devices.length > 0
@@ -96,6 +99,7 @@ export function Home() {
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-extrabold uppercase tracking-[0.2em]" style={{ color: next.unit.color }}>
                   {started ? 'Continue' : 'Start here'} · Unit {UNITS.indexOf(next.unit) + 1}, lesson {next.index + 1}
+                  {resumeStep !== null && ` · step ${resumeStep + 1} of ${next.lesson.steps.length}`}
                 </div>
                 <div className="mt-1 font-display text-4xl font-bold leading-tight">{next.lesson.title}</div>
                 <div className="mt-1 text-lg text-ink-soft">{next.lesson.subtitle}</div>

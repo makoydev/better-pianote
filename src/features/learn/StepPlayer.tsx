@@ -8,6 +8,7 @@ import { ProgressBar } from '../../components/ui/progress'
 import type { Step } from '../../content/types'
 import { useHandsFree } from '../../hooks/useHandsFree'
 import { isPlainKey, isTypingTarget } from '../../lib/focus'
+import { stopDemos } from '../../lib/audio/play'
 import { useLive } from '../../state/live'
 import type { Resume } from './resume'
 import { stepLabel } from './stepText'
@@ -72,6 +73,8 @@ export function StepPlayer({ steps, title, icon, color, pedal = true, browse = f
     if (!done.current) onProgress?.({ step: i, solved: answered(), slips, secs: elapsed(), of: steps.length })
   })
   useEffect(() => report(), [i, solved, slips])
+  // A demo from one step ("Show me", a listen clip) stops when you move to another.
+  useEffect(() => () => stopDemos(), [i])
   useEffect(() => {
     const onHide = () => {
       if (document.visibilityState === 'hidden') report()
