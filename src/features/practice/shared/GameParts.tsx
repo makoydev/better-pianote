@@ -219,7 +219,7 @@ export function ResultsCard({
           </span>
         )}
       </div>
-      <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <dl className={`mt-6 grid grid-cols-2 gap-3 ${stats.length === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
         {stats.map((s) => (
           <div key={s.label} className="rounded-2xl bg-night-850 p-3">
             <dt className="text-xs font-extrabold uppercase tracking-wider text-ink-mute">{s.label}</dt>

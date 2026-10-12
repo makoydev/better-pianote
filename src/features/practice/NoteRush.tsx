@@ -1,41 +1,45 @@
-import { Flame, Hand, Keyboard, Pause, Play, RotateCcw, Settings2, SkipForward, Timer, Trophy, Zap } from 'lucide-react'
+import { Flame, Hand, Keyboard, Pause, Play, SkipForward, Timer, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
-import { Staff, type StaffItem } from '../../components/staff/Staff'
+import { Staff } from '../../components/staff/Staff'
+import { StaffSvg } from '../../components/staff/StaffSvg'
 import type { Layout } from '../../components/staff/layout'
 import { Button, IconButton } from '../../components/ui/Button'
-import { GoalProgress } from '../../components/ui/GoalProgress'
 import { Paper } from '../../components/ui/Card'
-import { Chips, Segmented, Toggle } from '../../components/ui/controls'
-import { Stars } from '../../components/ui/progress'
+import { Segmented, Toggle } from '../../components/ui/controls'
 import { useElementSize } from '../../hooks/useElementSize'
 import { audio } from '../../lib/audio/engine'
 import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
 import { burst } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
 import { pauseComputerKeys } from '../../lib/input/keys'
-import { LETTERS, mod } from '../../lib/theory'
-import { go } from '../../router'
+import { LETTERS, keyName, majorKey, mod, pitchName } from '../../lib/theory'
 import { usePref } from '../../state/prefs'
-import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import {
   LEVELS,
+  RUSH_KEYS,
   type RushClef,
+  type RushKey,
   type RushLevel,
   type RushNote,
   isCorrect,
+  keyHint,
   keyboardRange,
   makeRound,
   multiplier,
   nameMatches,
   prettyName,
+  rushGroup,
+  rushItemId,
   rushStars,
 } from './noteRush/logic'
-import { finishGame } from './shared/finish'
+import { tapeLayout } from './noteRush/tape'
+import { GameMain, ResultsCard, SetupCard } from './shared/GameParts'
+import { type FinishResult, finishGame } from './shared/finish'
 
 type Phase = 'setup' | 'countdown' | 'play' | 'results'
 type Mode = 'play' | 'name'
@@ -44,6 +48,8 @@ interface Config {
   clef: RushClef
   level: RushLevel
   mode: Mode
+  /** Key signature: sharps (+) or flats (−). */
+  key: RushKey
 }
 
 interface Result {
@@ -52,30 +58,25 @@ interface Result {
   wrong: number
   bestCombo: number
   avgMs: number
+  /** Misses per note, by clef and name ("treble:F#4"). */
   missed: Record<string, number>
   stars: number
-  /** Kept in your scores (rounds with nothing right aren't). */
-  saved: boolean
-  /** A new best for this clef and level. */
-  isBest: boolean
-  xp: number
+  /** Null when the round isn't kept (nothing right). */
+  finish: FinishResult | null
 }
 
 const ROUND_MS = 60_000
 const SP = 20
+const LEVEL_INFO = LEVELS.map((l) => ({ id: String(l.level), name: l.title, description: l.detail }))
 
 export function NoteRush() {
   const [phase, setPhase] = useState<Phase>('setup')
-  // Clef, level and how you answer are remembered between visits.
+  // Clef, level, how you answer and the key signature are remembered between visits.
   const [clef, setClef] = usePref<RushClef>('note-rush:clef', 'treble', ['treble', 'bass', 'grand'])
   const [level, setLevel] = usePref<RushLevel>('note-rush:level', 1, [1, 2, 3, 4, 5])
   const [mode, setMode] = usePref<Mode>('note-rush:mode', 'play', ['play', 'name'])
-  const config: Config = { clef, level, mode }
-  const setConfig = (c: Config) => {
-    setClef(c.clef)
-    setLevel(c.level)
-    setMode(c.mode)
-  }
+  const [key, setKey] = usePref<RushKey>('note-rush:key', 0, RUSH_KEYS)
+  const config: Config = { clef, level, mode, key }
   const [result, setResult] = useState<Result | null>(null)
   const [runId, setRunId] = useState(0)
 
@@ -84,11 +85,30 @@ export function NoteRush() {
     setPhase('countdown')
   }
 
+  const where = [LEVELS[level - 1].title, clef === 'grand' ? 'both clefs' : `${clef} clef`, key ? keyName(majorKey(key)) : ''].filter(Boolean).join(' · ')
+
   return (
     <div className="flex h-dvh flex-col">
-      <TopBar back="/practice" title="Note Rush" subtitle={phase === 'setup' ? 'Sight-reading sprint' : `${LEVELS[config.level - 1].title} · ${config.clef === 'grand' ? 'both clefs' : `${config.clef} clef`}`} />
+      <TopBar back="/practice" title="Note Rush" subtitle={phase === 'setup' ? 'Sight-reading sprint' : <MusicText text={where} />} />
       <div className="relative min-h-0 flex-1 overflow-y-auto">
-        {phase === 'setup' && <Setup config={config} onChange={setConfig} onStart={start} />}
+        {phase === 'setup' && (
+          <GameMain>
+            <SetupCard
+              icon={Zap}
+              from="#5cc8ff"
+              to="#9b8cff"
+              title="Note Rush"
+              blurb="60 seconds. Read each note and play it, or name it. Streaks build your multiplier."
+              gameId={`note-rush:${rushGroup(clef, key)}`}
+              levels={LEVEL_INFO}
+              level={String(level)}
+              onLevel={(id) => setLevel(Number(id) as RushLevel)}
+              onStart={start}
+            >
+              <RushOptions config={config} setClef={setClef} setMode={setMode} setKey={setKey} />
+            </SetupCard>
+          </GameMain>
+        )}
         {phase === 'countdown' && <Countdown onDone={() => setPhase('play')} />}
         {phase === 'play' && (
           <Round
@@ -100,73 +120,64 @@ export function NoteRush() {
             }}
           />
         )}
-        {phase === 'results' && result && <Results result={result} onAgain={start} onSetup={() => setPhase('setup')} />}
+        {phase === 'results' && result && (
+          <GameMain>
+            <Results result={result} clef={clef} onAgain={start} onSetup={() => setPhase('setup')} />
+          </GameMain>
+        )}
       </div>
     </div>
   )
 }
 
-function Setup({ config, onChange, onStart }: { config: Config; onChange: (c: Config) => void; onStart: () => void }) {
+function Field({ label, note, children }: { label: string; note?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <span className="px-1 text-sm font-extrabold uppercase tracking-wider text-ink-mute">{label}</span>
+      {children}
+      {note && <span className="px-1 text-sm font-semibold text-ink-mute">{note}</span>}
+    </div>
+  )
+}
+
+function RushOptions({
+  config,
+  setClef,
+  setMode,
+  setKey,
+}: {
+  config: Config
+  setClef: (c: RushClef) => void
+  setMode: (m: Mode) => void
+  setKey: (k: RushKey) => void
+}) {
   const strict = useSettings((s) => s.strictOctave)
   const set = useSettings((s) => s.set)
-  const best = useProgress((s) => s.games[`note-rush:${config.clef}:${config.level}`]?.best ?? 0)
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-7 px-5 py-8">
-      <div className="text-center">
-        <motion.div initial={{ scale: 0.7, rotate: -10 }} animate={{ scale: 1, rotate: 0 }} className="mx-auto mb-4 flex size-20 items-center justify-center rounded-3xl bg-linear-to-br from-sky to-violet text-night-900 shadow-[0_16px_40px_-12px_#5cc8ff]">
-          <Zap size={40} strokeWidth={2.4} />
-        </motion.div>
-        <h1 className="font-display text-4xl font-bold sm:text-5xl">Note Rush</h1>
-        <p className="mt-2 text-lg text-ink-soft">60 seconds. Read each note and play it. Streaks build your multiplier.</p>
-      </div>
-      <section className="space-y-3">
-        <h2 className="text-sm font-extrabold uppercase tracking-[0.18em] text-ink-mute">Clef</h2>
+    <div className="glass grid gap-x-6 gap-y-5 rounded-3xl p-5 md:grid-cols-2">
+      <Field label="Clef">
         <Segmented
-          size="lg"
           className="w-full"
           value={config.clef}
-          onChange={(clef) => onChange({ ...config, clef })}
+          onChange={setClef}
           options={[
             { value: 'treble', label: 'Treble' },
             { value: 'bass', label: 'Bass' },
             { value: 'grand', label: 'Both' },
           ]}
         />
-      </section>
-      <section className="space-y-3">
-        <h2 className="text-sm font-extrabold uppercase tracking-[0.18em] text-ink-mute">Level</h2>
-        <div className="grid gap-2.5 sm:grid-cols-2">
-          {LEVELS.map((l) => {
-            const on = l.level === config.level
-            return (
-              <motion.button
-                key={l.level}
-                type="button"
-                whileTap={{ scale: 0.98 }}
-                onClick={() => onChange({ ...config, level: l.level })}
-                className={`flex items-center gap-4 rounded-2xl border-2 p-4 text-left transition-colors ${on ? 'border-gold bg-gold/10' : 'border-white/8 bg-night-750 hover:border-white/20'}`}
-              >
-                <span className={`flex size-11 shrink-0 items-center justify-center rounded-xl text-xl font-extrabold ${on ? 'bg-gold text-night-900' : 'bg-white/8 text-ink-soft'}`}>{l.level}</span>
-                <span>
-                  <span className="block text-lg font-extrabold">{l.title}</span>
-                  <span className="block text-sm text-ink-mute">{l.detail}</span>
-                </span>
-              </motion.button>
-            )
-          })}
-        </div>
-      </section>
-      <section className="space-y-3">
-        <h2 className="text-sm font-extrabold uppercase tracking-[0.18em] text-ink-mute">How to answer</h2>
-        <Chips
+      </Field>
+      <Field label="How to answer">
+        <Segmented
+          className="w-full"
           value={config.mode}
-          onChange={(mode) => onChange({ ...config, mode })}
+          onChange={setMode}
           options={[
             {
               value: 'play',
               label: (
                 <span className="inline-flex items-center gap-2">
-                  <Hand size={18} /> Play it on the keys
+                  <Hand size={18} /> Play it
                 </span>
               ),
             },
@@ -174,32 +185,30 @@ function Setup({ config, onChange, onStart }: { config: Config; onChange: (c: Co
               value: 'name',
               label: (
                 <span className="inline-flex items-center gap-2">
-                  <Keyboard size={18} /> Tap the note name
+                  <Keyboard size={18} /> Name it
                 </span>
               ),
             },
           ]}
         />
-        {config.mode === 'play' && (
-          <label className="flex items-center justify-between gap-4 rounded-2xl bg-night-850 p-4">
-            <span>
-              <span className="block font-extrabold">Exact octave</span>
-              <span className="text-sm text-ink-mute">Off: any C counts as C. On: it has to be the C that's written.</span>
-            </span>
-            <Toggle checked={strict} onChange={(v) => set({ strictOctave: v })} label="Exact octave" />
-          </label>
-        )}
-      </section>
-      <div className="flex flex-col items-center gap-3">
-        <Button size="xl" icon={Play} onClick={onStart} className="w-full max-w-sm">
-          Start
-        </Button>
-        {best > 0 && (
-          <span className="flex items-center gap-2 text-sm font-bold text-ink-mute">
-            <Trophy size={16} className="text-gold" /> Best on this level: {best}
+      </Field>
+      <Field label="Key signature" note={<MusicText text={keyHint(config.key)} />}>
+        <Segmented
+          className="w-full"
+          value={config.key}
+          onChange={setKey}
+          options={RUSH_KEYS.map((k) => ({ value: k, label: k ? <MusicText text={pitchName(majorKey(k).tonic)} /> : 'None' }))}
+        />
+      </Field>
+      {config.mode === 'play' && (
+        <label className="flex items-center justify-between gap-4 self-start rounded-2xl bg-night-850 p-3 pl-4 md:mt-7">
+          <span>
+            <span className="block font-extrabold">Exact octave</span>
+            <span className="text-sm text-ink-mute">Off: any C counts as C. On: it has to be the C that's written.</span>
           </span>
-        )}
-      </div>
+          <Toggle checked={strict} onChange={(v) => set({ strictOctave: v })} label="Exact octave" />
+        </label>
+      )}
     </div>
   )
 }
@@ -233,7 +242,7 @@ function Countdown({ onDone }: { onDone: () => void }) {
 function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => void }) {
   const strict = useSettings((s) => s.strictOctave)
   const uiSounds = useSettings((s) => s.uiSounds)
-  const round = useMemo(() => makeRound(config.clef, config.level, 260), [config.clef, config.level])
+  const round = useMemo(() => makeRound(config.clef, config.level, 260, Math.random, { key: config.key }), [config.clef, config.level, config.key])
   const [i, setI] = useState(0)
   const [score, setScore] = useState(0)
   const [combo, setCombo] = useState(0)
@@ -260,18 +269,20 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
   }, [])
   const finished = useRef(false)
   const staffRef = useRef<HTMLDivElement>(null)
-  const [lo, hi] = keyboardRange(config.clef, config.level)
+  const [lo, hi] = keyboardRange(config.clef, config.level, config.key)
   const current: RushNote = round[i]
+  // Sharps and flats to name: level 5's accidentals, or the key signature's.
+  const accidentals = config.level === 5 || config.key !== 0
 
   const finish = () => {
     if (finished.current) return
     finished.current = true
     const stars = rushStars(correct, wrong)
-    // A round with nothing right isn't saved: no best or last score, no XP (so no streak either).
-    // Otherwise it records "note-rush" and "note-rush:<clef>:<level>", with XP on the same scale as the other games.
-    const saved = correct > 0 ? finishGame('note-rush', `${config.clef}:${config.level}`, score, stars) : null
+    // A round with nothing right isn't saved: no best or last score, no XP (so no streak either). Otherwise it
+    // records "note-rush" and "note-rush:<clef>[:<key>]:<level>", with XP on the same scale as the other games.
+    const saved = correct > 0 ? finishGame('note-rush', `${rushGroup(config.clef, config.key)}:${config.level}`, score, stars) : null
     const avgMs = times.current.length ? times.current.reduce((a, b) => a + b, 0) / times.current.length : 0
-    onFinish({ score, correct, wrong, bestCombo, avgMs, missed: missed.current, stars, saved: !!saved, isBest: saved?.levelBest ?? false, xp: saved?.xp ?? 0 })
+    onFinish({ score, correct, wrong, bestCombo, avgMs, missed: missed.current, stars, finish: saved })
   }
 
   // The clock. While paused it stands still, and resuming moves the end time on by the pause.
@@ -319,6 +330,11 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
     }), 380)
   }
 
+  const miss = (note: RushNote) => {
+    const id = rushItemId(note)
+    missed.current[id] = (missed.current[id] ?? 0) + 1
+  }
+
   const answer = (ok: boolean, midi?: number) => {
     if (finished.current || pausedAt.current !== null) return
     // The ♭/♯ choice is part of one answer; the next one starts from natural again.
@@ -345,7 +361,7 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
       setMisses((m) => m + 1)
       setWrongFlash(true)
       window.setTimeout(() => setWrongFlash(false), 380)
-      missed.current[current.name] = (missed.current[current.name] ?? 0) + 1
+      miss(current)
       if (midi !== undefined) flashKey(midi, 'bad')
       if (uiSounds) audio.ui('wrong')
     }
@@ -358,7 +374,7 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
     setCombo(0)
     setWrong((w) => w + 1)
     setMisses(0)
-    missed.current[current.name] = (missed.current[current.name] ?? 0) + 1
+    miss(current)
     setSkipped((s) => [...s, i])
     shownAt.current = performance.now()
     setI((x) => x + 1)
@@ -398,10 +414,15 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
         return
       }
       if (config.mode !== 'name') return
+      // "−" then a letter names a flat.
+      if (accidentals && (e.key === '-' || e.key === '_')) {
+        setAcc(-1)
+        return
+      }
       const letter = 'CDEFGAB'.indexOf(e.key.toUpperCase())
       if (letter < 0 || e.key.length !== 1) return
-      // Shift + letter is the sharp (only level 5 has accidentals).
-      answer(nameMatches(current, letter, e.shiftKey && config.level === 5 ? 1 : acc))
+      // Shift + letter is the sharp.
+      answer(nameMatches(current, letter, e.shiftKey && accidentals ? 1 : acc))
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -493,7 +514,7 @@ function Round({ config, onFinish }: { config: Config; onFinish: (r: Result) => 
       </div>
 
       {config.mode === 'name' ? (
-        <NameButtons level={config.level} acc={acc} setAcc={setAcc} onPick={(letter) => answer(nameMatches(current, letter, acc))} />
+        <NameButtons accidentals={accidentals} acc={acc} setAcc={setAcc} onPick={(letter) => answer(nameMatches(current, letter, acc))} />
       ) : (
         <div ref={kbArea} className="flex min-h-[150px] flex-1 flex-col justify-end">
           <Piano from={lo} to={hi} marks={marks} labels="c" sparks sparkHeight={Math.max(30, Math.min(80, kbH - kbHeight - 26))} height={kbHeight} />
@@ -528,54 +549,50 @@ function PausedOverlay({ onResume }: { onResume: () => void }) {
   )
 }
 
-/** Notes slide past a fixed clef; the current note sits near the left with a glow. */
+/** Notes slide past a fixed clef and key signature; the current note sits near the left with a glow. */
 function NoteTape({ config, round, index, skipped, wrong }: { config: Config; round: RushNote[]; index: number; skipped: number[]; wrong: boolean }) {
   const [box, { width }] = useElementSize<HTMLDivElement>()
   const [bg, setBg] = useState<Layout | null>(null)
-  const [tape, setTape] = useState<{ slot: number; start: number } | null>(null)
   const s = Math.max(0, index - 3)
-  const windowNotes = round.slice(s, index + 10)
   const reserve = config.level === 4 ? 4.2 : config.level === 5 ? 2.8 : 2.2
-  const clef = config.clef
+  const { clef, key } = config
 
-  const items: StaffItem[] = windowNotes.map((n, k) => {
-    const g = s + k
-    return {
-      key: n.id,
-      notes: [n.name],
-      dur: 'w',
-      staff: clef === 'grand' ? n.staff : undefined,
-      state: g < index ? (skipped.includes(g) ? 'wrong' : 'correct') : g === index ? (wrong ? 'wrong' : 'active') : 'normal',
-    }
-  })
+  const tape = useMemo(
+    () =>
+      tapeLayout(
+        round.slice(s, index + 10).map((n, k) => {
+          const g = s + k
+          return {
+            key: n.id,
+            name: n.name,
+            staff: clef === 'grand' ? n.staff : undefined,
+            state: g < index ? (skipped.includes(g) ? 'wrong' : 'correct') : g === index ? (wrong ? 'wrong' : 'active') : 'normal',
+          }
+        }),
+        { clef, keySig: key, sp: SP, reserve },
+      ),
+    [round, s, index, skipped, wrong, clef, key, reserve],
+  )
 
+  // Every note takes the same room, so a note's place on the whole tape is its place in this window plus `s` steps.
+  const [first, second] = tape.events
+  const step = first && second ? second.x - first.x : 0
   const clefW = bg ? bg.contentStart - 0.3 * SP : 120
   const anchor = Math.min(220, Math.max(90, (width - clefW) * 0.2))
-  const x = tape ? anchor - (tape.start + index * tape.slot + tape.slot / 2) : 0
+  const x = first ? anchor - (first.x + index * step + first.width / 2) : 0
   // No names and no letter colours on the notes: either one gives the answer away.
   const common = { clef, sp: SP, minSp: SP, reserveAbove: reserve, reserveBelow: reserve, labels: false, colorNotes: false, fingers: false } as const
 
   return (
     <Paper className="relative overflow-hidden !px-0">
       <div ref={box} className="relative px-3">
-        {/* Static staff with the clef; its height sizes the card. */}
-        <Staff {...common} items={[{ key: 'bg', dur: 'w', hidden: true }]} justify onLayout={setBg} animate={false} />
+        {/* Static staff with the clef and key signature; its height sizes the card. */}
+        <Staff {...common} keySig={key} items={[{ key: 'bg', dur: 'w', hidden: true }]} justify onLayout={setBg} animate={false} />
         {/* Moving notes, clipped so they pass under the clef. */}
         <div className="absolute inset-y-0 right-0 overflow-hidden" style={{ left: clefW + 12 }}>
           <motion.div className="absolute left-0 top-0" initial={false} animate={{ x }} transition={{ type: 'spring', stiffness: 260, damping: 30 }}>
-            <div className="absolute top-0" style={{ left: tape ? s * tape.slot : 0 }}>
-              <Staff
-                {...common}
-                natural
-                lines={false}
-                showClef={false}
-                minSlot={6}
-                items={items}
-                onLayout={(l) => {
-                  const slot = l.events[0]?.width ?? 0
-                  if (slot && (!tape || tape.slot !== slot || tape.start !== l.contentStart)) setTape({ slot, start: l.contentStart })
-                }}
-              />
+            <div className="absolute top-0" style={{ left: s * step }}>
+              <StaffSvg layout={tape} colored={false} />
             </div>
           </motion.div>
           <div className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-linear-to-r from-paper to-transparent" />
@@ -586,10 +603,10 @@ function NoteTape({ config, round, index, skipped, wrong }: { config: Config; ro
   )
 }
 
-function NameButtons({ level, acc, setAcc, onPick }: { level: RushLevel; acc: number; setAcc: (a: number) => void; onPick: (letter: number) => void }) {
+function NameButtons({ accidentals, acc, setAcc, onPick }: { accidentals: boolean; acc: number; setAcc: (a: number) => void; onPick: (letter: number) => void }) {
   return (
     <div className="mt-auto space-y-3 pb-2">
-      {level === 5 && (
+      {accidentals && (
         <div className="flex justify-center">
           <Segmented
             size="lg"
@@ -618,73 +635,53 @@ function NameButtons({ level, acc, setAcc, onPick }: { level: RushLevel; acc: nu
         ))}
       </div>
       <p className="text-center text-sm font-semibold text-ink-mute">
-        {level === 5 ? 'Tip: you can also type the letter on your computer keyboard (Shift + letter for a sharp).' : 'Tip: you can also type the letter on your computer keyboard.'}
+        {accidentals
+          ? 'Tip: you can also type the letter on your computer keyboard (Shift + letter for a sharp, − then the letter for a flat).'
+          : 'Tip: you can also type the letter on your computer keyboard.'}
       </p>
     </div>
   )
 }
 
-function Results({ result, onAgain, onSetup }: { result: Result; onAgain: () => void; onSetup: () => void }) {
+/** "F♯4", or "F♯4 (bass)" when both clefs are in play. */
+function missLabel(id: string, clef: RushClef): string {
+  const [staff, name] = id.split(':')
+  return clef === 'grand' ? `${prettyName(name)} (${staff})` : prettyName(name)
+}
+
+function Results({ result, clef, onAgain, onSetup }: { result: Result; clef: RushClef; onAgain: () => void; onSetup: () => void }) {
   const total = result.correct + result.wrong
   const accuracy = total ? Math.round((result.correct / total) * 100) : 0
   const missed = Object.entries(result.missed).sort((a, b) => b[1] - a[1]).slice(0, 6)
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col items-center gap-6 px-5 py-8 text-center">
-      <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 18 }}>
-        {result.isBest && (
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-gold px-4 py-1.5 text-sm font-extrabold text-night-900">
-            <Trophy size={16} /> New best!
-          </div>
-        )}
-        <div className="font-display text-7xl font-bold text-gradient">{result.score}</div>
-        <div className="mt-1 text-lg font-bold text-ink-mute">points</div>
-        <div className="mt-3 flex justify-center">
-          <Stars value={result.stars} size={44} animate />
-        </div>
-      </motion.div>
-      <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          ['Notes', String(result.correct)],
-          ['Accuracy', `${accuracy}%`],
-          ['Best combo', String(result.bestCombo)],
-          ['Avg. time', result.avgMs ? `${(result.avgMs / 1000).toFixed(1)}s` : '–'],
-        ].map(([label, value], k) => (
-          <motion.div key={label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 + k * 0.08 }} className="glass rounded-2xl p-4">
-            <div className="text-3xl font-extrabold">{value}</div>
-            <div className="text-sm font-bold text-ink-mute">{label}</div>
-          </motion.div>
-        ))}
-      </div>
-      {result.saved ? (
-        <div className="text-sm font-bold text-gold">+{result.xp} XP</div>
-      ) : (
-        <div className="text-sm font-bold text-ink-mute">No notes right this time, so this round isn't saved.</div>
-      )}
-      <GoalProgress />
+    <ResultsCard
+      title={result.stars === 3 ? 'Lightning reader!' : result.stars === 2 ? 'Nice reading!' : 'Round complete'}
+      score={result.score}
+      scoreNote={result.finish ? undefined : 'No notes right this time, so this round isn’t saved.'}
+      stars={result.stars}
+      result={result.finish}
+      stats={[
+        { label: 'Notes', value: result.correct },
+        { label: 'Accuracy', value: `${accuracy}%` },
+        { label: 'Best combo', value: result.bestCombo },
+        { label: 'Avg. time', value: result.avgMs ? `${(result.avgMs / 1000).toFixed(1)}s` : '–' },
+      ]}
+      onAgain={onAgain}
+      onSetup={onSetup}
+    >
       {missed.length > 0 && (
-        <div className="w-full">
-          <h3 className="mb-3 text-sm font-extrabold uppercase tracking-[0.18em] text-ink-mute">Notes to review</h3>
+        <div className="mt-6">
+          <h3 className="mb-3 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Notes to review</h3>
           <div className="flex flex-wrap justify-center gap-2">
-            {missed.map(([name, n]) => (
-              <span key={name} className="rounded-xl border border-white/10 bg-night-750 px-3 py-2 text-lg font-extrabold">
-                <MusicText text={prettyName(name)} /> <span className="text-sm text-ink-mute">×{n}</span>
+            {missed.map(([id, n]) => (
+              <span key={id} className="rounded-xl border border-white/10 bg-night-750 px-3 py-2 text-lg font-extrabold">
+                <MusicText text={missLabel(id, clef)} /> <span className="text-sm text-ink-mute">×{n}</span>
               </span>
             ))}
           </div>
         </div>
       )}
-      <div className="flex w-full max-w-md flex-col gap-3 sm:flex-row">
-        <Button variant="secondary" icon={Settings2} onClick={onSetup} className="sm:flex-1">
-          Change level
-        </Button>
-        <Button icon={RotateCcw} onClick={onAgain} className="sm:flex-1">
-          Play again
-        </Button>
-      </div>
-      <button type="button" onClick={() => go('/practice')} className="text-sm font-bold text-ink-mute hover:text-ink">
-        Back to practice
-      </button>
-    </div>
+    </ResultsCard>
   )
 }

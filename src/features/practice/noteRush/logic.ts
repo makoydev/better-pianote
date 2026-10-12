@@ -1,7 +1,11 @@
-import { LETTERS, midiOf, mod, noteName, parseNote } from '../../../lib/theory'
+import { LETTERS, accText, keyId, keyName, keySignature, majorKey, midiOf, mod, noteName, parseNote } from '../../../lib/theory'
 
 export type RushClef = 'treble' | 'bass' | 'grand'
 export type RushLevel = 1 | 2 | 3 | 4 | 5
+
+/** Key signatures a round can use, as sharps (+) or flats (−): none, G, D, F and B♭ major. */
+export const RUSH_KEYS = [0, 1, 2, -1, -2] as const
+export type RushKey = (typeof RUSH_KEYS)[number]
 
 export interface RushNote {
   id: number
@@ -19,6 +23,10 @@ export const LEVELS: { level: RushLevel; title: string; detail: string }[] = [
   { level: 5, title: 'Sharps & flats', detail: 'The whole staff, with accidentals' },
 ]
 
+/** The CT-S1's keys: the on-screen keyboard never reaches past them. */
+const LOWEST = 36 // C2
+const HIGHEST = 96 // C7
+
 /** White-key names from `from` to `to`, e.g. naturals('D4', 'G5'). */
 export function naturals(from: string, to: string): string[] {
   const a = parseNote(from)
@@ -35,10 +43,6 @@ const POOLS: Record<1 | 2 | 3 | 4, { treble: string[]; bass: string[] }> = {
   4: { treble: naturals('A3', 'C6'), bass: naturals('C2', 'E4') },
 }
 
-// Friendly accidentals only (no E♯, B♯, F♭, C♭).
-const SHARPABLE = new Set(['C', 'D', 'F', 'G', 'A'])
-const FLATTABLE = new Set(['D', 'E', 'G', 'A', 'B'])
-
 export function poolFor(clef: RushClef, level: RushLevel): { name: string; staff: 'treble' | 'bass' }[] {
   const p = POOLS[level === 5 ? 3 : level]
   const t = p.treble.map((name) => ({ name, staff: 'treble' as const }))
@@ -46,21 +50,66 @@ export function poolFor(clef: RushClef, level: RushLevel): { name: string; staff
   return clef === 'treble' ? t : clef === 'bass' ? b : [...t, ...b]
 }
 
-export function makeRound(clef: RushClef, level: RushLevel, count = 150, rand: () => number = Math.random): RushNote[] {
-  const pool = poolFor(clef, level)
+// Friendly accidentals only: no E♯, B♯, F♭ or C♭ (and never a double sharp or flat).
+const UNFRIENDLY = new Set(['E1', 'B1', 'F-1', 'C-1'])
+const friendly = (letter: number, acc: number) => Math.abs(acc) <= 1 && !UNFRIENDLY.has(`${LETTERS[letter]}${acc}`)
+
+/** The sharp (1) or flat (−1) the key signature gives a letter. */
+export function keyAccidental(letter: number, key: number): number {
+  const sig = keySignature(key)
+  return sig.letters.includes(LETTERS[letter]) ? sig.acc : 0
+}
+
+/** One note a round can ask, and its share of the picks before weak spots are weighted in. */
+export interface RushChoice {
+  name: string
+  staff: 'treble' | 'bass'
+  chance: number
+}
+
+/**
+ * Every note a round can ask: the level's notes as the key signature makes them (in G major every F is F♯), and at
+ * level 5 also raised or lowered a half step, which is what the written accidentals are for (about 45% of notes).
+ */
+export function rushChoices(clef: RushClef, level: RushLevel, key = 0): RushChoice[] {
+  return poolFor(clef, level).flatMap(({ name, staff }) => {
+    const n = parseNote(name)
+    const spell = (acc: number) => LETTERS[n.letter] + accText(acc, true) + n.oct
+    const own = keyAccidental(n.letter, key)
+    if (level !== 5) return [{ name: spell(own), staff, chance: 1 }]
+    const altered = [own + 1, own - 1].filter((acc) => friendly(n.letter, acc))
+    return [{ name: spell(own), staff, chance: altered.length ? 0.55 : 1 }, ...altered.map((acc) => ({ name: spell(acc), staff, chance: 0.45 / altered.length }))]
+  })
+}
+
+/** The id weak spots are kept under: the clef it's read in and the note, e.g. "treble:F#4". */
+export const rushItemId = (n: { name: string; staff: 'treble' | 'bass' }) => `${n.staff}:${n.name}`
+
+/**
+ * A round of notes. `weight` makes some notes come up more often (weak spots, or a drill of what you missed);
+ * the same note never comes twice in a row.
+ */
+export function makeRound(
+  clef: RushClef,
+  level: RushLevel,
+  count = 150,
+  rand: () => number = Math.random,
+  opts: { key?: number; weight?: (c: RushChoice) => number } = {},
+): RushNote[] {
+  const choices = rushChoices(clef, level, opts.key)
+  const weighted = choices.map((c) => c.chance * (opts.weight?.(c) ?? 1))
+  const weights = weighted.some((w) => w > 0) ? weighted : choices.map((c) => c.chance)
+  const total = weights.reduce((a, b) => a + b, 0)
   const out: RushNote[] = []
   let last = ''
   for (let id = 0; out.length < count; id++) {
-    const pick = pool[Math.floor(rand() * pool.length)]
-    let name = pick.name
-    if (level === 5 && rand() < 0.45) {
-      const letter = name[0]
-      const options = [SHARPABLE.has(letter) ? '#' : null, FLATTABLE.has(letter) ? 'b' : null].filter(Boolean) as string[]
-      if (options.length) name = letter + options[Math.floor(rand() * options.length)] + name.slice(1)
-    }
+    let r = rand() * total
+    let k = 0
+    while (k < choices.length - 1 && (r -= weights[k]) >= 0) k++
+    const { name, staff } = choices[k]
     if (name === last) continue
     last = name
-    out.push({ id, name, midi: midiOf(parseNote(name)), staff: pick.staff })
+    out.push({ id, name, midi: midiOf(parseNote(name)), staff })
   }
   return out
 }
@@ -80,18 +129,34 @@ export function isCorrect(note: RushNote, midi: number, strictOctave: boolean) {
   return strictOctave ? midi === note.midi : mod(midi, 12) === mod(note.midi, 12)
 }
 
-/** Name-it mode: letter plus accidental must match how the note is written. */
+/** Name-it mode: letter plus accidental must match the note (with the key signature's sharps and flats). */
 export function nameMatches(note: RushNote, letter: number, acc: number) {
   const n = parseNote(note.name)
   return n.letter === letter && n.acc === acc
 }
 
-/** Keyboard range (whole octaves) that covers every note in the pool. */
-export function keyboardRange(clef: RushClef, level: RushLevel): [number, number] {
-  const ms = poolFor(clef, level).map((p) => midiOf(parseNote(p.name)))
-  const lo = Math.min(...ms) - 1
-  const hi = Math.max(...ms) + 1
-  return [lo - mod(lo, 12), hi + (11 - mod(hi, 12))]
+/**
+ * The keyboard for a round: whole octaves, from the C at or below the lowest note to the B at or above the highest,
+ * with nothing extra, and never past the CT-S1's C2–C7.
+ */
+export function keyboardRange(clef: RushClef, level: RushLevel, key = 0): [number, number] {
+  const ms = rushChoices(clef, level, key).map((c) => midiOf(parseNote(c.name)))
+  const lo = Math.min(...ms)
+  const hi = Math.max(...ms)
+  return [Math.max(LOWEST, lo - mod(lo, 12)), Math.min(HIGHEST, hi + 11 - mod(hi, 12))]
+}
+
+/** Where a round's bests live: "treble" or, with a key signature, "treble:G" (then ":3" for the level). */
+export function rushGroup(clef: RushClef, key: number): string {
+  return key ? `${clef}:${keyId(majorKey(key))}` : clef
+}
+
+/** "G major: every F is F♯." */
+export function keyHint(key: number): string {
+  const sig = keySignature(key)
+  if (!sig.letters.length) return 'No sharps or flats: notes are as written.'
+  const acc = sig.acc > 0 ? '♯' : '♭'
+  return `${keyName(majorKey(key))}: ${sig.letters.map((l) => `every ${l} is ${l}${acc}`).join(' and ')}.`
 }
 
 export const prettyName = (name: string) => noteName(parseNote(name))
