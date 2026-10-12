@@ -206,12 +206,13 @@ export function nextChords(last: Chord, key: Key, max = 4): Suggestion[] {
   let romans: string[] = []
   if (fits) romans = (major ? MAJOR_NEXT : MINOR_NEXT)[degree]
   else {
-    // A major or 7th chord a 5th above a chord of the key (E7 in C) usually resolves to it (Am).
+    // A major or 7th chord a 5th above a chord of the key (E7 in C) usually resolves to it (Am). In a minor key
+    // that includes VII (D → G in A minor) and the major V (B7 → E); nothing resolves to a diminished chord.
     const target = degreeOf(mod(rootPc + 5, 12), key)
-    if ((quality === 'major' || quality === 'open') && target >= 0 && target !== 6) {
-      const tq = (major ? MAJOR_DEGREES : MINOR_DEGREES)[target]
+    const degrees = major ? MAJOR_DEGREES : MINOR_DEGREES
+    if ((quality === 'major' || quality === 'open') && target >= 0 && degrees[target] !== 'dim') {
       const rn = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'][target]
-      romans.push(tq === 'minor' ? rn.toLowerCase() : rn)
+      romans.push(!major && target === 4 ? 'V' : degrees[target] === 'minor' ? rn.toLowerCase() : rn)
     }
     if (major) {
       const borrowed = Object.keys(BORROWED_NEXT).find((rn) => {

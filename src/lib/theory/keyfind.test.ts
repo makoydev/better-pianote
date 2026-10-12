@@ -106,6 +106,12 @@ describe('what to try next', () => {
     expect(next('D', 'C')[0]).toBe('G V')
     // A borrowed ♭VII goes home.
     expect(next('Bb', 'C').slice(0, 2)).toEqual(['C I', 'F IV'])
+    // In a minor key, the V of V leads to the major V, and the V of VII to VII.
+    expect(next('B', 'Am')[0]).toBe('E V')
+    expect(next('B7', 'Am')[0]).toBe('E V')
+    expect(next('D', 'Am')[0]).toBe('G VII')
+    // Nothing leads to a diminished chord: F♯ in C doesn't suggest Bdim (or a B major "II").
+    expect(next('F#', 'C').some((s) => s.startsWith('B'))).toBe(false)
   })
 
   it('always has something to suggest, and never the chord you just played', () => {
