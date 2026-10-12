@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseNote } from '../../lib/theory'
-import { GLYPH, WIDTH, tupletDigit } from './glyphs'
+import { GLYPH, WIDTH, timeSigDigit, tupletDigit } from './glyphs'
 import type { Duration } from './layout'
 import { type ScoreBar, type ScoreEvent, type ScoreInput, type ScoreNote, colX, layoutScore } from './score'
 
@@ -132,6 +132,32 @@ describe('score layout', () => {
     expect(['a', 'c', 'd', 'f'].map((k) => l.staffOf[k])).toEqual(['treble', 'treble', 'bass', 'bass'])
     expect(l.beams.map((b) => l.staffOf[b.key])).toEqual(['treble'])
     expect(l.ties.map((t) => l.staffOf[t.key])).toEqual(['bass'])
+  })
+
+  it('knows where each bar is, and can leave out the time signature (on later lines)', () => {
+    const input = { bars: [bar(0), bar(4)], voices: [treble(e('a', 0, 'w', ['C5']), e('b', 4, 'w', ['D5']))] }
+    const l = lay(input)
+    const [b0, b1] = l.barX
+    expect(b0.x0).toBeLessThan(ev(l, 'a').headX)
+    expect(b0.x1).toBe(b1.x0)
+    expect(b1.x0).toBeLessThan(ev(l, 'b').headX)
+    expect(b1.x1).toBeGreaterThan(ev(l, 'b').headX)
+    const digits = (x: ReturnType<typeof lay>) => x.header.filter((g) => g.ch === timeSigDigit(4)).length
+    expect(digits(l)).toBe(2)
+    expect(digits(lay({ ...input, timeSig: false }))).toBe(0)
+  })
+
+  it('draws half a tie where the music is split into lines, and shows the held note’s sharp again', () => {
+    // The end of one line: F♯ tied over into the next.
+    const end = lay({ voices: [treble(e('a', 0, 'h', ['G4']), e('b', 2, 'h', [n('F#4', { tie: true })]))], final: false })
+    expect(end.ties.length).toBe(1)
+    expect(end.ties[0].x1).toBeGreaterThan(ev(end, 'b').headX + SP)
+    // The start of the next line: the tie comes in, and the sharp is shown again.
+    const start = lay({ voices: [treble(e('c', 0, 'h', [n('F#4', { cont: true })]), e('d', 2, 'h', ['F#4']))] })
+    expect(start.ties.length).toBe(1)
+    expect(start.ties[0].x0).toBeLessThan(ev(start, 'c').headX)
+    const sharps = (key: string) => ev(start, key).glyphs.filter((g) => g.ch === GLYPH.sharp).length
+    expect([sharps('c'), sharps('d')]).toEqual([1, 0])
   })
 
   it('puts chord symbols on the column where they start', () => {

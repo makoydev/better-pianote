@@ -268,6 +268,7 @@ export function songScoreInput(
   })
   const from = tl.bars[b0]?.start ?? 0
   const to = (tl.bars[b1]?.start ?? 0) + (tl.bars[b1]?.dur ?? 0)
+  const before = sigs[b0 - 1]?.time
   return {
     staves: both ? ['treble', 'bass'] : ['treble'],
     bars,
@@ -275,6 +276,8 @@ export function songScoreInput(
     chords: tl.chords.filter((c) => c.start >= from - EPS && c.start < to - EPS).map((c) => ({ start: c.start, text: c.symbol })),
     final: b1 === tl.bars.length - 1,
     pickup: !!song.pickup && b0 === 0,
+    // A line that starts part-way through shows the time signature only where it changes.
+    timeSig: !before || before[0] !== sigs[b0]?.time[0] || before[1] !== sigs[b0]?.time[1],
   }
 }
 

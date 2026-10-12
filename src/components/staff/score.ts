@@ -5,6 +5,7 @@ import {
   type Duration,
   type Glyph,
   type LaidEvent,
+  type LaidNote,
   type Layout,
   type Line,
   REST_GLYPH,
@@ -68,6 +69,8 @@ export interface ScoreInput {
   final?: boolean
   /** Treat the first bar as a pickup when it's short (its beats are counted from the end). */
   pickup?: boolean
+  /** Show the time signature at the start (off for the second line onwards, unless the time changes there). */
+  timeSig?: boolean
 }
 
 export interface ScoreOptions {
@@ -92,6 +95,8 @@ export interface ScoreLayout extends Layout {
   extras: { lines: Line[]; glyphs: Glyph[]; texts: Text[] }
   /** The staff of each event, beam and tie (by key), so a renderer can dim one staff. */
   staffOf: Record<string, StaffId>
+  /** Where each bar is: from the bar line before it (or the end of the clef and signatures) to the one after. */
+  barX: { x0: number; x1: number }[]
 }
 
 const EPS = 1e-6
@@ -295,6 +300,9 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
     else inf.dir = autoDir(inf.notes.map((n) => n.p))
   }
 
+  // A voice that starts with the held half of a tie continues from the line before (the music was split into lines).
+  const tiedIn = new Set(input.voices.map((v) => v.events[0]).filter((ev) => ev?.notes.some((n) => n.cont)))
+
   // ---- Accidentals: per staff and bar, in time order; key signature can change per bar ----
   const sorted = [...infos].sort((a, b) => a.col - b.col || a.v - b.v)
   const measureAcc = new Map<string, number>()
@@ -309,8 +317,9 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
       const k = `${inf.staff}${pn.n.note.letter}:${pn.n.note.oct}`
       const keyAcc = sig.letters.some((l) => 'CDEFGAB'.indexOf(l) === pn.n.note.letter) ? sig.acc : 0
       const current = measureAcc.has(k) ? measureAcc.get(k)! : keyAcc
-      // A tied note carries its accidental over without showing it again (and doesn't set one for the bar).
-      if (pn.n.cont) continue
+      // A tied note carries its accidental over without showing it again (and doesn't set one for the bar), except
+      // at the start of a new line, where it's shown again.
+      if (pn.n.cont && !tiedIn.has(inf.ev)) continue
       if (pn.n.note.acc !== current) pn.acc = pn.n.note.acc
       measureAcc.set(k, pn.n.note.acc)
     }
@@ -425,7 +434,7 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
   for (const s of staves) header.push({ x: hx, y: yOf(s, s === 'treble' ? 2 : 6), ch: s === 'treble' ? GLYPH.gClef : GLYPH.fClef, size: fontSize })
   hx += WIDTH.fClef * sp + 0.9 * sp
   const first = bars[0] ?? { keySig: 0, time: [4, 4] as [number, number] }
-  hx = drawSignature(header, null, first.keySig, first.time, hx)
+  hx = drawSignature(header, null, first.keySig, input.timeSig === false ? null : first.time, hx)
   const contentStart = hx + 0.7 * sp
 
   /** Key signature (with naturals cancelling the old one) and time signature at x; returns the x after them. */
@@ -503,6 +512,7 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
   const lastBarType: StaffBar['bar'] = input.final === false ? 'single' : 'final'
   barXs.push({ x: x + 0.1 * sp, type: lastBarType })
   const endX = lastBarType === 'final' ? x + 0.1 * sp + 0.55 * sp + (ENGRAVING.thickBar * sp) / 2 : x + 0.1 * sp + (ENGRAVING.thinBar * sp) / 2
+  const barX = bars.map((_, b) => ({ x0: b === 0 ? contentStart - 0.4 * sp : (barXs[b - 1]?.x ?? endX), x1: barXs[b]?.x ?? endX }))
 
   // ---- Draw every event ----
   const events: LaidEvent[] = []
@@ -652,33 +662,47 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
     for (const b of beams.slice(first)) staffOf[b.key] = infos2[0].inf.staff
   }
 
-  // ---- Ties: to the same note in the voice's next event ----
+  // ---- Ties: to the same note in the voice's next event (or half a tie, where the music was split into lines) ----
   const ties: Layout['ties'] = []
   const infoOfEv = new Map(infos.map((i) => [i.ev, i]))
+  /** Above for an upper voice or the top half of a chord, else away from the stem. */
+  const tieAbove = (le: LaidEvent, ln: LaidNote, inf: Info | undefined) => {
+    const chordIdx = [...le.notes].sort((p, q) => q.p - p.p).findIndex((m) => m === ln)
+    const role = inf?.role ?? 'auto'
+    return role === 'up' ? true : role === 'down' ? false : le.notes.length > 1 ? chordIdx < le.notes.length / 2 : (inf?.dir ?? 'up') === 'down'
+  }
+  const addTie = (key: string, staff: StaffId, xa: number, xb: number, y: number, above: boolean) => {
+    const y0 = y + (above ? -0.45 * sp : 0.45 * sp)
+    const h = (above ? -1 : 1) * Math.min(1.4 * sp, 0.35 * sp + (xb - xa) * 0.08)
+    const xm = (xa + xb) / 2
+    ties.push({ key, d: `M${xa},${y0} Q${xm},${y0 + h * 1.25} ${xb},${y0} Q${xm},${y0 + h * 0.9} ${xa},${y0} Z`, x0: xa, x1: xb })
+    staffOf[key] = staff
+  }
   input.voices.forEach((v) => {
     v.events.forEach((ev, i) => {
-      const next = v.events[i + 1]
       const a = laidOf.get(ev)
-      const bLaid = next && laidOf.get(next)
-      if (!a || !bLaid) return
+      if (!a) return
       const inf = infoOfEv.get(ev)
-      const tied = ev.notes.filter((n) => n.tie)
-      tied.forEach((n) => {
-        const na = a.notes.find((m) => m.spec.id === n.id)
-        const nb = bLaid.notes.find((m) => midiOf(m.note) === midiOf(n.note))
-        if (!na || !nb) return
-        const chordIdx = [...a.notes].sort((p, q) => q.p - p.p).findIndex((m) => m === na)
-        const role = inf?.role ?? 'auto'
-        const above =
-          role === 'up' ? true : role === 'down' ? false : a.notes.length > 1 ? chordIdx < a.notes.length / 2 : (inf?.dir ?? 'up') === 'down'
+      // Held over from the line before: the tie comes in from the start of the line.
+      if (i === 0 && tiedIn.has(ev)) {
+        for (const n of ev.notes) {
+          const nb = n.cont ? a.notes.find((m) => m.spec.id === n.id) : undefined
+          if (nb) addTie(`ti${a.key}-${n.id}`, v.staff, contentStart - 0.6 * sp, nb.x - 0.15 * sp, nb.y, tieAbove(a, nb, inf))
+        }
+      }
+      const next = v.events[i + 1]
+      const bLaid = next && laidOf.get(next)
+      if (next && !bLaid) return
+      for (const n of ev.notes) {
+        const na = n.tie ? a.notes.find((m) => m.spec.id === n.id) : undefined
+        if (!na) continue
         const xa = na.x + a.headW + 0.15 * sp
-        const xb = nb.x - 0.15 * sp
-        const y0 = na.y + (above ? -0.45 * sp : 0.45 * sp)
-        const h = (above ? -1 : 1) * Math.min(1.4 * sp, 0.35 * sp + (xb - xa) * 0.08)
-        const xm = (xa + xb) / 2
-        ties.push({ key: `t${a.key}-${n.id}`, d: `M${xa},${y0} Q${xm},${y0 + h * 1.25} ${xb},${y0} Q${xm},${y0 + h * 0.9} ${xa},${y0} Z`, x0: xa, x1: xb })
-        staffOf[`t${a.key}-${n.id}`] = v.staff
-      })
+        // The last note of a line tied on into the next: the tie runs to the end of the line.
+        const nb = bLaid?.notes.find((m) => midiOf(m.note) === midiOf(n.note))
+        if (bLaid && !nb) continue
+        const xb = nb ? nb.x - 0.15 * sp : Math.max(xa + 1.5 * sp, endX - 0.3 * sp)
+        addTie(`t${a.key}-${n.id}`, v.staff, xa, xb, na.y, tieAbove(a, na, inf))
+      }
     })
   })
 
@@ -823,6 +847,7 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
     cols: colT.map((t, c) => ({ t, x: colHead[c] })),
     extras,
     staffOf,
+    barX,
   }
 }
 

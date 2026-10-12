@@ -1,12 +1,10 @@
-import { Ear, Flame, Hand, ListMusic, Minus, Pause, Play, Plus, Repeat, RotateCcw, SkipBack, SkipForward, Type, Volume2, X } from 'lucide-react'
+import { ALargeSmall, Ear, Flame, Hand, ListMusic, Minus, Pause, Play, Plus, Repeat, RotateCcw, SkipBack, SkipForward, Type, Volume2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
-import { ScoreStaff } from '../../components/staff/ScoreStaff'
 import type { LaidEvent, NoteState, StaffNoteSpec } from '../../components/staff/layout'
-import { type ScoreLayout, colX } from '../../components/staff/score'
 import { Button, IconButton } from '../../components/ui/Button'
 import { Segmented, Toggle } from '../../components/ui/controls'
 import { type Song, findSong } from '../../content/songs'
@@ -19,13 +17,14 @@ import { burst, celebrate } from '../../lib/fx'
 import { useNoteEvents } from '../../lib/input/bus'
 import { letterColor } from '../../lib/colors'
 import { nameNote } from '../../lib/naming'
-import { type Chord, bassFor, parseNote, voiceLead } from '../../lib/theory'
+import { type Chord, bassFor, isBlackKey, parseNote, voiceLead } from '../../lib/theory'
 import { go } from '../../router'
 import { useLive } from '../../state/live'
 import { useLibrary } from '../../state/library'
 import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
+import { ScoreView } from './ScoreView'
 import { type SongResult, SongResults } from './SongResults'
 import { TempoPresets, TempoStepper } from './TempoControl'
 import { barLabel, barName, barTitle, countedStraight } from './bars'
@@ -33,8 +32,9 @@ import { LISTEN_PARTS, type ListenPart, accompaniment, handFilter, listenHand, o
 import { type CountIn, type Cue, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
 import { type Run, carryOn, endPass, newRun, stepAt, stepsInBars, tally } from './practice'
 import { type Hands, accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
+import { MIN_KEY_WIDTH, SCORE_SIZES, type ScoreSize, keyboardHeight } from './systems'
 import { clampTempo, loopSpeedUp } from './tempo'
-import { type Step, type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, plays, songScoreInput } from './timeline'
+import { type Step, type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, plays } from './timeline'
 
 const TICK = 0.25 // listen mode wakes up every sixteenth note (and plays what's due inside it at exact times)
 const EPS = 1e-6
@@ -170,10 +170,9 @@ function Player({ song }: { song: Song }) {
   const best = useProgress((s) => handsBest(s.games, song.id, hands))
 
   const vh = useViewportHeight()
-  const [viewRef, view] = useElementSize<HTMLDivElement>()
+  const [kbRef, kb] = useElementSize<HTMLDivElement>()
   const paperRef = useRef<HTMLDivElement>(null)
-  const [layout, setLayout] = useState<ScoreLayout | null>(null)
-  const onLayout = useCallback((l: ScoreLayout) => setLayout(l), [])
+  const [scoreSize, setScoreSize] = usePref<ScoreSize>('songs:score-size', 'M', SCORE_SIZES)
 
   const step = mode === 'wait' && !finished ? steps[stepIdx] : undefined
   const cursorTime = mode === 'wait' ? (steps[stepIdx]?.start ?? tl.total) : listenAt
@@ -544,7 +543,6 @@ function Player({ song }: { song: Song }) {
   })
 
   // ---- Notation ----
-  const scoreInput = useMemo(() => songScoreInput(song, tl, { hands }), [song, tl, hands])
   const noteById = useMemo(() => new Map(tl.notes.map((n) => [n.id, n])), [tl])
   const cur = mode === 'wait' && !finished ? steps[stepIdx] : undefined
   const loopFrom = loop ? (tl.bars[loopBars[0]]?.start ?? 0) : 0
@@ -576,21 +574,13 @@ function Player({ song }: { song: Song }) {
   }
 
   const showBass = hands !== 'rh' && !!song.lh
-  const sp = Math.round(Math.max(12, Math.min(22, vh / 46)) * (showBass ? 0.8 : 1))
-  const cursorX = layout ? colX(layout, cursorTime) : 0
-  const scrollX = useMemo(() => {
-    if (!layout || !view.width) return 0
-    const max = Math.max(0, layout.width + 32 - view.width)
-    return Math.max(0, Math.min(max, cursorX - view.width * 0.33))
-  }, [layout, view.width, cursorX])
-  // Long pieces only draw what's on screen (plus a screen either side while it scrolls).
-  const clip: [number, number] | undefined = view.width ? [scrollX - view.width, scrollX + 2 * view.width] : undefined
 
-  // ---- Keyboard ----
+  // ---- Keyboard: keys get narrower for wide pieces before it scrolls, and its height suits its keys ----
   const range = useMemo(
     () => keyboardRange(tl.notes.filter((n) => mode === 'listen' || plays(hands, n.hand)).map((n) => n.midi)),
     [tl, hands, mode],
   )
+  const whiteKeys = useMemo(() => Array.from({ length: range.to - range.from + 1 }, (_, i) => range.from + i).filter((m) => !isBlackKey(m)).length, [range])
   const marks: Marks = {}
   const fingers: Record<number, number> = {}
   // The step after this one shows faintly (with its fingers), so you can see where your hand goes next.
@@ -608,7 +598,7 @@ function Player({ song }: { song: Song }) {
   }
   for (const [m, hand] of Object.entries(sounding)) marks[Number(m)] = hand === 'rh' ? 'chord' : 'root'
   for (const [m, f] of Object.entries(flash)) marks[Number(m)] = f
-  const pianoHeight = Math.round(Math.max(110, Math.min(210, vh * (showBass ? 0.18 : 0.21))))
+  const pianoHeight = keyboardHeight(kb.width, whiteKeys, vh, showBass)
 
   const straight = useMemo(() => countedStraight(song), [song])
   const fullBars = song.rh.length - firstFullBar
@@ -659,13 +649,16 @@ function Player({ song }: { song: Song }) {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    // The screen's height, shared out: controls, the music (whatever's left), the keyboard. It only scrolls when
+    // the controls alone don't fit (a phone).
+    <div className="flex h-dvh flex-col overflow-y-auto">
       <TopBar
         back="/songs"
         title={song.title}
         subtitle={`${song.composer} · ${song.keyName} · ${song.time[0]}/${song.time[1]}`}
       >
         <IconButton icon={RotateCcw} label="Start again (R)" onClick={restart} />
+        <ScoreSizeButton size={scoreSize} onChange={setScoreSize} />
         <IconButton
           icon={Type}
           label={staffLabels ? 'Hide note names' : 'Show note names'}
@@ -791,38 +784,27 @@ function Player({ song }: { song: Song }) {
           )}
         </div>
 
-        {/* The music tape */}
-        <div ref={paperRef} className="relative">
-          <div ref={viewRef} className="paper relative overflow-hidden rounded-3xl pb-2 pt-1">
+        {/* The music: the room left between the controls and the keyboard (lines when two or more fit) */}
+        <div ref={paperRef} className="relative flex min-h-[7.5rem] flex-1 flex-col">
+          <ScoreView
+            song={song}
+            tl={tl}
+            hands={hands}
+            size={scoreSize}
+            cursorTime={cursorTime}
+            noteState={noteState}
+            eventState={eventState}
+            dim={hands === 'lh' ? 'treble' : undefined}
+            title={hands === 'both' || !song.lh ? song.title : `${song.title}, ${hands === 'rh' ? 'right' : 'left'} hand`}
+            className="paper flex-1 rounded-3xl"
+          />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1.5 overflow-hidden rounded-b-3xl bg-night-900/10">
             <motion.div
-              className="w-max px-4"
+              className="h-full rounded-r-full bg-linear-to-r from-gold to-coral"
               initial={false}
-              animate={{ x: -scrollX }}
-              transition={{ type: 'spring', stiffness: 110, damping: 22, mass: 0.9 }}
-            >
-              <ScoreStaff
-                input={scoreInput}
-                sp={sp}
-                cursorTime={cursorTime}
-                noteState={noteState}
-                eventState={eventState}
-                clip={clip}
-                onLayout={onLayout}
-                reserveBelow={showBass ? 1.2 : 2.5}
-                dim={hands === 'lh' ? 'treble' : undefined}
-                title={hands === 'both' || !song.lh ? song.title : `${song.title}, ${hands === 'rh' ? 'right' : 'left'} hand`}
-              />
-            </motion.div>
-            <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-linear-to-r from-paper to-transparent" />
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-20 bg-linear-to-l from-paper to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 h-1.5 bg-night-900/10">
-              <motion.div
-                className="h-full rounded-r-full bg-linear-to-r from-gold to-coral"
-                initial={false}
-                animate={{ width: `${progress * 100}%` }}
-                transition={{ type: 'spring', stiffness: 120, damping: 20 }}
-              />
-            </div>
+              animate={{ width: `${progress * 100}%` }}
+              transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+            />
           </div>
           {/* The count-in, big over the music */}
           {counting && (
@@ -910,8 +892,17 @@ function Player({ song }: { song: Song }) {
           </div>
         </div>
 
-        <div className="mt-auto">
-          <Piano from={range.from} to={range.to} marks={marks} fingers={fingers} height={pianoHeight} sparks sparkHeight={110} />
+        <div ref={kbRef}>
+          <Piano
+            from={range.from}
+            to={range.to}
+            marks={marks}
+            fingers={fingers}
+            height={pianoHeight}
+            minKeyWidth={MIN_KEY_WIDTH}
+            sparks
+            sparkHeight={110}
+          />
         </div>
       </main>
 
@@ -923,6 +914,30 @@ function Player({ song }: { song: Song }) {
         onSongs={() => go('/songs')}
       />
     </div>
+  )
+}
+
+const SIZE_NAME: Record<ScoreSize, string> = { S: 'small', M: 'medium', L: 'large' }
+
+/** The size of the music: small, medium or large, a tap goes round them (remembered for every song). */
+function ScoreSizeButton({ size, onChange }: { size: ScoreSize; onChange: (s: ScoreSize) => void }) {
+  const next = SCORE_SIZES[(SCORE_SIZES.indexOf(size) + 1) % SCORE_SIZES.length]
+  const label = `Music size: ${SIZE_NAME[size]} (tap for ${SIZE_NAME[next]})`
+  return (
+    <motion.button
+      whileTap={{ scale: 0.92 }}
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={() => onChange(next)}
+      className="relative inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-night-700/80 text-ink-soft transition-colors hover:bg-night-600 hover:text-ink"
+      style={{ width: 48, height: 48 }}
+    >
+      <ALargeSmall size={22} strokeWidth={2.4} />
+      <span className="absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full bg-gold text-[0.7rem] font-extrabold text-night-900">
+        {size}
+      </span>
+    </motion.button>
   )
 }
 
