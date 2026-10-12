@@ -172,6 +172,32 @@ describe('score layout', () => {
     expect(l.height).toBe(lay({ bars: [bar(0), bar(4)], voices: [treble(e('a', 0, 'w', ['C5']), e('b', 4, 'w', ['D5']))] }).height)
   })
 
+  it('moves a rest clear of the other voice’s notes where two voices share a staff', () => {
+    // The two-hand Prelude in C: in the bass staff the upper voice rests on the beat above the lower voice's C4.
+    const prelude = lay({
+      staves: ['bass'],
+      voices: [
+        bass(e('r', 0, '16', []), e('e1', 0.25, '8', [n('E4', { tie: true })], { dots: 1 }), e('e2', 1, 'q', [n('E4', { cont: true })]), e('g', 2, 'h', ['G4'])),
+        bass(e('c', 0, 'h', ['C4']), e('c2', 2, 'h', ['C4'])),
+      ],
+    })
+    const rest = ev(prelude, 'r').glyphs[0]
+    const c4 = ev(prelude, 'c').notes[0]
+    // The sixteenth rest's tail (two spaces under its origin) stays above the C4 notehead, by whole spaces.
+    expect(rest.y + 2 * SP).toBeLessThanOrEqual(c4.y - 0.5 * SP)
+    expect(((prelude.staffTop.bass - rest.y) / SP) % 1).toBe(0)
+    // The lower voice's rest moves down under the upper voice's E4.
+    const low = lay({
+      voices: [treble(e('u', 0, 'q', ['E4']), e('u2', 1, 'h', ['E4'], { dots: 1 })), treble(e('d', 0, 'q', []), e('d2', 1, 'h', ['C4'], { dots: 1 }))],
+    })
+    expect(ev(low, 'd').glyphs[0].y - 1.5 * SP).toBeGreaterThanOrEqual(ev(low, 'u').notes[0].y + 0.5 * SP)
+    // Nothing in the way: the usual spot, two spaces under the middle line.
+    const clear = lay({
+      voices: [treble(e('u', 0, 'q', ['G5']), e('u2', 1, 'h', ['G5'], { dots: 1 })), treble(e('d', 0, 'q', []), e('d2', 1, 'h', ['C4'], { dots: 1 }))],
+    })
+    expect(ev(clear, 'd').glyphs[0].y).toBe(clear.staffTop.treble + 4 * SP)
+  })
+
   it('puts chord symbols on the column where they start', () => {
     const l = lay({ voices: [treble(e('a', 0, 'h', ['E5']), e('b', 2, 'h', ['D5']))], chords: [{ start: 2, text: 'G' }] })
     expect(l.extras.texts.map((t) => [t.text, t.x])).toEqual([['G', ev(l, 'b').headX]])

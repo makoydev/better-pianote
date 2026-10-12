@@ -146,7 +146,23 @@ interface Info {
   barRest: boolean
   /** Part of a whole-bar rest drawn elsewhere: draws nothing. */
   silent: boolean
+  /** A rest's height off its usual spot, in staff steps (two voices on a staff move their rests apart). */
+  restOff: number
 }
+
+/** How far each rest glyph reaches below and above its origin, in staff steps (Bravura's outlines). */
+const REST_SPAN: Record<Duration, [number, number]> = {
+  w: [-1.1, 0.1],
+  h: [0, 1.2],
+  q: [-3, 3],
+  '8': [-2, 1.4],
+  '16': [-4, 1.5],
+  '32': [-4, 3.5],
+  '64': [-6, 3.5],
+}
+/** Where a rest's origin sits with no other voice around: a whole rest hangs from the 4th line, the others centre on the 3rd. */
+const restBase = (inf: Pick<Info, 'barRest' | 'ev'>) => (inf.barRest || inf.ev.dur === 'w' ? 6 : 4)
+const restSpan = (inf: Pick<Info, 'barRest' | 'ev'>) => REST_SPAN[inf.barRest ? 'w' : inf.ev.dur]
 
 export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
   const sp = o.sp
@@ -206,6 +222,7 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
         shift: 0,
         barRest: false,
         silent: false,
+        restOff: 0,
       }
       infos.push(inf)
       byVoice[vi].push(inf)
@@ -370,6 +387,27 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
     if (upLow - downHigh <= 1 && !unisonOnly) for (const x of up) x.shift = Math.max(...down.map((d) => d.headW)) - stemT * 0.5
   }
 
+  // ---- Rests where two voices share a staff: the upper voice's sit two spaces up and the lower voice's two down,
+  // and move further, a whole space at a time, until they clear the other voice's notes at that moment (all its
+  // notes in the bar, for a whole-bar rest) ----
+  for (const inf of infos) {
+    if (!inf.rest || inf.silent || inf.role === 'auto') continue
+    const up = inf.role === 'up'
+    inf.restOff = up ? 4 : -4
+    const others = inf.barRest
+      ? infos.filter((x) => !x.rest && x.staff === inf.staff && x.v !== inf.v && x.bar === inf.bar)
+      : (atCol.get(`${inf.col}|${inf.staff}`) ?? []).filter((x) => x.v !== inf.v)
+    const ps = others.flatMap((x) => x.notes.map((n) => n.p))
+    if (!ps.length) continue
+    // A notehead reaches a step either side of its line or space; keep half a step clear of that.
+    const [lo, hi] = restSpan(inf)
+    const at = () => restBase(inf) + inf.restOff
+    for (let k = 0; k < 16; k++) {
+      if (up ? at() + lo >= Math.max(...ps) + 1.5 : at() + hi <= Math.min(...ps) - 1.5) break
+      inf.restOff += up ? 2 : -2
+    }
+  }
+
   // ---- Column widths ----
   const leftExt = colT.map(() => 0)
   const rightExt = colT.map(() => 0)
@@ -415,14 +453,14 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
       const stem = (3.5 + STEM_EXTRA[inf.ev.dur] + 0.8) * sp
       if (inf.staff === 'treble') {
         if (inf.rest) {
-          if (inf.role === 'down') trebleLow = Math.max(trebleLow, yRel(0) + 1.6 * sp)
+          if (inf.role === 'down' && !inf.silent) trebleLow = Math.max(trebleLow, yRel(0) + 1.6 * sp, yRel(restBase(inf) + inf.restOff + restSpan(inf)[0]) + 0.3 * sp)
           continue
         }
         trebleLow = Math.max(trebleLow, yRel(Math.min(...ps)) + (inf.notes.some((n) => n.acc !== null) ? 1.3 : 0.7) * sp)
         if (inf.dir === 'down' && inf.ev.dur !== 'w') trebleLow = Math.max(trebleLow, yRel(Math.min(...ps)) + stem)
       } else {
         if (inf.rest) {
-          if (inf.role === 'up') bassHigh = Math.min(bassHigh, yRel(8) - 1.6 * sp)
+          if (inf.role === 'up' && !inf.silent) bassHigh = Math.min(bassHigh, yRel(8) - 1.6 * sp, yRel(restBase(inf) + inf.restOff + restSpan(inf)[1]) - 0.3 * sp)
           continue
         }
         bassHigh = Math.min(bassHigh, yRel(Math.max(...ps)) - (inf.notes.some((n) => n.acc !== null) ? 1.6 : 0.8) * sp)
@@ -523,6 +561,8 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
   const events: LaidEvent[] = []
   const laidOf = new Map<ScoreEvent, LaidEvent>()
   const stemInfo = new Map<LaidEvent, { inf: Info; x: number; yHead: number; minEnd: number }>()
+  /** How high and low the rests reach (a rest moved off the staff can hang further than other glyphs). */
+  const restReach: number[] = []
   for (const inf of infos) {
     const c = inf.col
     const s = inf.staff
@@ -549,7 +589,8 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
     laidOf.set(ev, le)
     if (inf.rest) {
       if (inf.silent) continue
-      const off = inf.role === 'up' ? 4 : inf.role === 'down' ? -4 : 0
+      const off = inf.restOff
+      restReach.push(yOf(s, restBase(inf) + off + restSpan(inf)[0]), yOf(s, restBase(inf) + off + restSpan(inf)[1]))
       if (inf.barRest) {
         const w = WIDTH.restWhole * sp
         const cx = (barStartX[inf.bar] + barEndX[inf.bar]) / 2 - w / 2
@@ -761,6 +802,7 @@ export function layoutScore(input: ScoreInput, o: ScoreOptions): ScoreLayout {
     extentOf(le.lines.flatMap((l) => [l.y1, l.y2]))
     extentOf(le.glyphs.flatMap((g) => [g.y - 1.8 * sp, g.y + 1.0 * sp]))
   }
+  extentOf(restReach)
   extentOf(extras.glyphs.flatMap((g) => [g.y - 1.6 * sp, g.y + 0.2 * sp]))
   for (const b of beams) for (const pt of b.points.split(' ')) extentOf([Number(pt.split(',')[1])])
   // Only the outer staves' content pushes the rows out.
