@@ -106,7 +106,8 @@ export function MetronomeWidget({ bpm: startBpm = 80, beats: startBeats = 4 }: {
   }
 
   useNoteEvents((e) => {
-    if (e.type === 'on') tap(e.time)
+    // The mic reports a note about 70 ms after it starts sounding (it waits to be sure), like Rhythm Tap allows for.
+    if (e.type === 'on') tap(e.source === 'mic' ? e.time - 70 : e.time)
   })
 
   // Space bar taps too, while the metronome runs.

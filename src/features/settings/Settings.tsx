@@ -35,6 +35,9 @@ export function Settings() {
           <Row label="Computer keys play notes" hint="A S D F … for white keys, W E T Y U for black keys, Z / X octave.">
             <Toggle checked={s.computerKeys} onChange={(v) => set({ computerKeys: v })} label="Computer keys play notes" />
           </Row>
+          <Row label="I'm using headphones" hint="The mic can't hear the app then, so it never has to ignore the app's notes and clicks.">
+            <Toggle checked={s.headphones} onChange={(v) => set({ headphones: v })} label="I'm using headphones" />
+          </Row>
           <Row label="Top C continues" hint="Playing the highest C (C7) works like Enter or a pedal tap: Continue, Start, Play again. Handy with the mic.">
             <Toggle checked={s.topCContinue} onChange={(v) => set({ topCContinue: v })} label="Top C continues" />
           </Row>

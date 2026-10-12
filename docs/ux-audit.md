@@ -34,17 +34,20 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   sends a late second note (in Note Rush it answers the next note wrong). The pill only shows the USB device.
   *Where:* `main.tsx`, `lib/input/bus.ts`, `components/layout/ConnectionPill.tsx`. `S`
   *Done:* while a USB keyboard is connected the mic's notes are dropped and its pitch work is skipped (`micPaused` in `bus.ts`, `mic.ts`); the connect sheet says the mic is paused.
-- [ ] **7. One held wrong note counts as many mistakes (mic).** The "wrong" buzz sets `busyUntil`, the mic drops the
+- [x] **7. One held wrong note counts as many mistakes (mic).** The "wrong" buzz sets `busyUntil`, the mic drops the
   sounding note, then re-detects the still-ringing note as new → another mistake and buzz every ~0.6 s. Lessons,
   Note Rush, Echo. *Where:* `lib/input/mic.ts`, `lib/audio/engine.ts`, `PlayStepView.tsx`. iPad check. `S–M`
   *Partly done:* in lessons only: no "wrong" buzz for mic input and the same wrong note within 1.5 s counts once. The mic itself still re-detects a ringing note after any app sound.
-- [ ] **8. The app's own clicks and backing band deafen the mic.** Each click/backing note mutes the mic: Rhythm Tap
+  *Done:* fixed at the root for every screen: during a feedback sound the mic now holds the note you're playing instead of dropping it, so a still-ringing note isn't heard again as a new one (`mic.ts`).
+- [x] **8. The app's own clicks and backing band deafen the mic.** Each click/backing note mutes the mic: Rhythm Tap
   and the lesson metronome grade on-beat notes late; Jam and progression play-along never hear you. Ignore the
   app's own pitches instead of going fully deaf; headphones mode. *Where:* `mic.ts`, `engine.ts`, `drums.ts`,
   `RhythmTap.tsx`, `MetronomeWidget.tsx`, `ProgressionJam.tsx`. iPad check. `M`
-- [ ] **9. Mic and sound don't recover after the iPad locks or the app goes to the background.** The pill says
+  *Done:* the mic no longer goes deaf for the app's sound: the engine tracks the notes it's playing (and keyboard demos) and the mic ignores just those pitches, their octaves and twelfths, plus the metronome click pitches around each click (`engine.ts` `isAppPitch`). Settings has "I'm using headphones" to ignore nothing. The lesson metronome allows for the mic's ~70 ms delay. Still a short pause: Jam drum hits and feedback dings. iPad check.
+- [x] **9. Mic and sound don't recover after the iPad locks or the app goes to the background.** The pill says
   "Listening" but nothing is heard until Stop + Start. Resume the audio context on `visibilitychange`, watch
   `track.onended`, keep a resume-on-tap listener. *Where:* `mic.ts`, `engine.ts`, `main.tsx`. iPad check. `M`
+  *Done:* the audio wakes up when the app becomes visible again, every tap still wakes it (the unlock listener stays), a "Sound is paused · tap to wake it" chip appears while it's suspended (`SoundWake.tsx`), and if iOS ends the mic it restarts by itself (or says so). iPad check.
 - [x] **10. The sustain pedal skips lesson steps while you play.** Any pedal press is Continue, including widget steps
   and the pedal lesson (u7-l4). Count only a deliberate tap (no keys held, nothing played just before).
   *Where:* `LessonPlayer.tsx`. `S`
@@ -60,9 +63,10 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   `explore/Metronome.tsx`. `S`
   *Partly done:* Metronome: T no longer plays F♯ and Space works after clicks (83a5260); Chrome's focus-after-click is dropped app-wide (e688569). The song player's Space comes with the Songs batch.
   *Done:* song player: Space plays/pauses in Listen and plays the current bar in Practice, R restarts, and both work after clicking any control (c05705b). Checked: Space started Listen right after clicking a tempo preset.
-- [ ] **14. Sounds don't stop.** Scale "Listen", lesson demos and Rhythm Tap "Listen first" keep playing after a
+- [x] **14. Sounds don't stop.** Scale "Listen", lesson demos and Rhythm Tap "Listen first" keep playing after a
   change of screen or scale; a double tap plays two copies; the mic stays muted meanwhile. Track scheduled notes so
   `stopAll()` can cancel them, call it on navigation. *Where:* `engine.ts`, `play.ts`, callers. `S–M`
+  *Done:* the engine tracks demo notes so `stopDemos()` can cut them; leaving a screen stops them, a new sequence (Listen, Show me) stops the previous one, and demos on the keyboard's speakers are sent just in time so they can be cancelled, with All Notes Off (`play.ts`, `midi.ts`).
 - [x] **15. Song results glitches.** Time shows "1:60" (119.6 s); right-hand and both-hands runs share one best;
   accuracy counts a chord as one step but every slip separately. *Where:* `songs/SongResults.tsx`,
   `SongPlayer.tsx`. `S`

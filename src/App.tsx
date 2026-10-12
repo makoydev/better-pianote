@@ -4,6 +4,7 @@ import { Aurora } from './components/layout/Aurora'
 import { ErrorBoundary } from './components/layout/ErrorBoundary'
 import { Sidebar, type Tab, TabBar } from './components/layout/Nav'
 import { ShortcutSheet } from './components/layout/ShortcutSheet'
+import { SoundWake } from './components/layout/SoundWake'
 import { Toaster } from './components/layout/Toaster'
 import { XpToaster } from './components/layout/XpToaster'
 import { Home } from './features/home/Home'
@@ -11,6 +12,7 @@ import { Onboarding } from './features/home/Onboarding'
 import { LearnPath } from './features/learn/LearnPath'
 import { useWakeLock } from './hooks/useWakeLock'
 import { audio } from './lib/audio/engine'
+import { stopDemos } from './lib/audio/play'
 import { matchPath, navKind, usePath } from './router'
 import { useSettings } from './state/settings'
 
@@ -128,6 +130,9 @@ export function App() {
   const keepAwake = useSettings((s) => s.keepAwake)
   useSettingsSync()
   useScrollMemory(path, !route.focus)
+  // A demo started on one screen shouldn't keep playing over the next (stopped as you leave, before the new
+  // screen plays anything of its own).
+  useEffect(() => () => stopDemos(), [path])
   // Lessons, games, songs and tools: you're at the piano, not touching the screen.
   useWakeLock(!!route.focus && keepAwake)
 
@@ -161,6 +166,7 @@ export function App() {
       <XpToaster />
       <Toaster />
       <ShortcutSheet />
+      <SoundWake />
       {!onboarded && <Onboarding />}
     </MotionConfig>
   )

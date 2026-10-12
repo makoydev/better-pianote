@@ -31,6 +31,8 @@ export interface Settings {
   keepAwake: boolean
   /** The top C (C7) works like Enter or a pedal tap: Continue, Start, Play again (handy through the mic). */
   topCContinue: boolean
+  /** The app's sound goes to headphones, so the mic never hears it and needn't ignore anything. */
+  headphones: boolean
   name: string
   onboarded: boolean
   set: (patch: Partial<Omit<Settings, 'set'>>) => void
@@ -55,6 +57,7 @@ export const useSettings = create<Settings>()(
       strictOctave: false,
       keepAwake: true,
       topCContinue: true,
+      headphones: false,
       name: '',
       onboarded: false,
       set: (patch) => set(patch),

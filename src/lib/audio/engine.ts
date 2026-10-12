@@ -76,8 +76,14 @@ class AudioEngine {
   private sustainDown = false
   private statusListeners = new Set<(s: SampleStatus) => void>()
   status: SampleStatus = 'idle'
-  /** AudioContext time until which the app is making sound (the mic ignores input until then). */
+  /** AudioContext time until which a feedback sound plays (the mic stops listening until then). */
   busyUntil = 0
+  /** Notes the app is sounding (MIDI → audio time it rings until), so the mic can ignore just those pitches. */
+  private appNotes = new Map<number, number>()
+  /** Upcoming and recent metronome clicks (audio times): the mic ignores the click's pitch around them. */
+  private clickTimes: number[] = []
+  /** One-off notes still to play or ringing (demos), so stopDemos() can cut them. */
+  private demos = new Set<Voice>()
   private volume = 0.85
   private reverb = 0.22
 
@@ -90,9 +96,45 @@ class AudioEngine {
       this.ctx = ctx
       this.build(ctx)
       void this.loadSamples()
+      ctx.onstatechange = () => this.stateListeners.forEach((fn) => fn(ctx.state))
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume()
+    // iOS suspends ("interrupted") the context when the iPad locks or another app takes the audio.
+    if (this.ctx.state !== 'running' && this.ctx.state !== 'closed') void this.ctx.resume().catch(() => {})
     return this.ctx
+  }
+
+  private stateListeners = new Set<(s: string) => void>()
+
+  /** Follow the AudioContext's state (running, suspended, iOS's interrupted). */
+  onState(fn: (s: string) => void): () => void {
+    this.stateListeners.add(fn)
+    return () => this.stateListeners.delete(fn)
+  }
+
+  /** Remember that the app is sounding these notes until `until` (audio time), for the mic. */
+  markSounding(midis: number[], until: number) {
+    for (const m of midis) this.appNotes.set(m, Math.max(this.appNotes.get(m) ?? 0, until))
+  }
+
+  /**
+   * Is this pitch coming from the app right now (a note it plays, an octave or twelfth of one, or a metronome
+   * click)? The mic ignores just those, so it keeps hearing you while the band or a demo plays.
+   */
+  isAppPitch(midi: number, at = this.now): boolean {
+    for (const [m, until] of this.appNotes) {
+      if (until < at) {
+        this.appNotes.delete(m)
+        continue
+      }
+      const d = midi - m
+      if (d === 0 || d === 12 || d === -12 || d === 19 || d === 24) return true
+    }
+    // Clicks are A6 (accent) and D6; the mic notices them a little after they sound.
+    if (Math.abs(midi - 93) <= 1 || Math.abs(midi - 86) <= 1) {
+      this.clickTimes = this.clickTimes.filter((t) => t > at - 1)
+      if (this.clickTimes.some((t) => at - t > -0.03 && at - t < 0.25)) return true
+    }
+    return false
   }
 
   get now(): number {
@@ -207,9 +249,12 @@ class AudioEngine {
     } else {
       sources = this.synth(midi, when, gain, peak)
     }
-    sources[0].onended = () => gain.disconnect()
-    this.busyUntil = Math.max(this.busyUntil, when + 0.6)
-    return { midi, gain, sources }
+    const voice: Voice = { midi, gain, sources }
+    sources[0].onended = () => {
+      gain.disconnect()
+      this.demos.delete(voice)
+    }
+    return voice
   }
 
   /** Soft electric-piano-ish tone used until samples are ready. */
@@ -242,6 +287,9 @@ class AudioEngine {
   private release(v: Voice, when: number) {
     const g = v.gain.gain
     const tail = v.midi < 48 ? 0.5 : v.midi < 72 ? 0.35 : 0.25
+    // A held note rang "forever"; from now it rings until its tail ends.
+    const ringing = this.appNotes.get(v.midi)
+    this.appNotes.set(v.midi, ringing === Infinity || ringing === undefined ? when + tail * 2 : Math.max(ringing, when + tail * 2))
     if (typeof g.cancelAndHoldAtTime === 'function') g.cancelAndHoldAtTime(when)
     else g.cancelScheduledValues(when)
     g.setTargetAtTime(0, when, tail / 4)
@@ -261,6 +309,7 @@ class AudioEngine {
     if (old) this.release(old, ctx.currentTime)
     this.sustained.delete(midi)
     this.held.set(midi, this.voice(midi, vel, ctx.currentTime))
+    this.appNotes.set(midi, Infinity)
   }
 
   noteOff(midi: number) {
@@ -290,27 +339,30 @@ class AudioEngine {
     }
   }
 
-  /** Play one note or a chord for a fixed time. `strum` spreads chord notes (seconds apart). */
-  play(notes: number | number[], opts: { dur?: number; vel?: number; when?: number; strum?: number } = {}) {
+  /**
+   * Play one note or a chord for a fixed time. `strum` spreads chord notes (seconds apart). These count as
+   * demos that stopDemos() can cut, unless `demo: false` (feedback jingles).
+   */
+  play(notes: number | number[], opts: { dur?: number; vel?: number; when?: number; strum?: number; demo?: boolean } = {}) {
     const ctx = this.unlock()
-    const { dur = 1.2, vel = 0.7, strum = 0 } = opts
+    const { dur = 1.2, vel = 0.7, strum = 0, demo = true } = opts
     const when = opts.when ?? ctx.currentTime + 0.03
     const list = Array.isArray(notes) ? notes : [notes]
     list.forEach((m, i) => {
       const t = when + i * strum
       const v = this.voice(m, vel, t)
       this.release(v, t + dur)
+      if (demo) this.demos.add(v)
     })
-    this.busyUntil = Math.max(this.busyUntil, when + dur + list.length * strum + 0.4)
   }
 
   /** Play notes one after another. */
-  sequence(notes: (number | number[])[], opts: { gap?: number; dur?: number; vel?: number; when?: number } = {}) {
+  sequence(notes: (number | number[])[], opts: { gap?: number; dur?: number; vel?: number; when?: number; demo?: boolean } = {}) {
     const ctx = this.unlock()
-    const { gap = 0.45, vel = 0.7 } = opts
+    const { gap = 0.45, vel = 0.7, demo } = opts
     const dur = opts.dur ?? gap * 1.6
     const start = opts.when ?? ctx.currentTime + 0.05
-    notes.forEach((n, i) => this.play(n, { dur, vel, when: start + i * gap }))
+    notes.forEach((n, i) => this.play(n, { dur, vel, when: start + i * gap, demo }))
     return start + notes.length * gap
   }
 
@@ -329,7 +381,7 @@ class AudioEngine {
     o.start(t)
     o.stop(t + 0.09)
     o.onended = () => g.disconnect()
-    this.busyUntil = Math.max(this.busyUntil, t + 0.1)
+    this.clickTimes.push(t)
   }
 
   /** Little feedback sounds. Kept gentle so they don't fight with your keyboard. */
@@ -377,9 +429,9 @@ class AudioEngine {
       o.start(t)
       o.stop(t + 0.25)
     } else if (kind === 'complete') {
-      this.sequence([72, 76, 79, [84, 76, 79]], { gap: 0.11, dur: 1.4, vel: 0.55 })
+      this.sequence([72, 76, 79, [84, 76, 79]], { gap: 0.11, dur: 1.4, vel: 0.55, demo: false })
     } else {
-      this.sequence([67, 72, 76, 79, [84, 88, 91]], { gap: 0.09, dur: 1.6, vel: 0.55 })
+      this.sequence([67, 72, 76, 79, [84, 88, 91]], { gap: 0.09, dur: 1.6, vel: 0.55, demo: false })
     }
   }
 
@@ -389,8 +441,30 @@ class AudioEngine {
     return window.setTimeout(fn, Math.max(0, ms))
   }
 
+  /** Cut demo and example sounds (not the notes you're holding), e.g. when you leave a screen. */
+  stopDemos() {
+    if (!this.ctx) return
+    const now = this.ctx.currentTime
+    for (const v of this.demos) {
+      const g = v.gain.gain
+      if (typeof g.cancelAndHoldAtTime === 'function') g.cancelAndHoldAtTime(now)
+      else g.cancelScheduledValues(now)
+      g.setTargetAtTime(0, now, 0.02)
+      for (const src of v.sources) {
+        try {
+          src.stop(now + 0.1)
+        } catch {
+          /* not started or already stopped */
+        }
+      }
+      this.appNotes.delete(v.midi)
+    }
+    this.demos.clear()
+  }
+
   stopAll() {
     if (!this.ctx) return
+    this.stopDemos()
     for (const v of this.held.values()) this.release(v, this.ctx.currentTime)
     this.held.clear()
     this.sustained.clear()

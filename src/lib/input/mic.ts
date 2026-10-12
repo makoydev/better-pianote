@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useLive } from '../../state/live'
 import { useSettings } from '../../state/settings'
 import { audio, setAudioSession } from '../audio/engine'
+import { toast } from '../fx'
 import { micPaused, noteOff, noteOn } from './bus'
 import { estimatePitches } from './polyphony'
 
@@ -63,6 +64,8 @@ export async function startMic(): Promise<boolean> {
     useLive.setState({ mic: 'denied' })
     return false
   }
+  // iOS can end the mic when the iPad locks or another app takes it: start it again when we're back.
+  for (const track of stream.getAudioTracks()) track.onended = () => void restartAfterInterruption()
   const ctx = audio.unlock()
   const src = ctx.createMediaStreamSource(stream)
   small = ctx.createAnalyser()
@@ -81,8 +84,16 @@ export async function startMic(): Promise<boolean> {
 }
 
 export function stopMic() {
+  teardown()
+  useSettings.getState().set({ micAuto: false })
+}
+
+function teardown() {
   window.clearInterval(timer)
-  stream?.getTracks().forEach((t) => t.stop())
+  stream?.getTracks().forEach((t) => {
+    t.onended = null
+    t.stop()
+  })
   stream = null
   small = null
   big = null
@@ -90,7 +101,18 @@ export function stopMic() {
   releaseChord()
   setAudioSession('playback')
   useLive.setState({ mic: 'off', micLevel: 0 })
-  useSettings.getState().set({ micAuto: false })
+}
+
+/** The system stopped the mic (not you): try to start it again once the app is visible. */
+async function restartAfterInterruption() {
+  teardown()
+  if (document.visibilityState !== 'visible') {
+    document.addEventListener('visibilitychange', () => void restartAfterInterruption(), { once: true })
+    return
+  }
+  if (!(await startMic())) {
+    toast({ kind: 'info', title: 'The microphone stopped', detail: 'Tap Start listening to turn it back on.' })
+  }
 }
 
 /** Turn the mic back on at launch if you were using it and the browser still allows it. */
@@ -125,6 +147,9 @@ function applyMode() {
   mode = next
 }
 
+/** With headphones on, the mic can't hear the app at all, so nothing is ignored. */
+const fromApp = (m: number, at: number) => !testing && !useSettings.getState().headphones && audio.isAppPitch(m, at)
+
 function release() {
   if (current !== null) noteOff(current, 'mic')
   current = null
@@ -153,10 +178,9 @@ function tick() {
   const rms = Math.sqrt(sum / timeBuf.length)
   trackFloor(rms)
   useLive.setState({ micLevel: Math.min(1, rms * 10) })
-  // Ignore the app's own sounds coming back through the mic.
-  if (!testing && ctx.currentTime < audio.busyUntil) {
-    release()
-    releaseChord()
+  // A feedback sound (ding, buzz) is playing: stop listening for a moment, but keep the note you're holding,
+  // so a note that's still ringing afterwards isn't heard as a new one (one wrong note, one mistake).
+  if (!testing && !useSettings.getState().headphones && ctx.currentTime < audio.busyUntil) {
     lastRms = rms
     return
   }
@@ -176,6 +200,8 @@ function tick() {
   if (!p || p.clarity < 0.82) return
   const m = Math.round(69 + 12 * Math.log2(p.freq / 440))
   if (m < 24 || m > 108) return
+  // The app's own notes and clicks (a demo, the band, the metronome): ignore just those pitches.
+  if (fromApp(m, ctx.currentTime)) return
   const vel = Math.min(1, 0.3 + rms * 4)
   if (m === current) {
     // Same note struck again.
@@ -217,7 +243,9 @@ function tickChords(rms: number, sampleRate: number) {
     big.getFloatFrequencyData(specBuf)
     const mag = new Float32Array(specBuf.length)
     for (let k = 0; k < specBuf.length; k++) mag[k] = Number.isFinite(specBuf[k]) ? Math.pow(10, specBuf[k] / 20) : 0
-    heard = estimatePitches(mag, sampleRate).map((d) => d.midi)
+    heard = estimatePitches(mag, sampleRate)
+      .map((d) => d.midi)
+      .filter((m) => !fromApp(m, audio.now))
   }
   const now = new Set(heard)
   for (const m of now) {

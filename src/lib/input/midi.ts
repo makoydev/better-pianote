@@ -103,6 +103,15 @@ export function sendToKeyboard(notes: number[], durMs: number, velocity = 0.7, d
   return true
 }
 
+/** Silence the keyboard's own speakers (All Notes Off), e.g. when a demo it was playing is stopped. */
+export function silenceKeyboard() {
+  if (!access) return
+  for (const out of access.outputs.values()) {
+    if (out.state !== 'connected') continue
+    for (let ch = 0; ch < 16; ch++) out.send([0xb0 | ch, 123, 0])
+  }
+}
+
 export function hasMidiOutput() {
   return !!access && [...access.outputs.values()].some((o) => o.state === 'connected')
 }

@@ -20,11 +20,11 @@ void autoStartMic()
 void loadLibrary()
 
 // Browsers only allow sound after a tap or key press. On touch screens (iPad) that "activation" only
-// happens when the finger lifts, so listen for every kind of tap and keep trying until audio runs.
+// happens when the finger lifts, so listen for every kind of tap. The listeners stay: iOS pauses the audio
+// again when the iPad locks, and the next tap has to wake it (cheap when it's already running).
 const UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const
 const unlock = () => {
-  if (audio.unlock().state !== 'running') return
-  UNLOCK_EVENTS.forEach((e) => window.removeEventListener(e, unlock, true))
+  if (audio.ctx?.state !== 'running') audio.unlock()
 }
 UNLOCK_EVENTS.forEach((e) => window.addEventListener(e, unlock, { capture: true, passive: true }))
 
