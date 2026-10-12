@@ -140,8 +140,8 @@ export function ChordExplorer() {
   return (
     <div className="min-h-dvh pb-10">
       <TopBar back="/explore" title="Chord Explorer" subtitle="Build, hear and name any chord · Space plays it" />
-      <main className="mx-auto grid max-w-[1500px] gap-4 px-3 pt-4 sm:px-5 lg:grid-cols-[minmax(300px,340px)_minmax(0,1fr)]">
-        {/* The pickers, in one card so they fit beside the chord on a laptop screen. */}
+      <main className="mx-auto grid max-w-[1500px] gap-4 px-3 pt-4 sm:px-5 lg:grid-cols-[minmax(360px,380px)_minmax(0,1fr)]">
+        {/* The pickers, in one card so they fit beside the chord on a laptop screen (wide enough for 44px root keys). */}
         <Card className="flex flex-col gap-3 self-start">
           <div>
             <h2 className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Root note</h2>
@@ -191,7 +191,7 @@ export function ChordExplorer() {
                     onClick={() => choose({ typeId: id })}
                     title={t.name}
                     aria-pressed={on}
-                    className={`min-h-11 rounded-2xl border px-3 font-display text-base font-bold transition-colors ${
+                    className={`min-h-11 min-w-11 rounded-2xl border px-3 font-display text-base font-bold transition-colors ${
                       on ? 'border-gold bg-gold text-night-900' : 'border-white/10 bg-night-750 text-ink-soft hover:border-white/25 hover:text-ink'
                     }`}
                   >
