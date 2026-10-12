@@ -1,25 +1,36 @@
-import { Check, Clock, Repeat, Star } from 'lucide-react'
+import { ArrowRight, Check, Clock, Repeat, Search, Star, X } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Page } from '../../components/layout/Page'
 import { Button } from '../../components/ui/Button'
 import { Icon } from '../../components/ui/Icon'
-import { ProgressBar, Stars } from '../../components/ui/progress'
+import { ProgressBar, ProgressRing, Stars } from '../../components/ui/progress'
 import { ALL_LESSONS, UNITS, nextLesson } from '../../content'
 import type { Lesson, Unit } from '../../content/types'
 import { go, navKind } from '../../router'
 import { useProgress } from '../../state/progress'
 import { useResumeStep } from './resume'
 import { REVIEW_ID } from './review'
+import { type LessonHit, searchLessons } from './search'
 
 // Horizontal wiggle of the trail, in rem.
 const OFFSETS = [0, 3.5, 5.5, 3.5, 0, -3.5, -5.5, -3.5]
+
+// The last search, for coming Back to it.
+let lastQuery = ''
 
 export function LearnPath() {
   const lessons = useProgress((s) => s.lessons)
   const done = ALL_LESSONS.filter((x) => lessons[x.lesson.id]).length
   const stars = Object.values(lessons).reduce((a, l) => a + l.stars, 0)
   const current = nextLesson(lessons)?.lesson.id
+  // Back from a lesson you found by searching brings the search back too.
+  const [query, setQuery] = useState(() => (navKind() === 'pop' ? lastQuery : ''))
+  useEffect(() => {
+    lastQuery = query
+  }, [query])
+  const hits = useMemo(() => searchLessons(query), [query])
+  const searching = query.trim() !== ''
 
   // Opening Learn brings your next lesson into view (Back returns you to where you'd scrolled instead).
   useEffect(() => {
@@ -32,36 +43,166 @@ export function LearnPath() {
 
   return (
     <Page title="Learn" subtitle="From your first note to playing with both hands. Go in order, or jump to whatever you need.">
-      <div className="glass mb-10 flex flex-wrap items-center gap-5 rounded-3xl p-5">
-        <div className="min-w-48 flex-1">
-          <div className="mb-2 flex justify-between text-sm font-extrabold">
-            <span>Course progress</span>
-            <span className="text-ink-mute">
-              {done} / {ALL_LESSONS.length} lessons
-            </span>
+      <div className="glass mb-6 rounded-3xl p-5">
+        <div className="flex flex-wrap items-center gap-5">
+          <div className="min-w-48 flex-1">
+            <div className="mb-2 flex justify-between text-sm font-extrabold">
+              <span>Course progress</span>
+              <span className="text-ink-mute">
+                {done} / {ALL_LESSONS.length} lessons
+              </span>
+            </div>
+            <ProgressBar value={ALL_LESSONS.length ? done / ALL_LESSONS.length : 0} height={14} />
           </div>
-          <ProgressBar value={ALL_LESSONS.length ? done / ALL_LESSONS.length : 0} height={14} />
+          <div className="flex items-center gap-2 text-lg font-extrabold text-gold">
+            <Star className="fill-gold" size={24} /> {stars} <span className="text-sm text-ink-mute">/ {ALL_LESSONS.length * 3}</span>
+          </div>
+          <Button
+            variant="secondary"
+            size="md"
+            icon={Repeat}
+            onClick={() => go(`/learn/${REVIEW_ID}`)}
+            disabled={done === 0}
+            title={done === 0 ? 'Finish a lesson first' : 'Ten questions from lessons you’ve finished, mostly ones with fewer stars'}
+          >
+            Quick review
+          </Button>
         </div>
-        <div className="flex items-center gap-2 text-lg font-extrabold text-gold">
-          <Star className="fill-gold" size={24} /> {stars} <span className="text-sm text-ink-mute">/ {ALL_LESSONS.length * 3}</span>
-        </div>
-        <Button
-          variant="secondary"
-          size="md"
-          icon={Repeat}
-          onClick={() => go(`/learn/${REVIEW_ID}`)}
-          disabled={done === 0}
-          title={done === 0 ? 'Finish a lesson first' : 'Ten questions from lessons you’ve finished, mostly ones with fewer stars'}
-        >
-          Quick review
-        </Button>
+        <SearchBox value={query} onChange={setQuery} onSubmit={() => hits[0] && go(`/learn/${hits[0].lesson.id}`)} />
       </div>
-      <div className="space-y-14">
-        {UNITS.map((u, i) => (
-          <UnitSection key={u.id} unit={u} number={i + 1} current={current} />
-        ))}
-      </div>
+      {searching ? (
+        <SearchResults hits={hits} query={query.trim()} />
+      ) : (
+        <>
+          <UnitStrip />
+          <div className="space-y-14">
+            {UNITS.map((u, i) => (
+              <UnitSection key={u.id} unit={u} number={i + 1} current={current} />
+            ))}
+          </div>
+        </>
+      )}
     </Page>
+  )
+}
+
+function SearchBox({ value, onChange, onSubmit }: { value: string; onChange: (v: string) => void; onSubmit: () => void }) {
+  return (
+    <div className="relative mt-4">
+      <Search size={20} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-mute" aria-hidden />
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter opens the best match; Esc clears.
+          if (e.key === 'Enter') onSubmit()
+          if (e.key === 'Escape') onChange('')
+        }}
+        placeholder="Search lessons: inversions, treble clef, pedal…"
+        aria-label="Search lessons"
+        enterKeyHint="go"
+        className="h-12 w-full rounded-2xl border border-white/10 bg-night-850 pl-12 pr-12 text-base font-semibold text-ink placeholder:text-ink-mute focus:border-gold/60 [&::-webkit-search-cancel-button]:hidden"
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          aria-label="Clear search"
+          className="absolute right-0.5 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-xl text-ink-mute hover:text-ink"
+        >
+          <X size={20} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+function SearchResults({ hits, query }: { hits: LessonHit[]; query: string }) {
+  const lessons = useProgress((s) => s.lessons)
+  return (
+    <section aria-label="Search results">
+      <p aria-live="polite" className="mb-3 text-sm font-bold text-ink-mute">
+        {hits.length === 0 ? `No lessons match “${query}”.` : `${hits.length} lesson${hits.length === 1 ? '' : 's'}`}
+      </p>
+      <ul className="space-y-3">
+        {hits.map((h) => (
+          <li key={h.lesson.id}>
+            <button
+              type="button"
+              onClick={() => go(`/learn/${h.lesson.id}`)}
+              className="glass flex w-full items-center gap-4 rounded-2xl p-4 text-left transition-colors hover:border-white/20"
+            >
+              <span className="flex size-12 shrink-0 items-center justify-center rounded-xl text-night-900" style={{ background: h.unit.color }}>
+                <Icon name={h.lesson.icon} size={24} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-extrabold uppercase tracking-wider" style={{ color: h.unit.color }}>
+                  Unit {h.unitNo} · Lesson {h.lessonNo}
+                </span>
+                <span className="block text-lg font-extrabold leading-tight text-ink">{h.lesson.title}</span>
+                <span className="block truncate text-sm text-ink-mute">{h.step ? `Step: ${h.step}` : h.lesson.subtitle}</span>
+              </span>
+              {lessons[h.lesson.id] && <Stars value={lessons[h.lesson.id].stars} size={16} />}
+              <ArrowRight size={20} className="shrink-0 text-ink-mute" aria-hidden />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/** Sticky chips for the units, with each one's progress: tap to jump there. The one you're looking at is lit. */
+function UnitStrip() {
+  const lessons = useProgress((s) => s.lessons)
+  const [active, setActive] = useState(0)
+
+  // The unit crossing the top part of the screen is the one you're in.
+  useEffect(() => {
+    const sections = UNITS.map((u) => document.getElementById(`unit-${u.id}`)).filter((el): el is HTMLElement => !!el)
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) if (e.isIntersecting) setActive(sections.indexOf(e.target as HTMLElement))
+      },
+      { rootMargin: '-110px 0px -65% 0px' },
+    )
+    sections.forEach((s) => io.observe(s))
+    return () => io.disconnect()
+  }, [])
+
+  const jump = (k: number) => {
+    setActive(k)
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    document.getElementById(`unit-${UNITS[k].id}`)?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' })
+  }
+
+  return (
+    <nav aria-label="Units" className="sticky top-[calc(env(safe-area-inset-top)+0.5rem)] z-20 mb-8 flex justify-center">
+      <div className="glass flex max-w-full gap-1 overflow-x-auto rounded-2xl p-1.5 shadow-[0_12px_30px_-12px_rgba(0,0,0,.8)] scrollbar-none">
+        {UNITS.map((u, k) => {
+          const done = u.lessons.filter((l) => lessons[l.id]).length
+          const on = k === active
+          return (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => jump(k)}
+              aria-label={`Unit ${k + 1}: ${u.title}, ${done} of ${u.lessons.length} done`}
+              aria-current={on ? 'true' : undefined}
+              title={`${u.title} · ${done} / ${u.lessons.length}`}
+              className={`flex size-12 shrink-0 items-center justify-center rounded-xl transition-colors ${on ? 'bg-white/10' : 'hover:bg-white/6'}`}
+            >
+              <ProgressRing value={u.lessons.length ? done / u.lessons.length : 0} size={40} stroke={4} color={u.color}>
+                <span className="text-sm font-extrabold" style={{ color: on ? u.color : '#cdc9e6' }}>
+                  {k + 1}
+                </span>
+              </ProgressRing>
+            </button>
+          )
+        })}
+      </div>
+    </nav>
   )
 }
 
@@ -69,7 +210,7 @@ function UnitSection({ unit, number, current }: { unit: Unit; number: number; cu
   const lessons = useProgress((s) => s.lessons)
   const done = unit.lessons.filter((l) => lessons[l.id]).length
   return (
-    <section>
+    <section id={`unit-${unit.id}`} className="scroll-mt-24">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
