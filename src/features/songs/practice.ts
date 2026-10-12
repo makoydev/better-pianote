@@ -92,15 +92,16 @@ export function firstStepIn(steps: Step[], bar: number): number {
 export const aroundBar = (bar: number, bars: number): [number, number] => [Math.max(0, bar - 1), Math.min(bars - 1, bar + 1)]
 
 /**
- * Where practice carries on from step i after switching modes or hands:
+ * Where practice carries on from step i (in bar `bar`) after switching modes or hands:
  * - on the same step nothing changes (notes of a chord you'd already played stay played);
- * - with nothing played yet, after finishing, or back at the top of the song, a fresh run from there;
+ * - with nothing played yet, after finishing, or back at the top of the song, a fresh run from there (which says
+ *   which bar it started from, when that isn't the top);
  * - anywhere else the run carries on, but no longer counts as a best (it skipped ahead, or would count notes it
  *   plays again twice) and the loop pass isn't clean, except that the loop's first step starts a new pass.
  */
-export function carryOn(r: Run, i: number, hands: Hands, looping: boolean): Run {
+export function carryOn(r: Run, i: number, hands: Hands, looping: boolean, bar?: number): Run {
   if (i === r.idx && hands === r.hands && !r.done) return r
-  if (r.done || (!r.notes && !r.mistakes) || (i === 0 && !looping)) return runFrom(hands, i)
+  if (r.done || (!r.notes && !r.mistakes) || (i === 0 && !looping)) return runFrom(hands, i, bar)
   const pass = looping && i === 0 ? fresh() : { ...r.pass, whole: false }
   return { ...r, idx: i, sat: new Set(), hands, whole: false, pass }
 }

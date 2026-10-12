@@ -245,17 +245,18 @@ function Player({ song }: { song: Song }) {
     setResumeBar(null)
   }
 
-  /** Start again: a fresh run, and Listen back to the start (of the loop, when looping). */
+  /** Start again: a fresh run, and Listen back to the start (of the loop, when looping). It answers "Continue?" too. */
   const reset = (from = listenRange()[0]) => {
     stopPlayback()
     resetRun()
+    setResumeBar(null)
     listenEnded.current = false
     setListenAt(from)
   }
 
-  /** Carry on from step i after switching modes or hands (see carryOn for what counts as the same run). */
-  const moveTo = (i: number, h: Hands) => {
-    const next = carryOn(run.current, i, h, loop)
+  /** Carry on from step i of `list` after switching modes or hands (see carryOn for what counts as the same run). */
+  const moveTo = (i: number, h: Hands, list: Step[]) => {
+    const next = carryOn(run.current, i, h, loop, list[i]?.bar)
     if (next === run.current) return
     // Nothing played in it yet: a fresh run, so the last one's results and clock go too.
     if (!next.notes && !next.mistakes) return resetRun(next)
@@ -373,6 +374,8 @@ function Player({ song }: { song: Song }) {
   const nextStep = () => {
     const r = run.current
     r.sat = new Set()
+    // The next step starts now (even when it's the same one, in a loop of one chord), so the mic hears it afresh.
+    stepSince.current = performance.now()
     if (r.idx + 1 < steps.length) {
       r.idx++
       return
@@ -386,7 +389,8 @@ function Player({ song }: { song: Song }) {
       }
       if (r.cleanInARow === CLEAN_GOAL) {
         celebrate()
-        if (uiSounds) audio.ui('complete')
+        // Not through the mic: it would go deaf, then hear your chord still ringing as a new one.
+        if (uiSounds && mic !== 'on') audio.ui('complete')
         toast({ kind: 'info', title: `${CLEAN_GOAL} clean passes in a row!`, detail: 'Try it a little faster, or loop the next bars.' })
       } else burst(paperRef.current, { count: 30 })
       return
@@ -437,7 +441,9 @@ function Player({ song }: { song: Song }) {
       // before, checked as a whole (the mic may miss a chord's 5th). Stray notes never count as slips.
       if (target.some((m) => mod(m - e.midi, 12) === 0)) flashKey(e.midi, 'good')
       const since = Math.min(1500, performance.now() - stepSince.current)
-      if (!micHearsNotes(micChordHeard(recentNotes(since), target, steps[r.idx - 1]?.notes.map((n) => n.midi) ?? []), target)) return
+      // The step before (going round a loop, that's its last one) may still be ringing.
+      const before = steps[r.idx - 1] ?? (loop ? steps[steps.length - 1] : undefined)
+      if (!micHearsNotes(micChordHeard(recentNotes(since), target, before?.notes.map((n) => n.midi) ?? []), target)) return
       startClock()
       for (const n of cur.notes) {
         if (r.sat.has(n.id)) continue
@@ -480,20 +486,22 @@ function Player({ song }: { song: Song }) {
   })
 
   // ---- Playback on the audio clock: Listen mode, and "Hear this bar" in Practice ----
-  const cues = useMemo(() => buildCues(tl, beatClicks(song, tl)), [song, tl])
+  const clicks = useMemo(() => beatClicks(song, tl), [song, tl])
+  const cues = useMemo(() => buildCues(tl, clicks), [tl, clicks])
 
   /**
    * Play [lo, hi) from `from`. Listen plays the part you chose (both hands, one, or the one you're not practising),
    * moves the playhead and can count in, click along and speed up each loop; a bar heard in Practice plays only the
-   * hands you're practising.
+   * hands you're practising. `part` and `withHands` stand in for a choice just made (state catches up next render).
    */
-  const startPlayback = (opts: { from: number; lo: number; hi: number; looping: boolean; bar: boolean; count?: CountIn }) => {
+  const startPlayback = (opts: { from: number; lo: number; hi: number; looping: boolean; bar: boolean; count?: CountIn; part?: ListenPart; withHands?: Hands }) => {
     const { from, lo, hi, looping, bar, count } = opts
+    const h = opts.withHands ?? hands
     stopPlayback()
     stopAccompaniment()
-    // One hand leaves the other out before shared notes merge (so none go missing).
-    const only = handFilter(bar ? (hands === 'both' ? 'all' : hands) : listenHand(listenPart, hands))
-    const list = only ? buildCues(tl, [], only) : cues
+    // One hand leaves the other out before shared notes merge (so none go missing); Listen keeps its clicks.
+    const only = handFilter(bar ? (h === 'both' ? 'all' : h) : listenHand(opts.part ?? listenPart, h))
+    const list = only ? buildCues(tl, bar ? [] : clicks, only) : cues
     const head: Playhead = { pos: from, next: firstCueAt(list, from) }
     const withChords = backing && !bar
     prevPad.current = null
@@ -598,6 +606,16 @@ function Player({ song }: { song: Song }) {
   }
 
   const toggleListen = () => (playing ? stopPlayback() : startListen())
+  /** While Listen plays, a new part (or hands, for "the other hand") carries on from where it is. */
+  const replayWith = (change: { part?: ListenPart; withHands?: Hands }) => {
+    if (mode !== 'listen' || !playing) return
+    const [lo, hi] = listenRange()
+    startPlayback({ from: Math.max(lo, Math.min(listenAt, hi)), lo, hi, looping: loop, bar: false, ...change })
+  }
+  const changeListenPart = (p: ListenPart) => {
+    setListenPart(p)
+    replayWith({ part: p })
+  }
   const listenFromStart = () => startListen(listenRange()[0])
   /** Paused somewhere after the start, so Play carries on from there. */
   const pausedMidway = mode === 'listen' && !playing && listenAt > listenRange()[0] + EPS
@@ -716,6 +734,7 @@ function Player({ song }: { song: Song }) {
     if (m === mode) return
     stopPlayback()
     stopAccompaniment()
+    setResumeBar(null)
     if (m === 'listen') {
       // Listen starts from the step you're on; the practice clock stops meanwhile.
       const r = run.current
@@ -729,20 +748,22 @@ function Player({ song }: { song: Song }) {
     } else {
       // Practice carries on from the first step at or after where Listen paused (or where it was, if Listen just
       // played to the end and rewound).
-      moveTo(stepAt(steps, listenEnded.current ? practiceAt.current : listenAt, loop), hands)
+      moveTo(stepAt(steps, listenEnded.current ? practiceAt.current : listenAt, loop), hands, steps)
     }
     setMode(m)
   }
   const changeHands = (h: Hands) => {
     if (h === hands) return
+    setResumeBar(null)
     if (mode === 'wait') {
       // Keep your bar: the first step at or after this moment, in the new hands' steps.
       stopPlayback()
       stopAccompaniment()
       const r = run.current
       const at = r.done || r.idx === 0 ? listenRange()[0] : (steps[r.idx]?.start ?? 0)
-      moveTo(stepAt(stepsInBars(buildSteps(tl, h), loop ? loopBars : null), at, loop), h)
-    }
+      const next = stepsInBars(buildSteps(tl, h), loop ? loopBars : null)
+      moveTo(stepAt(next, at, loop), h, next)
+    } else if (listenPart === 'other') replayWith({ withHands: h })
     setHands(h)
   }
   const changeLoop = (on: boolean) => {
@@ -779,7 +800,7 @@ function Player({ song }: { song: Song }) {
   // Hands-free (Enter, a deliberate pedal tap or the top C): Play again once you've finished (from the results or
   // after closing them), or Continue while that's offered. Enter on a focused button just clicks it, and the
   // note or pedal that finished the run can't also restart it.
-  useHandsFree(finished ? () => reset() : offerResume ? () => startFrom(resumeBar) : null)
+  useHandsFree(mode === 'wait' && finished ? () => reset() : offerResume ? () => startFrom(resumeBar) : null)
 
   return (
     // The screen's height, shared out: controls, the music (whatever's left), the keyboard. It only scrolls when
@@ -851,7 +872,7 @@ function Player({ song }: { song: Song }) {
                 value={listenPart === 'other' && hands === 'both' ? 'all' : listenPart}
                 // Let go of focus, so Space plays and pauses again straight away.
                 onChange={(e) => {
-                  setListenPart(e.target.value as ListenPart)
+                  changeListenPart(e.target.value as ListenPart)
                   e.currentTarget.blur()
                 }}
                 className="min-h-11 cursor-pointer rounded-lg bg-night-850 pr-1 text-ink outline-none"

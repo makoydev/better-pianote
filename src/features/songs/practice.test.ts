@@ -85,6 +85,8 @@ describe('practice runs', () => {
     expect(carryOn({ ...playing, mistakes: 2, ms: 900 }, 2, 'rh', false)).toMatchObject({ idx: 2, notes: 6, mistakes: 2, ms: 900 })
     // Back at the top of the song, or after finishing: a fresh run.
     expect(carryOn(playing, 0, 'rh', false)).toMatchObject({ idx: 0, whole: true, notes: 0 })
+    // Starting from a bar you chose and changing hands before playing: still from that bar.
+    expect(carryOn(runFrom('rh', 4, 1), 4, 'both', false, 1)).toMatchObject({ idx: 4, fromBar: 1, hands: 'both' })
     expect(carryOn({ ...playing, done: true }, 4, 'rh', false)).toMatchObject({ idx: 4, whole: false, notes: 0 })
   })
 
