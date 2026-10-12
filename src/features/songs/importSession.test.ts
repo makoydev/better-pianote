@@ -21,7 +21,10 @@ vi.mock('../../lib/musicxml', async (original) => {
   }
 })
 
-const { batchOf, closeImport, nextImport, replaceImport, startImports, useImport } = await import('./importSession')
+const { batchOf, chooseTarget, closeImport, editImport, nextImport, replaceImport, startImport, startImports, startReplace, useImport } = await import(
+  './importSession'
+)
+const { useLibrary } = await import('../../state/library')
 
 function song(name: string): Song {
   return {
@@ -51,6 +54,7 @@ const settled = () => vi.waitFor(() => expect(['ready', 'error']).toContain(phas
 beforeEach(() => {
   closeImport()
   reads.length = 0
+  useLibrary.setState({ entries: [] })
 })
 
 describe('importing several files', () => {
@@ -100,6 +104,60 @@ describe('importing several files', () => {
     closeImport()
     expect(useImport.getState().queue).toEqual([])
     expect(batchOf(useImport.getState())).toBeNull()
+  })
+})
+
+describe('a file that is already in My songs', () => {
+  const mine = () => ({
+    id: 'my-piece-1',
+    song: { ...song('x'), id: 'my-piece-1', title: 'My title', difficulty: 3 as const },
+    source: { name: 'a.mxl', bytes: new TextEncoder().encode('<score-partwise/>').buffer, partIndex: 0 },
+    version: 1,
+    addedAt: 1,
+  })
+
+  it('offers to replace that song (the default), keeping its title and level, or to add it as new', async () => {
+    useLibrary.setState({ entries: [mine()] })
+    startImports([file('a.mxl')])
+    await settled()
+    const s = useImport.getState()
+    expect(s.duplicate).toEqual({ id: 'my-piece-1', title: 'My title', reason: 'file' })
+    expect(s.target).toBe('my-piece-1')
+    expect(s.edits).toEqual({ title: 'My title', composer: 'Me', difficulty: 3 })
+    chooseTarget(null)
+    expect(useImport.getState().target).toBeNull()
+  })
+
+  it('a new file is just added', async () => {
+    useLibrary.setState({ entries: [mine()] })
+    startImports([file('other.mxl')])
+    await settled()
+    expect(useImport.getState().duplicate).toBeNull()
+    expect(useImport.getState().target).toBeNull()
+    expect(useImport.getState().edits?.title).toBe('other')
+  })
+
+  it('"Replace file" on a song saves the new file in its place', async () => {
+    useLibrary.setState({ entries: [mine()] })
+    startReplace(file('fixed.mxl'), 'my-piece-1')
+    await settled()
+    const s = useImport.getState()
+    expect([s.replacing, s.target, s.duplicate]).toEqual(['my-piece-1', 'my-piece-1', null])
+    expect(s.edits?.title).toBe('My title')
+  })
+
+  it('reading another part of the same file keeps every choice', async () => {
+    useLibrary.setState({ entries: [mine()] })
+    startImports([file('a.mxl')])
+    await settled()
+    editImport({ title: 'Renamed' })
+    chooseTarget(null)
+    const p = phase()
+    if (p.kind !== 'ready') throw new Error('expected a song')
+    void startImport(p.file, { partIndex: 1, bytes: p.bytes })
+    await vi.waitFor(() => expect(phase().kind === 'ready' && phase()).toMatchObject({ result: { partIndex: 1 } }))
+    expect(useImport.getState().edits?.title).toBe('Renamed')
+    expect(useImport.getState().target).toBeNull()
   })
 })
 

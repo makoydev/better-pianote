@@ -1,4 +1,4 @@
-/** Score files on this device: which ones the file picker offers. */
+/** Score files on this device: which ones the file picker offers, and saving an original back out. */
 
 /** What the importer reads. */
 export const SCORE_TYPES = '.mxl,.musicxml,.xml'
@@ -15,3 +15,21 @@ export function isAppleTouch(): boolean {
  * (.mxl and .musicxml among them), so there the picker shows every file.
  */
 export const scoreAccept = (): string | undefined => (isAppleTouch() ? undefined : SCORE_TYPES)
+
+const MIME: Record<string, string> = {
+  mxl: 'application/vnd.recordare.musicxml',
+  musicxml: 'application/vnd.recordare.musicxml+xml',
+  xml: 'application/xml',
+}
+
+export const mimeFor = (name: string) => MIME[/\.([^.]+)$/.exec(name)?.[1].toLowerCase() ?? ''] ?? 'application/octet-stream'
+
+/** Save a file to the device: a download on computers, the save sheet on iPad. */
+export function downloadFile(name: string, bytes: ArrayBuffer) {
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([bytes], { type: mimeFor(name) }))
+  a.download = name
+  a.click()
+  // Safari needs the link a moment longer before it's released.
+  window.setTimeout(() => URL.revokeObjectURL(a.href), 4000)
+}

@@ -50,6 +50,70 @@ export async function removeEntry(id: string) {
   useLibrary.setState((s) => ({ entries: s.entries.filter((e) => e.id !== id) }))
 }
 
+/**
+ * Put a new reading of a song (a fixed file, another part) in place of the one with this id. The id and its
+ * place in the list stay, so the song keeps its progress and remembered settings.
+ */
+export async function replaceEntry(id: string, next: Pick<LibraryEntry, 'song' | 'source' | 'version'>): Promise<LibraryEntry> {
+  const old = useLibrary.getState().entries.find((e) => e.id === id)
+  if (!old) throw new Error('That song is no longer on this device.')
+  const entry: LibraryEntry = { ...old, song: { ...next.song, id }, source: next.source ?? old.source, version: next.version }
+  await saveEntry(entry)
+  return entry
+}
+
+/** Titles compared loosely: "Für Elise" and "fur elise!" are the same. */
+const plain = (s: string) =>
+  s
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+
+function sameBytes(a: ArrayBuffer, b: Uint8Array): boolean {
+  if (a.byteLength !== b.byteLength) return false
+  const x = new Uint8Array(a)
+  for (let i = 0; i < x.length; i++) if (x[i] !== b[i]) return false
+  return true
+}
+
+/**
+ * A song already in the library that a file being imported probably is: the very same file again (same name
+ * and contents), or a song with the same title and composer (a fixed or re-exported version).
+ */
+export function findDuplicate(
+  entries: LibraryEntry[],
+  file: { name: string; bytes: Uint8Array; title: string; composer: string },
+): { entry: LibraryEntry; reason: 'file' | 'title' } | null {
+  const same = entries.find((e) => e.source?.name === file.name && sameBytes(e.source.bytes, file.bytes))
+  if (same) return { entry: same, reason: 'file' }
+  const title = plain(file.title)
+  // Notation apps call every score "Untitled score" until you name it: that says nothing.
+  if (!title || title.startsWith('untitled')) return null
+  const composer = plain(file.composer)
+  const like = entries.find((e) => plain(e.song.title) === title && plain(e.song.composer) === composer)
+  return like ? { entry: like, reason: 'title' } : null
+}
+
+let askedToPersist = false
+
+/**
+ * Ask the browser to keep imported songs even when the device runs low on space (best effort, once per visit).
+ * Without it, a browser may clear them to free up space.
+ */
+export async function persistStorage() {
+  if (askedToPersist) return
+  askedToPersist = true
+  try {
+    const storage = typeof navigator === 'undefined' ? undefined : navigator.storage
+    if (!storage?.persist || (await storage.persisted?.())) return
+    await storage.persist()
+  } catch {
+    // Not supported or refused: songs still save.
+  }
+}
+
 /** Re-read songs that an older importer made, keeping your title, composer and level. */
 async function refreshOld(entries: LibraryEntry[]) {
   if (!entries.some((e) => e.source)) return

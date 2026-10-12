@@ -17,7 +17,7 @@ vi.mock('../lib/musicxml', () => ({
   },
 }))
 
-const { libraryBackup, loadLibrary, removeEntry, restoreLibrary, saveEntry, useLibrary } = await import('./library')
+const { findDuplicate, libraryBackup, loadLibrary, persistStorage, removeEntry, replaceEntry, restoreLibrary, saveEntry, useLibrary } = await import('./library')
 
 function song(id: string): Song {
   return {
@@ -69,6 +69,53 @@ describe('library of imported songs', () => {
   it('ignores junk in a backup file', async () => {
     expect(await restoreLibrary(undefined)).toBe(0)
     expect(await restoreLibrary([{ nope: true }, null])).toBe(0)
+  })
+
+  it('replaces a song in place: same id, place and date added, new notes and file', async () => {
+    await saveEntry({ id: 'a', song: song('a'), source: { name: 'old.mxl', bytes: new Uint8Array([1]).buffer, partIndex: 0 }, version: 1, addedAt: 1 })
+    await saveEntry({ id: 'b', song: song('b'), version: 1, addedAt: 2 })
+    const fixed = { ...song('my-new-id'), title: 'Fixed', bpm: 70 }
+    const saved = await replaceEntry('a', { song: fixed, source: { name: 'new.mxl', bytes: new Uint8Array([2, 3]).buffer, partIndex: 1 }, version: 2 })
+    expect(saved.id).toBe('a')
+    expect(saved.song.id).toBe('a')
+    expect(saved.addedAt).toBe(1)
+    const back = useLibrary.getState().entries
+    expect(back.map((e) => e.id)).toEqual(['b', 'a'])
+    expect([back[1].song.title, back[1].song.bpm, back[1].source?.name, back[1].version]).toEqual(['Fixed', 70, 'new.mxl', 2])
+    await expect(replaceEntry('gone', { song: fixed, version: 2 })).rejects.toThrow()
+  })
+
+  it('spots a file that is already in the library', () => {
+    const bytes = new Uint8Array([60, 115, 99, 111, 114, 101])
+    const entry = (id: string, title: string, composer: string, name: string, b = bytes) => ({
+      id,
+      song: { ...song(id), title, composer },
+      source: { name, bytes: b.slice().buffer, partIndex: 0 },
+      version: 1,
+      addedAt: 1,
+    })
+    const entries = [entry('a', 'Für Elise', 'Ludwig van Beethoven', 'elise.mxl'), entry('b', 'Untitled score', 'Composer', 'x.mxl')]
+    const file = (name: string, title: string, composer: string, b = bytes) => ({ name, bytes: b, title, composer })
+    // The same file again (even with another title inside).
+    expect(findDuplicate(entries, file('elise.mxl', 'Something else', 'Someone', bytes))).toMatchObject({ entry: { id: 'a' }, reason: 'file' })
+    // Same name, different contents, and nothing else alike: a different file.
+    expect(findDuplicate(entries, file('elise.mxl', 'Other', 'Someone', new Uint8Array([1, 2])))).toBeNull()
+    // A fixed version: same title and composer, written a little differently.
+    expect(findDuplicate(entries, file('elise-v2.musicxml', 'Fur Elise!', 'ludwig van beethoven', new Uint8Array([9])))).toMatchObject({
+      entry: { id: 'a' },
+      reason: 'title',
+    })
+    // Every unnamed score is "Untitled score": that's no match.
+    expect(findDuplicate(entries, file('y.mxl', 'Untitled score', 'Composer', new Uint8Array([7])))).toBeNull()
+  })
+
+  it('asks the browser once to keep the songs', async () => {
+    const persist = vi.fn(async () => true)
+    vi.stubGlobal('navigator', { storage: { persisted: async () => false, persist } })
+    await persistStorage()
+    await persistStorage()
+    expect(persist).toHaveBeenCalledTimes(1)
+    vi.unstubAllGlobals()
   })
 
   it('re-reads songs from an older importer, keeping your title, composer and level', async () => {

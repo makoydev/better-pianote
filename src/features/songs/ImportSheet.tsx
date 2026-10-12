@@ -1,15 +1,15 @@
-import { AlertTriangle, Check, ChevronDown, FileMusic, Hand, Lightbulb, Loader2, Lock, Play, SkipForward, Upload } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, CopyCheck, FileMusic, Hand, Lightbulb, Loader2, Lock, Play, RefreshCw, SkipForward, Upload } from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { ScoreStaff } from '../../components/staff/ScoreStaff'
 import { Button } from '../../components/ui/Button'
-import { Segmented } from '../../components/ui/controls'
 import { Modal } from '../../components/ui/Modal'
 import type { Song } from '../../content/songs'
 import { toast } from '../../lib/fx'
 import type { ProblemGroup } from '../../lib/musicxml'
 import { go } from '../../router'
-import { saveEntry } from '../../state/library'
-import { batchOf, closeImport, editImport, nextImport, startImport, useImport } from './importSession'
+import { persistStorage, replaceEntry, saveEntry, useLibrary } from '../../state/library'
+import { batchOf, chooseTarget, closeImport, editImport, nextImport, startImport, useImport } from './importSession'
+import { PartSelect, SongDetailsFields } from './SongFields'
 import { buildTimeline, previewBars, songScoreInput } from './timeline'
 
 /** Shows what's in the file being imported, and saves it to My songs. Several files take turns. */
@@ -18,6 +18,10 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
   const edits = useImport((s) => s.edits)
   const queue = useImport((s) => s.queue)
   const done = useImport((s) => s.done)
+  const target = useImport((s) => s.target)
+  const duplicate = useImport((s) => s.duplicate)
+  const replacingId = useImport((s) => s.replacing)
+  const replacing = useLibrary((s) => s.entries.find((e) => e.id === replacingId))
   const batch = batchOf({ queue, done })
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -35,21 +39,20 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
     setSaving(true)
     setSaveError(null)
     const finalSong: Song = { ...song, title: edits.title.trim() || song.title, composer: edits.composer.trim() || song.composer, difficulty: edits.difficulty }
+    const source = { name: ready.file.name, bytes: ready.bytes.slice().buffer, partIndex: ready.result.partIndex }
+    const id = target ?? finalSong.id
     try {
-      await saveEntry({
-        id: finalSong.id,
-        song: finalSong,
-        source: { name: ready.file.name, bytes: ready.bytes.slice().buffer, partIndex: ready.result.partIndex },
-        version: ready.version,
-        addedAt: Date.now(),
-      })
+      // Replacing keeps the old song's id, so its progress and remembered settings carry on.
+      if (target) await replaceEntry(target, { song: finalSong, source, version: ready.version })
+      else await saveEntry({ id, song: finalSong, source, version: ready.version, addedAt: Date.now() })
+      void persistStorage()
       if (batch) {
         // Several files: on to the next one, and you play them from My songs afterwards.
-        toast({ kind: 'info', title: 'Saved to My songs', detail: finalSong.title })
+        toast({ kind: 'info', title: target ? 'Replaced in My songs' : 'Saved to My songs', detail: finalSong.title })
         nextImport()
       } else {
         closeImport()
-        go(`/songs/${finalSong.id}`)
+        go(`/songs/${id}`)
       }
     } catch {
       setSaveError('Couldn’t save the song on this device. The browser may be in private mode or out of space.')
@@ -68,10 +71,11 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
   }
   const file = phase.kind === 'closed' ? null : phase.file
   const stats = ready?.result.stats
+  const verb = target ? 'Replace' : 'Save'
 
   const title = (
     <>
-      Import a song
+      {replacing ? 'Replace the file' : 'Import a song'}
       {batch && (
         <span className="ml-2 align-middle font-sans text-base font-extrabold text-ink-mute">
           File {batch.at} of {batch.of}
@@ -82,6 +86,15 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
 
   return (
     <Modal open={phase.kind !== 'closed'} onClose={close} title={title} wide>
+      {replacing && (
+        <p className="-mt-1 mb-4 flex items-center gap-2 text-ink-soft">
+          <RefreshCw size={18} className="shrink-0 text-gold" />
+          <span>
+            A new file for <b className="text-ink">{replacing.song.title}</b>. Its progress and settings stay.
+          </span>
+        </p>
+      )}
+
       {phase.kind === 'reading' && (
         <div className="flex items-center gap-3 py-10 text-lg font-bold text-ink-soft">
           <Loader2 className="animate-spin text-gold" size={26} /> Reading {file?.name}…
@@ -140,42 +153,36 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
             {stats.voices > (song.lh ? 2 : 1) && <Fact>Two melodies in one hand</Fact>}
           </div>
 
-          {ready.result.parts.length > 1 && (
-            <Field label="Which part do you want to learn?">
-              <select
-                className={INPUT}
-                value={ready.result.partIndex}
-                onChange={(e) => void startImport(ready.file, { partIndex: Number(e.target.value), bytes: ready.bytes })}
-              >
-                {ready.result.parts.map((p, i) => (
-                  <option key={p.id} value={i}>
-                    {p.name || `Part ${i + 1}`} ({p.staves >= 2 ? 'two staves' : 'one staff'}, {p.notes} notes)
-                  </option>
-                ))}
-              </select>
-            </Field>
+          {duplicate && !replacing && (
+            <div className="space-y-3 rounded-2xl border border-violet/40 bg-violet/10 p-4">
+              <p className="flex gap-2.5 text-ink">
+                <CopyCheck size={20} className="mt-0.5 shrink-0 text-violet" />
+                <span>
+                  {duplicate.reason === 'file' ? 'You’ve imported this file before' : 'My songs already has a song with this title and composer'}:{' '}
+                  <b>{duplicate.title}</b>.
+                </span>
+              </p>
+              <ChoiceChips
+                label="What to do with this file"
+                value={target ? 'replace' : 'new'}
+                onChange={(v) => chooseTarget(v === 'replace' ? duplicate.id : null)}
+                options={[
+                  { value: 'replace', label: 'Replace (keep progress)' },
+                  { value: 'new', label: 'Add as new' },
+                ]}
+              />
+            </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Title">
-              <input className={INPUT} value={edits.title} onChange={(e) => editImport({ title: e.target.value })} maxLength={80} />
-            </Field>
-            <Field label="Composer">
-              <input className={INPUT} value={edits.composer} onChange={(e) => editImport({ composer: e.target.value })} maxLength={80} />
-            </Field>
-          </div>
-
-          <Field label="Level">
-            <Segmented<Song['difficulty']>
-              value={edits.difficulty}
-              onChange={(difficulty) => editImport({ difficulty })}
-              options={[
-                { value: 1, label: 'Beginner' },
-                { value: 2, label: 'Intermediate' },
-                { value: 3, label: 'Advanced' },
-              ]}
+          {ready.result.parts.length > 1 && (
+            <PartSelect
+              parts={ready.result.parts}
+              value={ready.result.partIndex}
+              onChange={(partIndex) => void startImport(ready.file, { partIndex, bytes: ready.bytes })}
             />
-          </Field>
+          )}
+
+          <SongDetailsFields value={edits} onChange={editImport} />
 
           {ready.result.warnings.length > 0 && (
             <div className="rounded-2xl border border-gold/30 bg-gold/8 p-4">
@@ -197,7 +204,7 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
 
           <div className="flex flex-wrap gap-3">
             <Button icon={batch ? Check : Play} onClick={() => void save()} disabled={saving}>
-              {!batch ? 'Save and play' : queue.length ? 'Save, next file' : 'Save'}
+              {!batch ? `${verb} and play` : queue.length ? `${verb}, next file` : verb}
             </Button>
             {queue.length > 0 && (
               <Button variant="secondary" icon={SkipForward} onClick={skip}>
@@ -211,6 +218,41 @@ export function ImportSheet({ onPickAnother }: { onPickAnother: () => void }) {
         </div>
       )}
     </Modal>
+  )
+}
+
+/** Two or three big choices that wrap on narrow screens (a radio group). */
+function ChoiceChips<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (v: T) => void
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2">
+      {options.map((o) => {
+        const active = o.value === value
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(o.value)}
+            className={`min-h-12 rounded-2xl border px-4 font-extrabold transition-colors ${
+              active ? 'border-gold bg-gold text-night-900' : 'border-white/10 bg-night-750 text-ink-soft hover:border-white/25 hover:text-ink'
+            }`}
+          >
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -256,19 +298,8 @@ function ProblemDetails({ groups, more }: { groups: ProblemGroup[]; more: number
   )
 }
 
-const INPUT = 'h-12 w-full rounded-2xl border border-white/10 bg-night-850 px-4 text-lg font-bold text-ink outline-none focus:border-gold/60'
-
 function Fact({ children }: { children: ReactNode }) {
   return <span className="inline-flex items-center rounded-xl bg-white/6 px-2.5 py-1 text-ink-soft">{children}</span>
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-sm font-extrabold uppercase tracking-wider text-ink-mute">{label}</span>
-      {children}
-    </label>
-  )
 }
 
 /** Which files work, and where they come from. */

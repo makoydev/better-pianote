@@ -1,21 +1,23 @@
-import { ChevronRight, FileMusic, Hand, Music, Trash2, Upload } from 'lucide-react'
+import { ChevronRight, Download, FileMusic, FileUp, Hand, Music, Pencil, Trash2, Upload } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Page } from '../../components/layout/Page'
 import { ScoreStaff } from '../../components/staff/ScoreStaff'
-import { Button, IconButton } from '../../components/ui/Button'
+import { Button } from '../../components/ui/Button'
 import { Segmented } from '../../components/ui/controls'
 import { Modal } from '../../components/ui/Modal'
 import { Stars } from '../../components/ui/progress'
 import { DIFFICULTY_LABEL, SONGS, type Song, starsForScore } from '../../content/songs'
 import { go } from '../../router'
-import { removeEntry, useLibrary } from '../../state/library'
+import { type LibraryEntry, removeEntry, useLibrary } from '../../state/library'
 import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
-import { scoreAccept } from './files'
+import { ActionMenu, type MenuItem } from './ActionMenu'
+import { EditSong } from './EditSong'
+import { downloadFile, scoreAccept } from './files'
 import { HowToGetFiles, ImportSheet } from './ImportSheet'
 import { onImportRequest, requestImport, takeImportRequest } from './importRequest'
-import { replaceImport, startImports } from './importSession'
+import { replaceImport, startImports, startReplace } from './importSession'
 import { bestText, songKey } from './results'
 import { buildTimeline, previewBars, songScoreInput } from './timeline'
 
@@ -34,20 +36,37 @@ export function SongList() {
   const entries = useLibrary((s) => s.entries)
   const libraryError = useLibrary((s) => s.error)
   const [removing, setRemoving] = useState<Song | null>(null)
+  const [editing, setEditing] = useState<LibraryEntry | null>(null)
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
-  /** What to do with the files the picker returns: import them, or swap the open import for them. */
+  /** What to do with the files the picker returns: import them, swap the open import, or replace a song's file. */
   const onPicked = useRef<(files: File[]) => void>(startImports)
-  const pickFiles = (then: (files: File[]) => void) => {
+  const pickFiles = (then: (files: File[]) => void, many = true) => {
+    const input = fileInput.current
+    if (!input) return
     onPicked.current = then
-    fileInput.current?.click()
+    input.multiple = many
+    input.click()
   }
   const pickFile = () => pickFiles(startImports)
 
   const matches = (s: Song) => filter === 'all' || filter === 'mine' || s.difficulty === filter
-  const mine = entries.map((e) => e.song).filter(matches)
+  const mine = entries.filter((e) => matches(e.song))
   const builtIn = filter === 'mine' ? [] : SONGS.filter(matches)
   const best = (s: Song) => games[songKey(s.id)]?.best ?? 0
+
+  /** What you can do with one of your own songs (the ⋯ menu on its card). */
+  const manage = (entry: LibraryEntry): MenuItem[] => [
+    { label: 'Edit', icon: Pencil, onSelect: () => setEditing(entry) },
+    { label: 'Replace file', icon: FileUp, onSelect: () => pickFiles((files) => files[0] && startReplace(files[0], entry.id), false) },
+    {
+      label: 'Download original file',
+      icon: Download,
+      disabled: !entry.source,
+      onSelect: () => entry.source && downloadFile(entry.source.name, entry.source.bytes),
+    },
+    { label: 'Remove', icon: Trash2, danger: true, onSelect: () => setRemoving(entry.song) },
+  ]
 
   // Files dropped on another page (the app sends them here), now or while this page is open.
   useEffect(() => {
@@ -107,7 +126,6 @@ export function SongList() {
       <input
         ref={fileInput}
         type="file"
-        multiple
         accept={scoreAccept()}
         className="hidden"
         onChange={(e) => {
@@ -136,14 +154,14 @@ export function SongList() {
         <Section title="My songs" hint="Imported from your own files. They stay on this device.">
           {mine.length ? (
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {mine.map((song, i) => (
+              {mine.map((entry, i) => (
                 <SongCard
-                  key={song.id}
-                  song={song}
-                  best={best(song)}
-                  label={bestText(games, song.id)}
+                  key={entry.id}
+                  song={entry.song}
+                  best={best(entry.song)}
+                  label={bestText(games, entry.id)}
                   index={i}
-                  onRemove={() => setRemoving(song)}
+                  menu={manage(entry)}
                 />
               ))}
             </div>
@@ -169,6 +187,7 @@ export function SongList() {
       </p>
 
       <ImportSheet onPickAnother={() => pickFiles(replaceImport)} />
+      <EditSong entry={editing} onClose={() => setEditing(null)} />
       <RemoveSong song={removing} onClose={() => setRemoving(null)} />
       <AnimatePresence>
         {dragging && (
@@ -252,7 +271,7 @@ function SongCard({
   best,
   label,
   index,
-  onRemove,
+  menu,
 }: {
   song: Song
   /** Overall best (%), for the stars. */
@@ -260,7 +279,8 @@ function SongCard({
   /** "Best 90%", or "RH 100% · Both 85%" once both have been played. */
   label: string | null
   index: number
-  onRemove?: () => void
+  /** Actions for your own songs (edit, replace the file…). */
+  menu?: MenuItem[]
 }) {
   const [c1, c2] = LEVEL_COLOR[song.difficulty]
   // The first couple of bars as a preview, without fingers or note names.
@@ -297,7 +317,7 @@ function SongCard({
             {song.composer} · {song.imported ? 'My song' : song.year}
           </p>
         </div>
-        <span className={onRemove ? 'mr-12' : ''}>
+        <span className={menu ? 'mr-14' : ''}>
           <Stars value={starsForScore(best)} size={20} />
         </span>
       </div>
@@ -321,11 +341,11 @@ function SongCard({
       <p className="relative mt-3 line-clamp-2 text-sm leading-relaxed text-ink-mute [overflow-wrap:anywhere]">{song.about}</p>
     </motion.button>
   )
-  if (!onRemove) return card
+  if (!menu) return card
   return (
     <div className="relative">
       {card}
-      <IconButton icon={Trash2} label={`Remove ${song.title}`} size={40} onClick={onRemove} className="absolute right-4 top-4" />
+      <ActionMenu label={`Manage ${song.title}`} items={menu} className="absolute right-4 top-4" />
     </div>
   )
 }
