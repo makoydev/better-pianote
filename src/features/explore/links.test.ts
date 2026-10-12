@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHORD_TYPES, type Chord, chordPcs, chordSymbol, keyName, parseChord, parseKey, romanToChord, spellRoot } from '../../lib/theory'
+import { CHORD_TYPES, type Chord, chordPcs, chordSymbol, keyName, parseChord, parseKey, romanToChord, spellChordInKey, spellRoot } from '../../lib/theory'
 import { isMinorProgression, isProgression, jamChords, jamTonic } from './jam'
 import { circleIndex, circleKey, jamNumeral, jamPresetFor } from './links'
 
@@ -38,6 +38,13 @@ describe('chords as Jam numerals', () => {
     expect(minor).toEqual(['i', 'bVI', 'bIII', 'bVII'])
     expect(isMinorProgression(minor)).toBe(true)
     expect(jamChords(minor, 9, true).map(chordSymbol).join(' ')).toBe('Am F C G')
+  })
+
+  it('reads cleanly once the chords are spelled for the key', () => {
+    // F♯ named before the key was found is G♭ (IV) in D♭, not ♯III.
+    const Db = parseKey('Db')
+    expect(jamNumeral(parseChord('F#'), Db.tonic)).toBe('#III')
+    expect(jamNumeral(spellChordInKey(parseChord('F#'), Db), Db.tonic)).toBe('IV')
   })
 
   it('keeps a 3rd, 5th or 7th in the bass', () => {

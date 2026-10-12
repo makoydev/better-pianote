@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { CHORD_TYPES, type Chord, type Key, chordSymbol, diatonicChords, keyName, midi, parseChord, parseKey, spellRoot } from './index'
-import { findKey, keysWithChord, nextChords, rankKeys } from './keyfind'
+import { CHORD_TYPES, type Chord, type Key, chordSymbol, chordToRoman, diatonicChords, keyName, midi, parseChord, parseKey, spellRoot } from './index'
+import { findKey, keysWithChord, nextChords, rankKeys, spellChordInKey } from './keyfind'
 
 const chords = (s: string) => s.split(' ').map(parseChord)
 const melody = (s: string) => s.split(' ').map((n) => ({ midi: midi(n) }))
@@ -49,6 +49,36 @@ describe('finding the key', () => {
     expect(found([], chords('F#m D A E'), parseKey('F#m'))?.[0]).toBe('A major')
     // Chords from another key take over quickly.
     expect(found([], chords('Bb Eb F Bb'), parseKey('C'))?.[0]).toBe('B♭ major')
+  })
+})
+
+describe('spelling a chord for a key', () => {
+  const inKey = (s: string, k: string) => chordSymbol(spellChordInKey(parseChord(s), parseKey(k)))
+
+  it('writes a root of the key the way the key does', () => {
+    expect(inKey('Ebm', 'B')).toBe('D♯m')
+    expect(chordToRoman(spellChordInKey(parseChord('Ebm'), parseKey('B')), parseKey('B'))).toBe('iii')
+    expect(inKey('F#', 'Db')).toBe('G♭')
+    expect(chordToRoman(spellChordInKey(parseChord('F#'), parseKey('Db')), parseKey('Db'))).toBe('IV')
+    expect(inKey('Fdim', 'F#')).toBe('E♯dim')
+    expect(inKey('Gb', 'D#m')).toBe('F♯')
+  })
+
+  it('leans the way the key does for other roots, without double sharps or flats', () => {
+    expect(inKey('A#', 'C')).toBe('B♭')
+    expect(inKey('A#', 'F')).toBe('B♭')
+    expect(inKey('Gb', 'E')).toBe('F♯')
+    // F major in F♯ major would be E♯ major (E♯ G𝄪 B♯): plain F instead.
+    expect(inKey('F', 'F#')).toBe('F')
+    // The raised 7th of a minor key keeps its sharp.
+    expect(inKey('Abdim', 'Am')).toBe('G♯dim')
+  })
+
+  it('moves the bass with the root, and leaves chords alone without a key', () => {
+    expect(inKey('Gb/Bb', 'D')).toBe('F♯/A♯')
+    expect(chordSymbol(spellChordInKey(parseChord('Gb'), null))).toBe('G♭')
+    const c = parseChord('D')
+    expect(spellChordInKey(c, parseKey('D'))).toBe(c)
   })
 })
 

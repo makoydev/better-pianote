@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { midi, parseChord } from '../../lib/theory'
-import { BROKEN_MS, Sounding, nameSounding, withinChord } from './sounding'
+import { detectChord, midi, noteName, parseChord, parseKey } from '../../lib/theory'
+import { BROKEN_MS, Sounding, nameSounding, respelled, withinChord } from './sounding'
 
 /** Play notes one after another, each released just before the next (like fingers moving on), `gap` ms apart. */
 function broken(s: Sounding, notes: string[], start: number, gap = 400): number {
@@ -136,6 +136,17 @@ describe('naming what is sounding', () => {
     expect(nameSounding([midi('E5'), midi('A5')], [], { pedal: true })).toBeNull()
     // Two keys you hold are, though.
     expect(nameSounding([midi('E2'), midi('B2')], [midi('E2'), midi('B2')], { pedal: false })?.det.symbol).toBe('E5')
+  })
+
+  it('spells a chord named before the key was known the way the key does', () => {
+    const det = detectChord([midi('Eb4'), midi('Gb4'), midi('Bb4')])!
+    expect(det.symbol).toBe('E♭m')
+    const r = respelled(det, parseKey('B'))
+    expect(r.symbol).toBe('D♯m')
+    expect(r.name).toBe('D♯ minor')
+    expect(r.notes.map((n) => noteName(n))).toEqual(['D♯4', 'F♯4', 'A♯4'])
+    expect(respelled(det, parseKey('Gb'))).toBe(det)
+    expect(respelled(det, null)).toBe(det)
   })
 
   it('knows notes that are still the same chord', () => {

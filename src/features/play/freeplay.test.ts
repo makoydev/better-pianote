@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chordSymbol, keyName, parseChord, parseKey } from '../../lib/theory'
+import { chordSymbol, keyName, parseChord, parseKey, spellChordInKey } from '../../lib/theory'
 import {
   CHART_MAX,
   type ChartEntry,
@@ -82,6 +82,9 @@ describe('the chord chart', () => {
     expect(chartText(chart('F#m D A E'), parseKey('A'))).toBe('F♯m D A E · vi IV I V in A major')
     expect(chartText(chart('Am F C G'), parseKey('Am'))).toBe('Am F C G · i VI III VII in A minor')
     expect(chartText(chart('F#m D A E'), null)).toBe('F♯m D A E')
+    // Chords named before the key was found are spelled for it first (E♭m is D♯m, iii, in B major).
+    const B = parseKey('B')
+    expect(chartText(chart('B Ebm E Gb').map((c) => spellChordInKey(c, B)), B)).toBe('B D♯m E F♯ · I iii IV V in B major')
   })
 })
 

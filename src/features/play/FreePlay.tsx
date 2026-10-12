@@ -40,6 +40,7 @@ import {
   parseKey,
   pcOf,
   pitchName,
+  spellChordInKey,
   spellInKey,
   voiceProgression,
 } from '../../lib/theory'
@@ -67,7 +68,7 @@ import {
   readChart,
 } from './chart'
 import { KeyBar } from './KeyBar'
-import { Sounding, nameSounding, withinChord } from './sounding'
+import { Sounding, nameSounding, respelled, withinChord } from './sounding'
 
 const KEY_OPTIONS = [...ALL_MAJOR_KEYS, ...ALL_MINOR_KEYS]
 const KEY_CHOICES = ['auto', 'none', ...KEY_OPTIONS.map(keyId)]
@@ -172,6 +173,8 @@ export function FreePlay() {
   // The key: the one heard, unless you've locked one (or chosen none).
   const key: Key | null = keyChoice === 'none' ? null : keyChoice === 'auto' ? (heard?.key ?? null) : parseKey(keyChoice)
   const prefer = key ? (keyFifths(key) < 0 ? 'flat' : keyFifths(key) > 0 ? 'sharp' : undefined) : undefined
+  // The chart as the key spells it, so chords played before the key was known read right (D♯m, iii in B major).
+  const keyChords = chords.map((c) => spellChordInKey(c, key))
 
   // Name it. A partial arpeggio of the last chord (or its bass struck again) is still that chord; once you let
   // go, the last chord stays on screen, dimmed, until the next one.
@@ -246,7 +249,7 @@ export function FreePlay() {
   const [copied, setCopied] = useState(false)
   const copyChart = async () => {
     try {
-      await navigator.clipboard.writeText(chartText(chords, key))
+      await navigator.clipboard.writeText(chartText(keyChords, key))
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
     } catch {
@@ -258,7 +261,11 @@ export function FreePlay() {
     const loop = chartLoop(chords)
     stopPlayback()
     // In the key you're in; failing that, the key the loop sounds like, or its first chord's.
-    openJamWith(loop, key ?? findKey([], loop)?.key ?? homeKey(loop[0]) ?? { tonic: loop[0].root, mode: 'major' })
+    const k = key ?? findKey([], loop)?.key ?? homeKey(loop[0]) ?? { tonic: loop[0].root, mode: 'major' }
+    openJamWith(
+      loop.map((c) => spellChordInKey(c, k)),
+      k,
+    )
   }
   const removeChord = (id: number) => {
     setUndo(chart)
@@ -272,10 +279,11 @@ export function FreePlay() {
     setSelected(null)
   }
 
-  // What the big name shows: the chord you're playing, else the last one (dimmed), else the notes.
-  const head = current ?? last
+  // What the big name shows, spelled for the key: the chord you're playing, else the last one (dimmed), else the notes.
+  const currentInKey = current && respelled(current, key)
+  const head = currentInKey ?? (last && respelled(last, key))
   const dim = !current && !!last
-  const spelledNow = sound.all.map((m) => current?.notes.find((n) => midiOf(n) === m) ?? spellInKey(m, key))
+  const spelledNow = sound.all.map((m) => currentInKey?.notes.find((n) => midiOf(n) === m) ?? spellInKey(m, key))
   let headline = ''
   let sub = ''
   // Under a faded chord, what you're playing now (a melody note, say) takes the line below it.
@@ -301,7 +309,7 @@ export function FreePlay() {
   const nextKey = key ?? (head ? homeKey(head.chord) : null)
   const suggestions = head && nextKey ? nextChords(head.chord, nextKey) : []
 
-  const staffNotes = spelledNow.length ? spelledNow : (last?.notes ?? [])
+  const staffNotes = spelledNow.length ? spelledNow : (head?.notes ?? [])
   const staffItems: StaffItem[] = staffNotes.length ? [{ key: 'now', notes: staffNotes.map((n) => noteName(n)), dur: 'w' }] : [{ key: 'empty', dur: 'w', hidden: true }]
 
   // All 61 keys, like the CT-S1, when it's plugged in or the screen is wide. Otherwise (mic, or tapping the
@@ -467,7 +475,7 @@ export function FreePlay() {
 
         <ChordChart
           entries={chart}
-          chords={chords}
+          chords={keyChords}
           keyOf={key}
           selected={selected}
           playingAt={playingAt}

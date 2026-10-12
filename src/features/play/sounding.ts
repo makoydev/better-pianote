@@ -1,5 +1,19 @@
 import { nameHeardChord } from '../../lib/input/micMatch'
-import { type Chord, type DetectedChord, chordPcs, detectChord, mod } from '../../lib/theory'
+import {
+  type Chord,
+  type DetectedChord,
+  type Key,
+  chordLongName,
+  chordPcs,
+  chordSymbol,
+  chordTones,
+  detectChord,
+  midiOf,
+  mod,
+  pcOf,
+  placeAtMidi,
+  spellChordInKey,
+} from '../../lib/theory'
 
 /** Without the pedal, a broken chord's notes count until nothing new has been played for this long. */
 export const BROKEN_MS = 1500
@@ -128,6 +142,22 @@ export function nameSounding(all: number[], held: number[], opts: { pedal: boole
     if (n) return n
   }
   return null
+}
+
+/**
+ * A named chord spelled for the key (D♯m, not E♭m, in B major), its name and notes following the new letters. A
+ * chord named before the key was known keeps up this way.
+ */
+export function respelled(det: DetectedChord, key: Key | null): DetectedChord {
+  const chord = spellChordInKey(det.chord, key)
+  if (chord === det.chord) return det
+  const tones = chordTones(chord.root, chord.type)
+  const notes = det.notes.map((n) => {
+    const m = midiOf(n)
+    const t = tones.find((x) => pcOf(x) === mod(m, 12))
+    return t ? placeAtMidi(t.letter, t.acc, m) : n
+  })
+  return { ...det, chord, symbol: chordSymbol(chord), name: chordLongName(chord), notes }
 }
 
 /** Every note is one of the chord's tones: a partial arpeggio of it, or its bass struck again. */

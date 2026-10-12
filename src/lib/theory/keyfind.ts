@@ -1,6 +1,6 @@
-import { type Chord, type ChordType, chordPcs, chordTones } from './chord'
+import { type Chord, type ChordType, chordPcs, chordTones, spellRoot } from './chord'
 import { IV } from './interval'
-import { ALL_MAJOR_KEYS, ALL_MINOR_KEYS, CIRCLE, type Key, type Mode, keyScale, romanFor, romanToChord } from './key'
+import { ALL_MAJOR_KEYS, ALL_MINOR_KEYS, CIRCLE, type Key, type Mode, keyFifths, keyScale, romanFor, romanToChord } from './key'
 import { LETTER_SEMIS, type Note, mod, pcOf, transpose } from './note'
 
 /**
@@ -138,6 +138,26 @@ export function findKey(notes: PlayedNote[], chords: Chord[] = [], prev: Key | n
   const second = ranked.find((c) => !sameKey(c.key, best.key))
   const alt = second && second.score >= best.score - ALT_MARGIN ? second.key : null
   return { key: best.key, alt }
+}
+
+/**
+ * A chord spelled for a key: a root that's a note of the key the way the key writes it (D♯m in B major, not E♭m;
+ * G♭ in D♭ major, not F♯), any other root the way the key leans (sharps or flats, or the friendliest spelling in
+ * C major and A minor). A spelling that would need double sharps or flats (E♯ major in F♯) falls back to the plain
+ * one (F). The bass follows the chord's own letters.
+ */
+export function spellChordInKey(chord: Chord, key: Key | null): Chord {
+  if (!key) return chord
+  const pc = pcOf(chord.root)
+  const fifths = keyFifths(key)
+  const inKey = keyScale(key).find((n) => pcOf(n) === pc)
+  const plain = (root: Note) => chordTones(root, chord.type).every((n) => Math.abs(n.acc) < 2)
+  const picked = inKey && plain(inKey) ? inKey : spellRoot(pc, chord.type, fifths > 0 ? 'sharp' : fifths < 0 ? 'flat' : undefined)
+  if (picked.letter === chord.root.letter && picked.acc === chord.root.acc) return chord
+  const root = { ...picked, oct: chord.root.oct }
+  const bassPc = chord.bass ? pcOf(chord.bass) : null
+  const bass = bassPc === null ? undefined : (chordTones(root, chord.type).find((n) => pcOf(n) === bassPc) ?? chord.bass)
+  return { root, type: chord.type, bass }
 }
 
 export interface Suggestion {
