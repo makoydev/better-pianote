@@ -1,4 +1,22 @@
-import { ChevronRight, Download, FileMusic, FileUp, Hand, Music, Pencil, Trash2, Upload } from 'lucide-react'
+import {
+  ArrowDownUp,
+  ChevronDown,
+  ChevronRight,
+  Download,
+  FileMusic,
+  FileUp,
+  Hand,
+  LayoutGrid,
+  List,
+  type LucideIcon,
+  Music,
+  Pencil,
+  Play,
+  Search,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Page } from '../../components/layout/Page'
@@ -7,18 +25,20 @@ import { Button } from '../../components/ui/Button'
 import { Segmented } from '../../components/ui/controls'
 import { Modal } from '../../components/ui/Modal'
 import { Stars } from '../../components/ui/progress'
-import { DIFFICULTY_LABEL, SONGS, type Song, starsForScore } from '../../content/songs'
+import { DIFFICULTY_LABEL, SONGS, type Song, findSong, starsForScore } from '../../content/songs'
 import { go } from '../../router'
 import { type LibraryEntry, removeEntry, useLibrary } from '../../state/library'
 import { usePref } from '../../state/prefs'
-import { useProgress } from '../../state/progress'
+import { type GameRecord, useProgress } from '../../state/progress'
 import { ActionMenu, type MenuItem } from './ActionMenu'
+import { SORTS, SORT_LABEL, type SongSort, type SongView, VIEWS, agoText, bestsText, continueFrom, fadeDelay, matchesSearch, practiceText, readLastSong, sortSongs } from './browse'
 import { EditSong } from './EditSong'
 import { downloadFile, scoreAccept } from './files'
 import { HowToGetFiles, ImportSheet } from './ImportSheet'
 import { onImportRequest, requestImport, takeImportRequest } from './importRequest'
 import { replaceImport, startImports, startReplace } from './importSession'
-import { bestText, songKey } from './results'
+import { songKey } from './results'
+import { INPUT } from './SongFields'
 import { buildTimeline, previewBars, songScoreInput } from './timeline'
 
 const LEVEL_COLOR: Record<Song['difficulty'], [string, string]> = {
@@ -32,7 +52,12 @@ const FILTERS: readonly Filter[] = ['all', 1, 2, 3, 'mine']
 
 export function SongList() {
   const games = useProgress((s) => s.games)
+  // How you like to browse is remembered: level, sort, cards or list, and what you searched for.
   const [filter, setFilter] = usePref<Filter>('songs:filter', 'all', FILTERS)
+  const [sort, setSort] = usePref<SongSort>('songs:sort', 'recent', SORTS)
+  const [view, setView] = usePref<SongView>('songs:view', 'cards', VIEWS)
+  const [query, setQuery] = usePref('songs:search', '')
+  const [lastPref] = usePref<unknown>('songs:last', null)
   const entries = useLibrary((s) => s.entries)
   const libraryError = useLibrary((s) => s.error)
   const [removing, setRemoving] = useState<Song | null>(null)
@@ -50,23 +75,35 @@ export function SongList() {
   }
   const pickFile = () => pickFiles(startImports)
 
-  const matches = (s: Song) => filter === 'all' || filter === 'mine' || s.difficulty === filter
-  const mine = entries.filter((e) => matches(e.song))
-  const builtIn = filter === 'mine' ? [] : SONGS.filter(matches)
-  const best = (s: Song) => games[songKey(s.id)]?.best ?? 0
+  const byId = new Map(entries.map((e) => [e.id, e]))
+  const searching = query.trim() !== ''
+  const shown = (s: Song) => (filter === 'all' || filter === 'mine' || s.difficulty === filter) && matchesSearch(s, query)
+  const order = (songs: Song[]) => sortSongs(songs, sort, { games, addedAt: (id) => byId.get(id)?.addedAt })
+  const mine = order(entries.map((e) => e.song).filter(shown))
+  const builtIn = filter === 'mine' ? [] : order(SONGS.filter(shown))
+  /** "My songs" picked, and nothing imported yet: how to bring songs in. */
+  const noSongsYet = filter === 'mine' && !entries.length
+  const noMatch = searching && !noSongsYet && !mine.length && !builtIn.length
+
+  const last = readLastSong(lastPref)
+  const lastSong = last ? (findSong(last.id) ?? byId.get(last.id)?.song) : undefined
 
   /** What you can do with one of your own songs (the ⋯ menu on its card). */
-  const manage = (entry: LibraryEntry): MenuItem[] => [
-    { label: 'Edit', icon: Pencil, onSelect: () => setEditing(entry) },
-    { label: 'Replace file', icon: FileUp, onSelect: () => pickFiles((files) => files[0] && startReplace(files[0], entry.id), false) },
-    {
-      label: 'Download original file',
-      icon: Download,
-      disabled: !entry.source,
-      onSelect: () => entry.source && downloadFile(entry.source.name, entry.source.bytes),
-    },
-    { label: 'Remove', icon: Trash2, danger: true, onSelect: () => setRemoving(entry.song) },
-  ]
+  const manage = (song: Song): MenuItem[] => {
+    const entry = byId.get(song.id)
+    if (!entry) return []
+    return [
+      { label: 'Edit', icon: Pencil, onSelect: () => setEditing(entry) },
+      { label: 'Replace file', icon: FileUp, onSelect: () => pickFiles((files) => files[0] && startReplace(files[0], entry.id), false) },
+      {
+        label: 'Download original file',
+        icon: Download,
+        disabled: !entry.source,
+        onSelect: () => entry.source && downloadFile(entry.source.name, entry.source.bytes),
+      },
+      { label: 'Remove', icon: Trash2, danger: true, onSelect: () => setRemoving(entry.song) },
+    ]
+  }
 
   // Files dropped on another page (the app sends them here), now or while this page is open.
   useEffect(() => {
@@ -134,51 +171,75 @@ export function SongList() {
           onPicked.current(files)
         }}
       />
-      <div className="-mx-1 mb-6 overflow-x-auto px-1 pb-1">
-        <Segmented<Filter>
-          size="sm"
-          value={filter}
-          onChange={setFilter}
-          options={[
-            { value: 'all', label: 'All' },
-            { value: 1, label: 'Beginner' },
-            { value: 2, label: 'Intermediate' },
-            { value: 3, label: 'Advanced' },
-            { value: 'mine', label: 'My songs' },
-          ]}
-        />
+
+      {last && lastSong && !searching && <ContinueCard song={lastSong} bar={last.bar} at={last.at} />}
+
+      <div className="mb-6 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <SearchBox value={query} onChange={setQuery} />
+          <label className="relative flex items-center">
+            <span className="sr-only">Sort songs by</span>
+            <ArrowDownUp size={18} className="pointer-events-none absolute left-4 text-ink-mute" />
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SongSort)}
+              className="h-12 appearance-none rounded-2xl border border-white/10 bg-night-850 pl-11 pr-10 font-extrabold text-ink outline-none focus:border-gold/60"
+            >
+              {SORTS.map((s) => (
+                <option key={s} value={s}>
+                  {SORT_LABEL[s]}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={18} className="pointer-events-none absolute right-3.5 text-ink-mute" />
+          </label>
+          <Segmented<SongView>
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'cards', label: <IconLabel icon={LayoutGrid}>Cards</IconLabel> },
+              { value: 'list', label: <IconLabel icon={List}>List</IconLabel> },
+            ]}
+          />
+        </div>
+        <div className="-mx-1 overflow-x-auto px-1 pb-1">
+          <Segmented<Filter>
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 1, label: 'Beginner' },
+              { value: 2, label: 'Intermediate' },
+              { value: 3, label: 'Advanced' },
+              { value: 'mine', label: 'My songs' },
+            ]}
+          />
+        </div>
       </div>
       {libraryError && <p className="mb-5 rounded-2xl bg-coral/10 px-4 py-3 text-sm font-bold text-coral">{libraryError}</p>}
 
-      {(mine.length > 0 || filter === 'mine') && (
+      {(mine.length > 0 || noSongsYet) && (
         <Section title="My songs" hint="Imported from your own files. They stay on this device.">
-          {mine.length ? (
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {mine.map((entry, i) => (
-                <SongCard
-                  key={entry.id}
-                  song={entry.song}
-                  best={best(entry.song)}
-                  label={bestText(games, entry.id)}
-                  index={i}
-                  menu={manage(entry)}
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyMine onImport={pickFile} filtered={entries.length > 0} />
-          )}
+          {mine.length ? <SongGroup songs={mine} view={view} games={games} menuFor={manage} /> : <EmptyMine onImport={pickFile} />}
         </Section>
       )}
 
       {builtIn.length > 0 && (
         <Section title={entries.length ? 'Song library' : undefined}>
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {builtIn.map((song, i) => (
-              <SongCard key={song.id} song={song} best={best(song)} label={bestText(games, song.id)} index={i} />
-            ))}
-          </div>
+          <SongGroup songs={builtIn} view={view} games={games} />
         </Section>
+      )}
+
+      {noMatch && (
+        <div className="glass mb-10 max-w-2xl space-y-4 rounded-3xl p-6">
+          <p className="text-lg text-ink-soft">
+            No songs {filter === 'all' || filter === 'mine' ? '' : 'at this level '}match <b className="text-ink">“{query.trim()}”</b>. Search looks at titles,
+            composers and tags like “Both hands” or “3/4 time”.
+          </p>
+          <Button variant="secondary" icon={X} onClick={() => setQuery('')}>
+            Clear search
+          </Button>
+        </div>
       )}
 
       <p className="mt-10 max-w-3xl text-sm leading-relaxed text-ink-mute">
@@ -209,6 +270,69 @@ export function SongList() {
   )
 }
 
+function IconLabel({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Icon size={18} /> {children}
+    </span>
+  )
+}
+
+function SearchBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="relative min-w-[14rem] flex-1">
+      <Search size={20} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-mute" />
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => e.key === 'Escape' && value && onChange('')}
+        placeholder="Search title, composer or tag"
+        aria-label="Search songs"
+        enterKeyHint="search"
+        className={`${INPUT} pl-12 pr-12 [&::-webkit-search-cancel-button]:hidden`}
+      />
+      {value && (
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={() => onChange('')}
+          className="absolute right-0.5 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-xl text-ink-mute transition-colors hover:text-ink"
+        >
+          <X size={20} strokeWidth={2.5} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** Where you left off: the song you practised last, from the bar you got to. */
+function ContinueCard({ song, bar, at }: { song: Song; bar: number; at: number }) {
+  return (
+    <motion.button
+      type="button"
+      onClick={() => go(`/songs/${song.id}`)}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -2 }}
+      whileTap={{ scale: 0.98 }}
+      className="glass group mb-6 flex w-full items-center gap-4 rounded-3xl p-4 text-left transition-colors hover:border-white/15 sm:p-5"
+    >
+      <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-linear-to-b from-gold to-gold-deep text-night-900 shadow-[0_5px_0_#b9761f]">
+        <Play size={26} strokeWidth={2.6} className="ml-0.5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-extrabold uppercase tracking-wider text-gold">Continue</span>
+        <span className="block font-display text-2xl font-bold leading-tight [overflow-wrap:anywhere]">
+          {song.title} <span className="font-sans text-lg font-extrabold text-ink-soft">{continueFrom(song, bar)}</span>
+        </span>
+        <span className="block text-sm font-semibold text-ink-mute">Practised {agoText(at)}</span>
+      </span>
+      <ChevronRight size={26} strokeWidth={2.6} className="shrink-0 text-gold opacity-80 transition-opacity group-hover:opacity-100" />
+    </motion.button>
+  )
+}
+
 function Section({ title, hint, children }: { title?: string; hint?: string; children: ReactNode }) {
   return (
     <section className="mb-10">
@@ -223,13 +347,31 @@ function Section({ title, hint, children }: { title?: string; hint?: string; chi
   )
 }
 
-function EmptyMine({ onImport, filtered }: { onImport: () => void; filtered: boolean }) {
+/** A group of songs as big cards with the opening bars, or as a compact list for a long library. */
+function SongGroup({ songs, view, games, menuFor }: { songs: Song[]; view: SongView; games: Record<string, GameRecord>; menuFor?: (song: Song) => MenuItem[] }) {
+  if (view === 'list') {
+    return (
+      <ul className="space-y-2.5">
+        {songs.map((song, i) => (
+          <SongRow key={song.id} song={song} games={games} index={i} menu={menuFor?.(song)} />
+        ))}
+      </ul>
+    )
+  }
+  return (
+    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      {songs.map((song, i) => (
+        <SongCard key={song.id} song={song} games={games} index={i} menu={menuFor?.(song)} />
+      ))}
+    </div>
+  )
+}
+
+function EmptyMine({ onImport }: { onImport: () => void }) {
   return (
     <div className="glass max-w-2xl space-y-4 rounded-3xl p-6">
-      <p className="text-lg text-ink-soft">
-        {filtered ? 'None of your songs are at this level.' : 'Bring in any piece you have as a MusicXML file, and practise it here with both hands.'}
-      </p>
-      {!filtered && <HowToGetFiles />}
+      <p className="text-lg text-ink-soft">Bring in any piece you have as a MusicXML file, and practise it here with both hands.</p>
+      <HowToGetFiles />
       <Button icon={Upload} onClick={onImport}>
         Import song
       </Button>
@@ -266,23 +408,23 @@ function RemoveSong({ song, onClose }: { song: Song | null; onClose: () => void 
   )
 }
 
-function SongCard({
-  song,
-  best,
-  label,
-  index,
-  menu,
-}: {
-  song: Song
-  /** Overall best (%), for the stars. */
-  best: number
-  /** "Best 90%", or "RH 100% · Both 85%" once both have been played. */
-  label: string | null
-  index: number
-  /** Actions for your own songs (edit, replace the file…). */
-  menu?: MenuItem[]
-}) {
-  const [c1, c2] = LEVEL_COLOR[song.difficulty]
+function LevelBadge({ level }: { level: Song['difficulty'] }) {
+  const [c1, c2] = LEVEL_COLOR[level]
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-extrabold uppercase tracking-wider text-night-900"
+      style={{ background: `linear-gradient(120deg, ${c1}, ${c2})` }}
+    >
+      <Music size={13} strokeWidth={2.8} /> {DIFFICULTY_LABEL[level]}
+    </span>
+  )
+}
+
+function SongCard({ song, games, index, menu }: { song: Song; games: Record<string, GameRecord>; index: number; menu?: MenuItem[] }) {
+  const [c1] = LEVEL_COLOR[song.difficulty]
+  const best = games[songKey(song.id)]?.best ?? 0
+  const bests = bestsText(games, song.id)
+  const practised = practiceText(games[songKey(song.id)])
   // The first couple of bars as a preview, without fingers or note names.
   const preview = useMemo(() => {
     const tl = buildTimeline(song)
@@ -294,7 +436,7 @@ function SongCard({
       onClick={() => go(`/songs/${song.id}`)}
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05, type: 'spring', stiffness: 260, damping: 26 }}
+      transition={{ delay: fadeDelay(index), type: 'spring', stiffness: 260, damping: 26 }}
       whileHover={{ y: -4 }}
       whileTap={{ scale: 0.98 }}
       className="glass group relative flex h-full w-full flex-col overflow-hidden rounded-3xl p-5 text-left transition-colors hover:border-white/15"
@@ -306,12 +448,7 @@ function SongCard({
       />
       <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-extrabold uppercase tracking-wider text-night-900"
-            style={{ background: `linear-gradient(120deg, ${c1}, ${c2})` }}
-          >
-            <Music size={13} strokeWidth={2.8} /> {DIFFICULTY_LABEL[song.difficulty]}
-          </span>
+          <LevelBadge level={song.difficulty} />
           <h3 className="mt-2.5 font-display text-2xl font-bold leading-tight">{song.title}</h3>
           <p className="mt-0.5 text-sm font-semibold text-ink-mute">
             {song.composer} · {song.imported ? 'My song' : song.year}
@@ -335,9 +472,10 @@ function SongCard({
           </span>
         )}
         <span className="ml-auto inline-flex items-center gap-1 text-gold opacity-80 transition-opacity group-hover:opacity-100">
-          {label ?? 'Play'} <ChevronRight size={18} strokeWidth={2.6} />
+          {bests ?? 'Play'} <ChevronRight size={18} strokeWidth={2.6} />
         </span>
       </div>
+      {practised && <p className="relative mt-2.5 text-sm font-bold text-ink-soft">{practised}</p>}
       <p className="relative mt-3 line-clamp-2 text-sm leading-relaxed text-ink-mute [overflow-wrap:anywhere]">{song.about}</p>
     </motion.button>
   )
@@ -347,5 +485,41 @@ function SongCard({
       {card}
       <ActionMenu label={`Manage ${song.title}`} items={menu} className="absolute right-4 top-4" />
     </div>
+  )
+}
+
+/** One line per song, for long libraries: no score preview, just what you need to pick one. */
+function SongRow({ song, games, index, menu }: { song: Song; games: Record<string, GameRecord>; index: number; menu?: MenuItem[] }) {
+  const best = games[songKey(song.id)]?.best ?? 0
+  const bests = bestsText(games, song.id)
+  const practised = practiceText(games[songKey(song.id)])
+  return (
+    <li className="relative">
+      <motion.button
+        type="button"
+        onClick={() => go(`/songs/${song.id}`)}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: fadeDelay(index), type: 'spring', stiffness: 300, damping: 30 }}
+        whileTap={{ scale: 0.99 }}
+        className={`glass group flex min-h-16 w-full items-center gap-3 rounded-2xl py-3 pl-3 text-left transition-colors hover:border-white/15 sm:gap-4 sm:pl-4 ${menu ? 'pr-16' : 'pr-3 sm:pr-4'}`}
+      >
+        <span aria-hidden className="h-11 w-1.5 shrink-0 rounded-full" style={{ background: `linear-gradient(${LEVEL_COLOR[song.difficulty].join(', ')})` }} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-display text-xl font-bold leading-tight">{song.title}</span>
+          <span className="block truncate text-sm font-semibold text-ink-mute">
+            {song.composer} · {DIFFICULTY_LABEL[song.difficulty]}
+            {practised && <span className="text-ink-soft"> · {practised}</span>}
+          </span>
+        </span>
+        {bests && <span className="hidden shrink-0 text-sm font-extrabold text-gold sm:block">{bests}</span>}
+        <span className="shrink-0">
+          <Stars value={starsForScore(best)} size={18} />
+        </span>
+        {!menu && <ChevronRight size={20} strokeWidth={2.6} className="shrink-0 text-gold opacity-70 transition-opacity group-hover:opacity-100" />}
+      </motion.button>
+      {/* Centred with a margin, not a transform, so the open menu isn't trapped under the rows below. */}
+      {menu && <ActionMenu label={`Manage ${song.title}`} items={menu} className="absolute right-2 top-1/2 -mt-6" />}
+    </li>
   )
 }
