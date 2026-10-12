@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Ear, Music2, Repeat, Smile, Volume2, X } from 'lucide-react'
+import { ArrowRight, Check, Ear, Eraser, Music2, Repeat, Smile, Volume2, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { type ReactNode, type RefObject, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { MicPrompt } from '../../components/layout/MicPrompt'
@@ -6,10 +6,12 @@ import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
 import { Button } from '../../components/ui/Button'
+import { Toggle } from '../../components/ui/controls'
 import { playNotes } from '../../lib/audio/play'
 import { burst } from '../../lib/fx'
-import { useNoteEvents } from '../../lib/input/bus'
-import { fromMidi, pitchName } from '../../lib/theory'
+import { heldNow, useNoteEvents } from '../../lib/input/bus'
+import { useMicChords } from '../../lib/input/mic'
+import { chordTones, enharmonicLabel, fromMidi, noteName, pitchName } from '../../lib/theory'
 import { usePref } from '../../state/prefs'
 import {
   ECHO_LEVELS,
@@ -18,19 +20,26 @@ import {
   type EarQuestion,
   type EchoQ,
   INTERVAL_LEVELS,
+  type IntervalQ,
+  type Played,
   QUALITY_LABEL,
   QUALITY_LEVELS,
+  type QualityQ,
   describeMiss,
   earItemId,
   earItemIds,
   earItemName,
   intervalCue,
   intervalName,
+  intervalSpelling,
   makeEcho,
   makeInterval,
   makeQuality,
   optionNotes,
+  qualityChord,
+  qualityName,
   qualityNotes,
+  readPlayed,
   rightOption,
   samePitchClass,
 } from './logic/ear'
@@ -91,6 +100,26 @@ function playAs(q: EarQuestion, notes: number[], delay = 0): number {
   return q.kind === 'interval' ? sequence(0.75, 1.3) : sequence(0.55, 0.8)
 }
 
+/** The chord on the keys, each tone named as it's spelled in that chord (G♯ minor: G♯ B D♯). */
+function chordMarks(q: QualityQ): Marks {
+  const c = qualityChord(q)
+  const tones = chordTones(c.root, c.type)
+  return Object.fromEntries(qualityNotes(q).map((m, i) => [m, { kind: i === 0 ? 'root' : 'chord', label: pitchName(tones[i]) }]))
+}
+
+/** The interval's two keys, named as that interval (D♭–F for a major 3rd, not C♯–F). */
+function intervalMarks(q: IntervalQ): Marks {
+  const [low, top] = intervalSpelling(q.low, q.semis)
+  return { [q.low]: { kind: 'root', label: pitchName(low) }, [q.low + q.semis]: { kind: 'chord', label: pitchName(top) } }
+}
+
+/** "G3", or both names of a black key: "C♯4 / D♭4" (before the answer, either could be the one it's spelled as). */
+function bothNames(m: number): string {
+  const sharp = noteName(fromMidi(m, 'sharp'))
+  const flat = noteName(fromMidi(m, 'flat'))
+  return sharp === flat ? sharp : `${sharp} / ${flat}`
+}
+
 /** A miss for the results list; tapping it plays the right answer, then yours. */
 function toMiss(o: EarOutcome): Miss {
   const q = o.question
@@ -115,6 +144,8 @@ export function EarTraining() {
   // Each mode remembers its own level, so switching modes doesn't reset it.
   const [levelId, setLevelId] = usePref(`ear-level:${mode}`, firstLevel(mode), levels.map((l) => l.id))
   const level = levels.find((l) => l.id === levelId) ?? levels[0]
+  // Answer on the keys instead of tapping (Echo always is).
+  const [byPlaying, setByPlaying] = usePref('ear:play', false)
   const [question, setQuestion] = useState<EarQuestion | null>(null)
   // Which question we're on (changes on "next", so answering doesn't remount the question).
   const [qIndex, setQIndex] = useState(0)
@@ -200,6 +231,7 @@ export function EarTraining() {
   }
 
   const modeInfo = MODES.find((m) => m.id === mode)!
+  const qualityOptions = parts.quality.types.map((t) => t.id)
   const clean = outcomes.filter((o) => o.clean).length
   const stars = starsFor(clean / ROUND, 0.9, 0.7)
   const nextLevel = levels[levels.findIndex((l) => l.id === level.id) + 1]
@@ -252,6 +284,19 @@ export function EarTraining() {
                   )
                 })}
               </div>
+              {mode !== 'echo' && (
+                <label className="glass flex items-center justify-between gap-4 rounded-3xl p-4 pl-5">
+                  <span>
+                    <span className="block text-lg font-extrabold">Answer by playing</span>
+                    <span className="text-sm text-ink-mute">
+                      {mode === 'quality'
+                        ? 'Play the chord you hear on the root it shows, on your keyboard or on screen.'
+                        : 'Play the top note: the low one is shown on the keys.'}
+                    </span>
+                  </span>
+                  <Toggle checked={byPlaying} onChange={setByPlaying} label="Answer by playing" />
+                </label>
+              )}
             </SetupCard>
           </GameMain>
         )}
@@ -264,12 +309,22 @@ export function EarTraining() {
                 title="Major or minor?"
                 prompt="Is this chord happy, sad… or something stranger?"
                 play={() => playAs(question, qualityNotes(question))}
-                options={(level.id.endsWith('mm') ? ['maj', 'min'] : ['maj', 'min', 'dim', 'aug']).map((id) => ({ id, label: QUALITY_LABEL[id] }))}
+                options={qualityOptions.map((id) => ({ id, label: QUALITY_LABEL[id] }))}
                 answer={rightOption(question)}
                 hear={(id) => playAs(question, optionNotes(question, id))}
-                reveal={() => (
-                  <MusicText text={`${pitchName(fromMidi(question.root))} ${QUALITY_LABEL[question.type.id].toLowerCase()}`} />
-                )}
+                reveal={() => <MusicText text={qualityName(question)} />}
+                keyboard={byPlaying ? { from: 48, to: 84, marks: chordMarks(question) } : undefined}
+                byPlaying={
+                  byPlaying
+                    ? {
+                        given: question.root,
+                        chord: true,
+                        ask: `Play the chord on ${enharmonicLabel(question.root)}, or tap an answer.`,
+                        stray: `That’s not one of the chords on ${enharmonicLabel(question.root)}.`,
+                        read: (notes, latest, viaMic) => readPlayed(question, notes, latest, qualityOptions, viaMic),
+                      }
+                    : undefined
+                }
                 onAnswer={(a) => answered({ ...a, question })}
                 onNext={next}
               />
@@ -280,7 +335,7 @@ export function EarTraining() {
                 title="Name the interval"
                 prompt={question.harmonic ? 'Two notes played together. How far apart?' : 'Two notes, low then high. How far apart?'}
                 play={() => playAs(question, optionNotes(question, rightOption(question)))}
-                options={INTERVAL_LEVELS.find((l) => level.id.endsWith(l.id))!.semis.map((s) => ({ id: String(s), label: intervalName(s) }))}
+                options={parts.interval.semis.map((s) => ({ id: String(s), label: intervalName(s) }))}
                 answer={rightOption(question)}
                 // Played the way the question was: together for a harmonic interval.
                 hear={(id) => playAs(question, optionNotes(question, id))}
@@ -290,7 +345,18 @@ export function EarTraining() {
                     {intervalCue(question.semis) && <span className="mt-1 block text-base font-bold text-ink-soft">Like {intervalCue(question.semis)}</span>}
                   </span>
                 )}
-                keyboard={{ from: 48, to: 84, marks: { [question.low]: { kind: 'root', label: pitchName(fromMidi(question.low)) }, [question.low + question.semis]: { kind: 'chord', label: pitchName(fromMidi(question.low + question.semis)) } } }}
+                keyboard={{ from: 48, to: 84, marks: intervalMarks(question) }}
+                byPlaying={
+                  byPlaying
+                    ? {
+                        given: question.low,
+                        chord: false,
+                        ask: `Play the top note, above ${bothNames(question.low)}, or tap an answer.`,
+                        stray: `Play a note above ${bothNames(question.low)}, at most an octave higher.`,
+                        read: (notes, latest) => readPlayed(question, notes, latest, []),
+                      }
+                    : undefined
+                }
                 onAnswer={(a) => answered({ ...a, question })}
                 onNext={next}
               />
@@ -372,6 +438,19 @@ function usePlayback(play: () => number | void, autoKey: string) {
   return { playing, run }
 }
 
+/** Answering on the keys: the note you're given, and how to read what you play as an answer. */
+interface ByPlaying {
+  /** The root (or the interval's low note), marked on the keyboard. */
+  given: number
+  /** A chord: build it (tap keys on screen to select them; the mic listens for chords). Otherwise one note. */
+  chord: boolean
+  /** What to do, said until you play. */
+  ask: string
+  /** Said when what you play can't be an answer. */
+  stray: string
+  read: (notes: number[], latest: number, viaMic: boolean) => Played
+}
+
 function ChoiceQuestion({
   title,
   prompt,
@@ -381,6 +460,7 @@ function ChoiceQuestion({
   hear,
   reveal,
   keyboard,
+  byPlaying,
   onAnswer,
   onNext,
 }: {
@@ -391,7 +471,9 @@ function ChoiceQuestion({
   answer: string
   hear: (id: string) => void
   reveal: () => ReactNode
+  /** The answer on the keys, shown once it's answered. */
   keyboard?: { from: number; to: number; marks: Marks }
+  byPlaying?: ByPlaying
   onAnswer: (a: Answer) => void
   onNext: () => void
 }) {
@@ -405,6 +487,13 @@ function ChoiceQuestion({
   useEffect(() => {
     shownAt.current = performance.now()
   }, [])
+  // Playing an answer: keys selected on screen, keys still held from an answer already given (they don't count
+  // until they're let go), and what the last notes said ("2 of 3 notes…").
+  const [selected, setSelected] = useState<number[]>([])
+  const selectedRef = useRef<number[]>([])
+  const stale = useRef(new Set(heldNow()))
+  const [heard, setHeard] = useState<{ text: string; tone: 'neutral' | 'info'; id: string } | null>(null)
+  useMicChords(!!byPlaying?.chord && !result)
 
   const choose = (id: string) => {
     if (result) {
@@ -412,6 +501,7 @@ function ChoiceQuestion({
       hear(id)
       return
     }
+    setHeard(null)
     if (id === answer) {
       const clean = wrongs.length === 0
       setResult(clean ? 'clean' : 'second')
@@ -431,19 +521,81 @@ function ChoiceQuestion({
     }
   }
 
+  /** What you're playing, read as an answer: one counts just like a tap (a wrong one too). */
+  const judge = (latest: number, viaMic: boolean) => {
+    if (!byPlaying || result) return
+    const notes = [...new Set([...heldNow().filter((m) => !stale.current.has(m)), ...selectedRef.current])]
+    const r = byPlaying.read(notes, latest, viaMic)
+    if ('id' in r) {
+      // The next answer starts from fresh keys.
+      for (const m of heldNow()) stale.current.add(m)
+      selectedRef.current = []
+      setSelected([])
+      choose(r.id)
+    } else if ('stray' in r) setHeard({ text: byPlaying.stray, tone: 'info', id: `stray${notes.join('-')}` })
+    else if (byPlaying.chord) setHeard({ text: `${r.partial} of ${r.of} notes… keep going.`, tone: 'neutral', id: `part${r.partial}` })
+    else setHeard({ text: 'Now the top note.', tone: 'neutral', id: 'top' })
+  }
+
+  useNoteEvents((e) => {
+    if (!byPlaying || result) return
+    if (e.type === 'off') {
+      stale.current.delete(e.midi)
+      return
+    }
+    judge(e.midi, e.source === 'mic')
+  })
+
+  const toggle = (m: number) => {
+    if (result) return
+    const had = selectedRef.current.includes(m)
+    selectedRef.current = had ? selectedRef.current.filter((x) => x !== m) : [...selectedRef.current, m]
+    setSelected(selectedRef.current)
+    if (!had) judge(m, false)
+  }
+
+  const clear = () => {
+    selectedRef.current = []
+    setSelected([])
+    setHeard(null)
+  }
+
+  const live: Marks = {}
+  if (byPlaying) live[byPlaying.given] = 'target'
+  for (const m of selected) live[m] = 'selected'
+  const many = options.length > 6
+  const grid = options.length <= 4 ? (byPlaying ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2') : many ? 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-6' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <QuestionCard cardRef={cardRef} title={title} prompt={prompt} replay={<ReplayButton onClick={run} playing={playing} />}>
-        <FeedbackLine start tone={result === 'clean' ? 'good' : result === 'second' ? 'info' : result === 'missed' ? 'bad' : 'neutral'} id={result ?? wrongs.length}>
-          {result ? reveal() : wrongs.length ? 'Not that one. Listen again and try another.' : 'Tap the speaker to hear it again.'}
+        <FeedbackLine
+          start
+          tone={result === 'clean' ? 'good' : result === 'second' ? 'info' : result === 'missed' ? 'bad' : heard ? heard.tone : wrongs.length ? 'bad' : 'neutral'}
+          id={result ?? heard?.id ?? wrongs.length}
+        >
+          {result ? (
+            reveal()
+          ) : heard ? (
+            <MusicText text={heard.text} />
+          ) : wrongs.length ? (
+            'Not that one. Listen again and try another.'
+          ) : (
+            <MusicText text={byPlaying ? byPlaying.ask : 'Tap the speaker to hear it again.'} />
+          )}
         </FeedbackLine>
         {result && result !== 'clean' && (
           <Button size="lg" iconRight={ArrowRight} onClick={onNext}>
             Next
           </Button>
         )}
+        {byPlaying?.chord && !result && selected.length > 0 && (
+          <Button variant="ghost" size="md" icon={Eraser} onClick={clear}>
+            Clear
+          </Button>
+        )}
       </QuestionCard>
-      <div className={`grid gap-3 ${options.length <= 4 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'}`}>
+      <div className={`grid gap-3 ${grid}`}>
         {options.map((o) => {
           const isAnswer = result !== null && o.id === answer
           const isWrong = wrongs.includes(o.id)
@@ -454,7 +606,7 @@ function ChoiceQuestion({
               onClick={() => choose(o.id)}
               whileTap={{ scale: 0.96 }}
               animate={isWrong && !result ? { x: [0, -8, 8, -5, 5, 0] } : { x: 0 }}
-              className={`min-h-16 rounded-2xl border-2 px-4 py-3 text-xl font-extrabold transition-colors ${
+              className={`rounded-2xl border-2 px-4 font-extrabold transition-colors ${byPlaying || many ? 'min-h-14 py-2 text-lg' : 'min-h-16 py-3 text-xl'} ${
                 isAnswer
                   ? 'border-good bg-good/20 text-good'
                   : isWrong
@@ -480,7 +632,27 @@ function ChoiceQuestion({
           )
         })}
       </div>
-      {result && keyboard && <KeysCard max={170}>{(fit) => <Piano from={keyboard.from} to={keyboard.to} marks={keyboard.marks} labels="marked" height={fit.keys} />}</KeysCard>}
+      {(byPlaying || (result && keyboard)) && (
+        <KeysCard top={byPlaying && <MicPrompt />} max={byPlaying ? 200 : 170}>
+          {(fit) =>
+            result && keyboard ? (
+              <Piano from={keyboard.from} to={keyboard.to} marks={keyboard.marks} labels="marked" height={fit.keys} />
+            ) : (
+              <Piano
+                from={48}
+                to={84}
+                marks={live}
+                labels="c"
+                mode={byPlaying?.chord ? 'toggle' : 'play'}
+                onToggle={toggle}
+                sparks
+                sparkHeight={fit.sparks}
+                height={fit.keys}
+              />
+            )
+          }
+        </KeysCard>
+      )}
     </div>
   )
 }

@@ -1,5 +1,21 @@
-import { CHORD_TYPE, type ChordType, INTERVAL_SONGS, SEMITONE_NAMES, fromMidi, mod, pitchName } from '../../../lib/theory'
+import { micHearsChord } from '../../../lib/input/micMatch'
+import {
+  CHORD_TYPE,
+  type Chord,
+  type ChordType,
+  INTERVAL_SONGS,
+  IV,
+  type Interval,
+  type Note,
+  SEMITONE_NAMES,
+  fromMidi,
+  mod,
+  pitchName,
+  spellRoot,
+  transpose,
+} from '../../../lib/theory'
 import { weightedPick } from '../shared/weak'
+import { matchChord } from './chords'
 
 /** Ear Training question generators. All notes are MIDI numbers. */
 
@@ -52,6 +68,39 @@ export const QUALITY_LABEL: Record<string, string> = { maj: 'Major', min: 'Minor
 
 export function qualityNotes(q: QualityQ): number[] {
   return q.type.ivs.map((iv) => q.root + iv.semis)
+}
+
+/** The question's chord spelled the usual way for its colour: G♯ minor (not A♭ minor), D♭ major (not C♯ major). */
+export function qualityChord(q: QualityQ): Chord {
+  return { root: { ...spellRoot(mod(q.root, 12), q.type), oct: fromMidi(q.root).oct }, type: q.type }
+}
+
+/** "G♯ minor". */
+export const qualityName = (q: QualityQ) => `${pitchName(qualityChord(q).root)} ${QUALITY_LABEL[q.type.id].toLowerCase()}`
+
+const INTERVAL_SPELLINGS: Record<number, Interval[]> = {
+  1: [IV.m2], 2: [IV.M2], 3: [IV.m3], 4: [IV.M3], 5: [IV.P4], 6: [IV.A4, IV.d5],
+  7: [IV.P5], 8: [IV.m6], 9: [IV.M6], 10: [IV.m7], 11: [IV.M7], 12: [IV.P8],
+}
+const ODD = new Set(['E1', 'B1', 'F-1', 'C-1'])
+const spellingCost = (ns: Note[]) => ns.reduce((c, n) => c + Math.abs(n.acc) + (Math.abs(n.acc) > 1 ? 10 : 0) + (ODD.has(`${'CDEFGAB'[n.letter]}${n.acc}`) ? 2 : 0), 0)
+
+/**
+ * An interval's two notes spelled as that interval, the friendliest way: up a major 3rd from the black key above C
+ * is D♭–F (C♯–F would be a 4th, and C♯–E♯ is hard to read); a tritone from C is C–F♯.
+ */
+export function intervalSpelling(low: number, semis: number): [Note, Note] {
+  const lows = [fromMidi(low), fromMidi(low, 'sharp'), fromMidi(low, 'flat')]
+  let best: [Note, Note] = [lows[0], fromMidi(low + semis)]
+  let cost = Infinity
+  for (const l of lows) {
+    for (const iv of INTERVAL_SPELLINGS[semis] ?? []) {
+      const pair: [Note, Note] = [l, transpose(l, iv)]
+      const c = spellingCost(pair)
+      if (c < cost) [best, cost] = [pair, c]
+    }
+  }
+  return best
 }
 
 export interface IntervalQ {
@@ -134,6 +183,42 @@ export function earItemName(id: string): string {
   return kind === 'quality' ? (QUALITY_LABEL[v] ?? v) : intervalName(Number(v))
 }
 
+/** What notes played on the keys say: an answer (an option id, or another one you played), or not yet. */
+export type Played = { id: string } | { partial: number; of: number } | { stray: true }
+
+/** The pairs a missing 5th can't tell apart: a minor chord without its 5th could be diminished, a major one augmented. */
+const SAME_THIRD: Record<string, string> = { min: 'dim', dim: 'min', maj: 'aug', aug: 'maj' }
+
+/**
+ * Read what you play as an answer.
+ *
+ * - Intervals: the newest note, as half steps above the low note (1 to 12). The low note itself just starts you off;
+ *   notes below it or more than an octave above aren't an answer.
+ * - Chords: the notes sounding together, as a chord on the question's root (any octave, any order, any inversion).
+ *   Through the mic a missing 5th is forgiven (see micHearsChord), unless it could then be either of two choices.
+ *   A chord that's no choice at all (a diminished one when only major and minor are offered) is a slip, not an answer.
+ */
+export function readPlayed(q: QualityQ | IntervalQ, notes: number[], latest: number, options: string[], viaMic = false): Played {
+  if (q.kind === 'interval') {
+    const d = latest - q.low
+    if (d === 0) return { partial: 1, of: 2 }
+    return d >= 1 && d <= 12 ? { id: String(d) } : { stray: true }
+  }
+  const root = fromMidi(q.root)
+  const chords = options.map((id) => ({ id, chord: { root, type: CHORD_TYPE[id] } }))
+  const exact = chords.filter((c) => matchChord(notes, c.chord) === 'correct')
+  if (exact.length) return { id: exact[0].id }
+  if (viaMic) {
+    const heard = chords.filter((c) => micHearsChord(notes, c.chord) && !options.includes(SAME_THIRD[c.id]))
+    if (heard.length === 1) return { id: heard[0].id }
+  }
+  // Still building one of them, or a note that's in none of them.
+  const could = chords.filter((c) => matchChord(notes, c.chord) === 'partial')
+  if (!could.length) return { stray: true }
+  const pcs = new Set(notes.map((m) => mod(m, 12)))
+  return { partial: pcs.size, of: Math.min(...could.map((c) => c.chord.type.ivs.length)) }
+}
+
 /** The option id of the right answer ("min", "9"). */
 export function rightOption(q: QualityQ | IntervalQ): string {
   return q.kind === 'quality' ? q.type.id : String(q.semis)
@@ -151,8 +236,6 @@ const tune = (notes: number[]) => notes.map((m) => pitchName(fromMidi(m))).join(
 export function describeMiss(o: EarOutcome): { asked: string; said?: string } {
   const q = o.question
   if (q.kind === 'echo') return { asked: tune(q.notes), said: o.played?.length ? tune(o.played) : undefined }
-  if (q.kind === 'quality') {
-    return { asked: `${pitchName(fromMidi(q.root))} ${QUALITY_LABEL[q.type.id].toLowerCase()}`, said: o.said && QUALITY_LABEL[o.said]?.toLowerCase() }
-  }
+  if (q.kind === 'quality') return { asked: qualityName(q), said: o.said && QUALITY_LABEL[o.said]?.toLowerCase() }
   return { asked: intervalName(q.semis), said: o.said && intervalName(Number(o.said))?.toLowerCase() }
 }

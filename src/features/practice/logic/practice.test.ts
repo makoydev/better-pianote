@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHORD_TYPE, chordSymbol, midi, parseChord, parseKey } from '../../../lib/theory'
+import { CHORD_TYPE, chordSymbol, midi, midiOf, noteName, parseChord, parseKey, stepOf } from '../../../lib/theory'
 import { TRAINER_LEVELS, chordRecipe, matchChord, pickRound } from './chords'
 import {
   ECHO_LEVELS,
@@ -14,10 +14,14 @@ import {
   makeEcho,
   makeInterval,
   makeQuality,
+  intervalSpelling,
   optionNotes,
+  qualityChord,
+  qualityName,
+  readPlayed,
   rightOption,
 } from './ear'
-import { KEY_LEVELS, describeKeyMiss, keyItemName, levelKeys, makeKeyQuestion } from './keys'
+import { KEY_LEVELS, describeKeyMiss, keyItemName, levelKeys, makeKeyQuestion, playedOption } from './keys'
 import { RHYTHM_LEVELS, countLabel, makePattern, onsetBeats, patternToStaff, scoreTaps, tempoBand, timingTendency } from './rhythm'
 
 const m = (...names: string[]) => names.map(midi)
@@ -151,6 +155,66 @@ describe('ear training', () => {
     expect(types.filter((t) => t === 'dim').length / 2000).toBeCloseTo(0.4, 1)
     for (let s = 1; s < 10; s++) expect(makeInterval(INTERVAL_LEVELS[2], null, seeded(s), (id) => (id === 'interval:6' ? 1 : 0)).semis).toBe(6)
   })
+  it('spells an interval as that interval', () => {
+    const names = (low: string, semis: number) => intervalSpelling(midi(low), semis).map((n) => noteName(n))
+    expect(names('C4', 4)).toEqual(['C4', 'E4'])
+    // The black key above C, up a major 3rd: D♭–F (C♯–F would read as a 4th).
+    expect(names('C#4', 4)).toEqual(['D♭4', 'F4'])
+    expect(names('C#4', 3)).toEqual(['C♯4', 'E4'])
+    expect(names('F#3', 3)).toEqual(['F♯3', 'A3'])
+    expect(names('Eb4', 9)).toEqual(['E♭4', 'C5'])
+    expect(names('C4', 6)).toEqual(['C4', 'F♯4'])
+    expect(names('G3', 12)).toEqual(['G3', 'G4'])
+    // Every interval from every key: the letters always count the interval's number.
+    for (let low = 55; low < 67; low++) {
+      for (let semis = 1; semis <= 12; semis++) {
+        const [a, b] = intervalSpelling(low, semis)
+        expect(midiOf(b) - midiOf(a)).toBe(semis)
+        expect(midiOf(a)).toBe(low)
+        const steps = stepOf(b) - stepOf(a)
+        expect(steps).toBe(semis === 6 ? (b.letter - a.letter + 7) % 7 : [0, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 6, 7][semis])
+      }
+    }
+  })
+  it('names a chord the usual way for its colour', () => {
+    expect(qualityName({ kind: 'quality', root: midi('Ab3'), type: CHORD_TYPE.min })).toBe('G♯ minor')
+    expect(qualityName({ kind: 'quality', root: midi('Ab3'), type: CHORD_TYPE.maj })).toBe('A♭ major')
+    expect(qualityName({ kind: 'quality', root: midi('C#3'), type: CHORD_TYPE.maj })).toBe('D♭ major')
+    expect(qualityName({ kind: 'quality', root: midi('C#3'), type: CHORD_TYPE.min })).toBe('C♯ minor')
+    expect(qualityChord({ kind: 'quality', root: midi('Ab3'), type: CHORD_TYPE.min }).root.oct).toBe(3)
+  })
+  it('reads a played interval from its top note', () => {
+    const q: IntervalQ = { kind: 'interval', low: midi('G3'), semis: 9, harmonic: false }
+    // The low note just starts you off; the top note is the answer, right or wrong.
+    expect(readPlayed(q, [], midi('G3'), [])).toEqual({ partial: 1, of: 2 })
+    expect(readPlayed(q, [], midi('E4'), [])).toEqual({ id: '9' })
+    expect(readPlayed(q, [], midi('F4'), [])).toEqual({ id: '10' })
+    expect(readPlayed(q, [], midi('G4'), [])).toEqual({ id: '12' })
+    // Below the low note, or more than an octave above it: not an answer.
+    expect(readPlayed(q, [], midi('E3'), [])).toEqual({ stray: true })
+    expect(readPlayed(q, [], midi('E5'), [])).toEqual({ stray: true })
+  })
+  it('reads a played chord on the root, in any voicing', () => {
+    const q: QualityQ = { kind: 'quality', root: midi('C#3'), type: CHORD_TYPE.min }
+    const mm = ['maj', 'min']
+    expect(readPlayed(q, m('C#4', 'E4', 'G#4'), 0, mm)).toEqual({ id: 'min' })
+    expect(readPlayed(q, m('E3', 'G#3', 'C#4', 'E4'), 0, mm)).toEqual({ id: 'min' })
+    expect(readPlayed(q, m('C#4', 'F4', 'G#4'), 0, mm)).toEqual({ id: 'maj' })
+    expect(readPlayed(q, m('C#4', 'G#4'), 0, mm)).toEqual({ partial: 2, of: 3 })
+    // Not a choice: a diminished chord when only major and minor are offered, or a note in neither.
+    expect(readPlayed(q, m('C#4', 'E4', 'G4'), 0, mm)).toEqual({ stray: true })
+    expect(readPlayed(q, m('C#4', 'D4'), 0, mm)).toEqual({ stray: true })
+    expect(readPlayed(q, m('C#4', 'E4', 'G4'), 0, ['maj', 'min', 'dim', 'aug'])).toEqual({ id: 'dim' })
+    expect(readPlayed(q, m('C#4', 'F4', 'A4'), 0, ['maj', 'min', 'dim', 'aug'])).toEqual({ id: 'aug' })
+  })
+  it('forgives a 5th the mic missed, unless that leaves two choices', () => {
+    const q: QualityQ = { kind: 'quality', root: midi('C3'), type: CHORD_TYPE.maj }
+    expect(readPlayed(q, m('C4', 'E4'), 0, ['maj', 'min'], true)).toEqual({ id: 'maj' })
+    expect(readPlayed(q, m('C4', 'E4'), 0, ['maj', 'min'], false)).toEqual({ partial: 2, of: 3 })
+    // With augmented on offer, C and E could still be either: wait for the 5th.
+    expect(readPlayed(q, m('C4', 'E4'), 0, ['maj', 'min', 'dim', 'aug'], true)).toEqual({ partial: 2, of: 3 })
+    expect(readPlayed(q, m('C4', 'Eb4'), 0, ['maj', 'min', 'dim', 'aug'], true)).toEqual({ partial: 2, of: 3 })
+  })
   it('names what Ear Training keeps stats on', () => {
     expect(earItemIds(QUALITY_LEVELS[0])).toEqual(['quality:maj', 'quality:min'])
     expect(earItemIds(INTERVAL_LEVELS[1])).toEqual(['interval:3', 'interval:4', 'interval:8', 'interval:9'])
@@ -205,6 +269,32 @@ describe('key quiz', () => {
     expect(minor.find((k) => k.id === 'Am')!.chance).toBeGreaterThan(minor.find((k) => k.id === 'C')!.chance)
     expect(keyItemName('Bbm')).toBe('B♭m')
     expect(keyItemName('F#')).toBe('F♯')
+  })
+  it('reads a played keynote, in any octave', () => {
+    const q = makeKeyQuestion(KEY_LEVELS[0], null, seeded(1), { ask: 'D' })
+    expect(playedOption(q, midi('D2'))).toBe(q.answer)
+    expect(playedOption(q, midi('D5'))).toBe(q.answer)
+    const wrong = q.options.findIndex((_, i) => i !== q.answer)
+    const tonic = { '-2': 'Bb', '-1': 'F', 0: 'C', 1: 'G', 2: 'D', 3: 'A', 4: 'E' }[q.options[wrong].fifths]!
+    expect(playedOption(q, midi(`${tonic}3`))).toBe(wrong)
+    // A keynote that's none of the choices isn't an answer.
+    expect(playedOption(q, midi('C#4'))).toBeNull()
+  })
+  it('takes F♯ or G♭ as the right one when both are offered', () => {
+    const q = { fifths: 6, key: parseKey('F#'), options: [{ label: 'G♭ major', fifths: -6 }, { label: 'F♯ major', fifths: 6 }, { label: 'B major', fifths: 5 }], answer: 1 }
+    expect(playedOption(q, midi('F#3'))).toBe(1)
+    expect(playedOption(q, midi('Gb4'))).toBe(1)
+    const flat = { ...q, fifths: -6, key: parseKey('Gb'), answer: 0 }
+    expect(playedOption(flat, midi('F#3'))).toBe(0)
+    // Neither is right: it counts as a wrong answer (the first of the two).
+    const b = { ...q, fifths: 5, key: parseKey('B'), answer: 2 }
+    expect(playedOption(b, midi('F#3'))).toBe(0)
+    expect(playedOption(b, midi('B2'))).toBe(2)
+  })
+  it('reads a minor key’s keynote as the minor tonic', () => {
+    const q = makeKeyQuestion(KEY_LEVELS[3], null, seeded(2), { ask: 'F#m' })
+    expect(playedOption(q, midi('F#4'))).toBe(q.answer)
+    expect(playedOption(q, midi('A4'))).not.toBe(q.answer)
   })
   it('asks the key a drill planned', () => {
     const q = makeKeyQuestion(KEY_LEVELS[3], null, seeded(2), { ask: 'F#m' })

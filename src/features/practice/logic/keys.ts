@@ -1,4 +1,4 @@
-import { type Key, keyId, keyName, keyShort, keySignature, majorKey, parseKey, relativeKey } from '../../../lib/theory'
+import { type Key, keyId, keyName, keyShort, keySignature, majorKey, mod, parseKey, pcOf, relativeKey } from '../../../lib/theory'
 import { weightedPick } from '../shared/weak'
 import { shuffle } from './chords'
 
@@ -86,6 +86,18 @@ export function makeKeyQuestion(
     options: all.map((f) => ({ fifths: f, label: keyName(keyFor(f, minor)) })),
     answer: all.indexOf(fifths),
   }
+}
+
+/**
+ * The option a keynote you play names, by pitch: any octave, and F♯ and G♭ are the same key. When two options share
+ * the keynote (F♯ and G♭ major, with 6 or 7 sharps or flats), it's the right one if either is, otherwise the first.
+ * Null when it's none of the options.
+ */
+export function playedOption(q: KeyQuestion, midi: number): number | null {
+  const minor = q.key.mode === 'minor'
+  const hits = q.options.flatMap((o, i) => (pcOf(keyFor(o.fifths, minor).tonic) === mod(midi, 12) ? [i] : []))
+  if (!hits.length) return null
+  return hits.includes(q.answer) ? q.answer : hits[0]
 }
 
 export function describeSignature(fifths: number): string {

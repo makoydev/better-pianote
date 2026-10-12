@@ -1,13 +1,16 @@
 import { ArrowRight, Check, Hash, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { MicPrompt } from '../../components/layout/MicPrompt'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { Staff } from '../../components/staff/Staff'
 import { Button } from '../../components/ui/Button'
-import { Segmented } from '../../components/ui/controls'
+import { Segmented, Toggle } from '../../components/ui/controls'
 import { burst } from '../../lib/fx'
-import { keyId, keyName } from '../../lib/theory'
+import { useNoteEvents } from '../../lib/input/bus'
+import { enharmonicLabel, keyId, keyName } from '../../lib/theory'
+import { usePref } from '../../state/prefs'
 import {
   KEY_LEVELS,
   type KeyLevel,
@@ -20,6 +23,7 @@ import {
   keyItemName,
   levelKeys,
   makeKeyQuestion,
+  playedOption,
 } from './logic/keys'
 import { FeedbackLine, GameMain, Hud, MissList, ResultsCard, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame, remember, sfx, starsFor, store } from './shared/finish'
@@ -39,6 +43,8 @@ export function KeyQuiz() {
   const [mode, setMode] = useState<KeyMode>(() => remember('key-quiz-mode', 'name', ['name', 'find'] as const))
   const [levelId, setLevelId] = useState(() => remember('key-quiz-level', 'easy', KEY_LEVELS.map((l) => l.id)))
   const level = KEY_LEVELS.find((l) => l.id === levelId) ?? KEY_LEVELS[0]
+  // Name the key by playing its keynote instead of tapping.
+  const [byPlaying, setByPlaying] = usePref('key-quiz:play', false)
   const [question, setQuestion] = useState<KeyQuestion | null>(null)
   // Which question we're on (changes on "next", so answering doesn't remount the question).
   const [qIndex, setQIndex] = useState(0)
@@ -133,13 +139,30 @@ export function KeyQuiz() {
                 ]}
               />
             </div>
+            {mode === 'name' && (
+              <label className="glass flex items-center justify-between gap-4 rounded-3xl p-4 pl-5">
+                <span>
+                  <span className="block text-lg font-extrabold">Answer by playing</span>
+                  <span className="text-sm text-ink-mute">Play the key’s keynote on your keyboard (any octave) instead of tapping.</span>
+                </span>
+                <Toggle checked={byPlaying} onChange={setByPlaying} label="Answer by playing" />
+              </label>
+            )}
           </SetupCard>
         </GameMain>
       )}
       {phase === 'play' && question && (
         <GameMain>
           <Hud step={qIndex} total={ROUND} score={score} streak={streak} />
-          <Question key={qIndex} q={question} mode={mode} grand={level.grand} onAnswer={(picked, ms) => answered(question, picked, ms)} onNext={next} />
+          <Question
+            key={qIndex}
+            q={question}
+            mode={mode}
+            grand={level.grand}
+            byPlaying={byPlaying && mode === 'name'}
+            onAnswer={(picked, ms) => answered(question, picked, ms)}
+            onNext={next}
+          />
         </GameMain>
       )}
       {phase === 'done' && (
@@ -182,12 +205,15 @@ function Question({
   q,
   mode,
   grand,
+  byPlaying,
   onAnswer,
   onNext,
 }: {
   q: KeyQuestion
   mode: KeyMode
   grand: boolean
+  /** The keynote you play answers (name mode). */
+  byPlaying: boolean
   onAnswer: (picked: number, ms: number) => void
   onNext: () => void
 }) {
@@ -198,6 +224,8 @@ function Question({
   useEffect(() => {
     shownAt.current = performance.now()
   }, [])
+  // A note that names none of the choices: said, not counted.
+  const [stray, setStray] = useState<number | null>(null)
 
   const choose = (i: number) => {
     if (picked !== null) return
@@ -210,6 +238,14 @@ function Question({
       window.setTimeout(onNext, 1900)
     } else sfx('wrong')
   }
+
+  // A keynote you play counts just like tapping that key (F♯ and G♭ are the same key here: see playedOption).
+  useNoteEvents((e) => {
+    if (!byPlaying || picked !== null || e.type !== 'on') return
+    const i = playedOption(q, e.midi)
+    if (i === null) setStray(e.midi)
+    else choose(i)
+  })
 
   const modeWord = q.key.mode === 'minor' ? 'minor' : 'major'
   return (
@@ -250,9 +286,26 @@ function Question({
           </div>
         </>
       )}
-      <FeedbackLine tone={picked === null ? 'neutral' : right ? 'good' : 'bad'} id={picked === null ? 'q' : 'a'}>
-        {picked === null ? (mode === 'name' ? 'Count the sharps or flats, then use the trick.' : 'Picture the signature, then find it.') : right ? 'Correct!' : 'Not quite.'}
+      <FeedbackLine tone={picked === null ? (stray === null ? 'neutral' : 'info') : right ? 'good' : 'bad'} id={picked === null ? `q${stray}` : 'a'}>
+        {picked !== null ? (
+          right ? (
+            'Correct!'
+          ) : (
+            'Not quite.'
+          )
+        ) : stray !== null ? (
+          <MusicText text={`${enharmonicLabel(stray)} isn’t the keynote of any of these.`} />
+        ) : mode === 'name' ? (
+          byPlaying ? (
+            'Count the sharps or flats, use the trick, then play its keynote.'
+          ) : (
+            'Count the sharps or flats, then use the trick.'
+          )
+        ) : (
+          'Picture the signature, then find it.'
+        )}
       </FeedbackLine>
+      {byPlaying && picked === null && <MicPrompt />}
       {picked !== null && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-3xl p-5 text-lg leading-relaxed text-ink-soft">
           <MusicText text={explainKey(q.fifths, q.key)} />
