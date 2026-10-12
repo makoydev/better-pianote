@@ -23,7 +23,7 @@ import { type Chord, bassFor, isBlackKey, mod, parseNote, voiceLead } from '../.
 import { go } from '../../router'
 import { useLive } from '../../state/live'
 import { useLibrary } from '../../state/library'
-import { usePref } from '../../state/prefs'
+import { getPref, usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import { LoopControls, LoopPasses } from './LoopControls'
@@ -34,9 +34,10 @@ import { LISTEN_PARTS, type ListenPart, accompaniment, handFilter, listenHand, o
 import { barName, barTitle, countedStraight } from './bars'
 import { handSpans, judgeKey, micChordHeard, otherHandKey } from './hearing'
 import { useSongRuns } from './history'
+import { type LoopMemory, continueBar, rememberBar, rememberedLoop, songPref } from './memory'
 import { type CountIn, type Cue, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
 import { CLEAN_GOAL, type Run, aroundBar, carryOn, endPass, firstStepIn, newRun, runFrom, stepAt, stepsInBars, tally, worstStretch } from './practice'
-import { type Hands, accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
+import { HANDS, type Hands, accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
 import { MIN_KEY_WIDTH, SCORE_SIZES, type ScoreSize, keyboardHeight } from './systems'
 import { clampTempo, loopSpeedUp, tempoPct } from './tempo'
 import { type Step, type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, plays } from './timeline'
@@ -87,16 +88,28 @@ function Player({ song }: { song: Song }) {
   const firstFullBar = song.pickup ? 1 : 0
 
   const [mode, setMode] = useState<'wait' | 'listen'>('wait')
-  // Your own imports open with both hands (that's why you imported them); built-in songs start with the melody.
-  const [hands, setHands] = useState<Hands>(() => (song.lh && (song.imported || !tl.notes.some((n) => n.hand === 'rh')) ? 'both' : 'rh'))
-  const [loop, setLoop] = useState(false)
-  const [loopBars, setLoopBars] = useState<[number, number]>([firstFullBar, Math.min(song.rh.length - 1, firstFullBar + 3)])
-  const [backing, setBacking] = useState(true)
+  // Each song remembers its hands, loop, backing and accompaniment (and tempo). The first time, your own imports
+  // open with both hands (that's why you imported them); built-in songs start with the melody.
+  const [savedHands, setHands] = usePref<Hands>(
+    songPref(song.id, 'hands'),
+    song.lh && (song.imported || !tl.notes.some((n) => n.hand === 'rh')) ? 'both' : 'rh',
+    HANDS,
+  )
+  const hands: Hands = song.lh ? savedHands : 'rh'
+  const [savedLoop, setSavedLoop] = usePref<unknown>(songPref(song.id, 'loop'), null)
+  const { on: loop, bars: loopBars } = useMemo(
+    () => rememberedLoop(savedLoop, song.rh.length, [firstFullBar, Math.min(song.rh.length - 1, firstFullBar + 3)]),
+    [savedLoop, song.rh.length, firstFullBar],
+  )
+  const saveLoop = (on: boolean, bars: [number, number]) => setSavedLoop({ on, from: bars[0], to: bars[1] } satisfies LoopMemory)
+  /** Where you were last time, offered as "Continue from bar 37" until you start (not while a loop is on). */
+  const [resumeBar, setResumeBar] = useState(() => (loop ? null : continueBar(getPref(songPref(song.id, 'bar'), 0), song.rh.length, firstFullBar)))
+  const [backing, setBacking] = usePref(songPref(song.id, 'backing'), true)
   /** Practising one hand, the app can play the other along with you; Listen can play one hand or both. */
-  const [accompany, setAccompany] = usePref(`song:${song.id}:accompany`, false)
-  const [listenPart, setListenPart] = usePref<ListenPart>(`song:${song.id}:listen`, 'all', LISTEN_PARTS)
+  const [accompany, setAccompany] = usePref(songPref(song.id, 'accompany'), false)
+  const [listenPart, setListenPart] = usePref<ListenPart>(songPref(song.id, 'listen'), 'all', LISTEN_PARTS)
   // The tempo is remembered per song; the count-in, metronome and speed-up for every song.
-  const [savedBpm, setBpm] = usePref(`song:${song.id}:bpm`, song.bpm)
+  const [savedBpm, setBpm] = usePref(songPref(song.id, 'bpm'), song.bpm)
   const bpm = clampTempo(savedBpm, song.bpm)
   const [countInOn, setCountInOn] = usePref('songs:count-in', true)
   const [metronome, setMetronome] = usePref('songs:metronome', false)
@@ -226,6 +239,8 @@ function Player({ song }: { song: Song }) {
     if (startedAt.current !== null) return
     startedAt.current = performance.now()
     setStarted(true)
+    // Playing from where you are answers "Continue from bar …?"
+    setResumeBar(null)
   }
 
   /** Start again: a fresh run, and Listen back to the start (of the loop, when looping). */
@@ -683,6 +698,15 @@ function Player({ song }: { song: Song }) {
   const straight = useMemo(() => countedStraight(song), [song])
   const fullBars = song.rh.length - firstFullBar
   const curBar = mode === 'wait' ? (steps[stepIdx]?.bar ?? song.rh.length - 1) : barAt(tl, listenAt)
+  // While you practise, remember the bar (for "Continue from bar …" here, and Continue on Home and the song list);
+  // once you've played to the end, next time starts from the top.
+  useEffect(() => {
+    if (mode === 'wait' && started && !finished) rememberBar(song, curBar)
+  }, [mode, started, finished, curBar, song])
+  useEffect(() => {
+    if (finished) rememberBar(song, 0)
+  }, [finished, song])
+  const offerResume = resumeBar !== null && mode === 'wait' && !started && !loop
   const progress = mode === 'wait' ? (finished ? 1 : stepIdx / Math.max(1, steps.length)) : tl.total ? Math.min(1, listenAt / tl.total) : 0
 
   // Switching modes or hands keeps your place in the piece.
@@ -721,17 +745,16 @@ function Player({ song }: { song: Song }) {
   }
   const changeLoop = (on: boolean) => {
     reset(rangeOf(on, loopBars)[0])
-    setLoop(on)
+    saveLoop(on, loopBars)
   }
   const changeLoopBars = (b: [number, number]) => {
     reset(rangeOf(loop, b)[0])
-    setLoopBars(b)
+    saveLoop(loop, b)
   }
-  /** Bars picked on the music (or "Loop around here"): loop them. */
+  /** Bars picked on the music (or "Loop around here", or "Practise these bars" on the results): loop them. */
   const pickBars = (b: [number, number]) => {
     reset(rangeOf(true, b)[0])
-    setLoopBars(b)
-    setLoop(true)
+    saveLoop(true, b)
   }
   /**
    * Start from this bar: the loop goes off and you play (Listen) or practise from there to the end. The practice
@@ -740,7 +763,8 @@ function Player({ song }: { song: Song }) {
   const startFrom = (bar: number) => {
     const from = tl.bars[bar]?.start ?? 0
     stopPlayback()
-    setLoop(false)
+    setResumeBar(null)
+    if (loop) saveLoop(false, loopBars)
     if (mode === 'wait') {
       resetRun(runFrom(hands, firstStepIn(allSteps, bar), bar))
       listenEnded.current = false
@@ -908,6 +932,23 @@ function Player({ song }: { song: Song }) {
               >
                 {counting.beat}
               </motion.span>
+            </div>
+          )}
+          {/* Practised this before: carry on where you were, or start again */}
+          {offerResume && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-night-900/45 p-3">
+              <motion.div
+                initial={{ scale: 0.94, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-white/10 bg-night-800 p-4 shadow-2xl"
+              >
+                <Button icon={Play} onClick={() => startFrom(resumeBar)}>
+                  Continue from {barName(song, resumeBar)}
+                </Button>
+                <Button variant="secondary" icon={RotateCcw} onClick={() => setResumeBar(null)}>
+                  Start from the beginning
+                </Button>
+              </motion.div>
             </div>
           )}
         </div>

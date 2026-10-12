@@ -4,7 +4,7 @@ import { type GameRecord, useProgress } from '../../state/progress'
 
 export type Hands = 'rh' | 'lh' | 'both'
 
-const HANDS: Hands[] = ['rh', 'lh', 'both']
+export const HANDS: readonly Hands[] = ['rh', 'lh', 'both']
 const HANDS_SHORT: Record<Hands, string> = { rh: 'RH', lh: 'LH', both: 'Both' }
 
 /** Progress keys: the song's overall best (what the song list has always read) and one per hands. */
