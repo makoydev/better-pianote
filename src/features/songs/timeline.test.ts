@@ -128,6 +128,31 @@ describe('song timeline', () => {
     expect(barAt(tl, 4.5)).toBe(1)
   })
 
+  it('numbers the bars for the music as on paper, when asked', () => {
+    const pickup = make('G4:q | C5:w | D5:w', undefined, { pickup: 1 })
+    const tl = buildTimeline(pickup)
+    expect(songScoreInput(pickup, tl, { hands: 'rh', barNumbers: true }).bars.map((b) => b.number)).toEqual([undefined, '1', '2'])
+    expect(songScoreInput(pickup, tl, { hands: 'rh' }).bars.every((b) => b.number === undefined)).toBe(true)
+    const repeated = make('C4:w | C4:w', undefined, {
+      barNumbers: [
+        { number: '7', pass: 1 },
+        { number: '7', pass: 2 },
+      ],
+    })
+    const bars = songScoreInput(repeated, buildTimeline(repeated), { hands: 'rh', barNumbers: true }).bars
+    expect(bars.map((b) => [b.number, b.pass])).toEqual([
+      ['7', undefined],
+      ['7', '2nd'],
+    ])
+  })
+
+  it('shows left-hand practice on both staves', () => {
+    const song = make('C5:w', 'C3:w')
+    const tl = buildTimeline(song)
+    expect(songScoreInput(song, tl, { hands: 'lh' }).staves).toEqual(['treble', 'bass'])
+    expect(buildSteps(tl, 'lh').map((s) => names(s.notes))).toEqual(['C3'])
+  })
+
   it('picks a keyboard range of at least two octaves starting on C', () => {
     expect(keyboardRange([60, 67])).toEqual({ from: 60, to: 84 })
     expect(keyboardRange([43, 79])).toEqual({ from: 36, to: 84 })

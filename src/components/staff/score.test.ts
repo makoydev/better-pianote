@@ -160,6 +160,18 @@ describe('score layout', () => {
     expect([sharps('c'), sharps('d')]).toEqual([1, 0])
   })
 
+  it('numbers bars just above the staff on their bar lines, with the time through a repeat above', () => {
+    const l = lay({ bars: [{ ...bar(0), number: '13' }, { ...bar(4), number: '14', pass: '2nd' }], voices: [treble(e('a', 0, 'w', ['C5']), e('b', 4, 'w', ['D5']))] })
+    const texts = l.extras.texts.filter((t) => t.kind === 'text')
+    expect(texts.map((t) => t.text)).toEqual(['13', '14', '2nd'])
+    const [n13, n14, pass] = texts
+    expect(n14.x).toBe(l.barX[1].x0)
+    expect(n13.y).toBeLessThan(l.staffTop.treble)
+    expect(pass.y).toBeLessThan(n14.y)
+    // No room of their own: the music is as tall as without them.
+    expect(l.height).toBe(lay({ bars: [bar(0), bar(4)], voices: [treble(e('a', 0, 'w', ['C5']), e('b', 4, 'w', ['D5']))] }).height)
+  })
+
   it('puts chord symbols on the column where they start', () => {
     const l = lay({ voices: [treble(e('a', 0, 'h', ['E5']), e('b', 2, 'h', ['D5']))], chords: [{ start: 2, text: 'G' }] })
     expect(l.extras.texts.map((t) => [t.text, t.x])).toEqual([['G', ev(l, 'b').headX]])
