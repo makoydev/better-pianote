@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useId } from 'react'
 import { Segmented } from '../../components/ui/controls'
 import type { Song } from '../../content/songs'
 import type { ImportPart } from '../../lib/musicxml'
@@ -13,10 +13,22 @@ export interface SongDetails {
   difficulty: Song['difficulty']
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
+/** A caption over a control. `group` is for a row of buttons: a <label> would press the first one when tapped. */
+export function Field({ label, group = false, children }: { label: string; group?: boolean; children: ReactNode }) {
+  const id = useId()
+  const caption = (
+    <span id={id} className="mb-1.5 block text-sm font-extrabold uppercase tracking-wider text-ink-mute">
+      {label}
+    </span>
+  )
+  return group ? (
+    <div role="group" aria-labelledby={id}>
+      {caption}
+      {children}
+    </div>
+  ) : (
     <label className="block">
-      <span className="mb-1.5 block text-sm font-extrabold uppercase tracking-wider text-ink-mute">{label}</span>
+      {caption}
       {children}
     </label>
   )
@@ -34,7 +46,7 @@ export function SongDetailsFields({ value, onChange }: { value: SongDetails; onC
           <input className={INPUT} value={value.composer} onChange={(e) => onChange({ composer: e.target.value })} maxLength={80} />
         </Field>
       </div>
-      <Field label="Level">
+      <Field label="Level" group>
         <Segmented<Song['difficulty']>
           value={value.difficulty}
           onChange={(difficulty) => onChange({ difficulty })}

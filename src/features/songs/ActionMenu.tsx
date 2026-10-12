@@ -19,7 +19,11 @@ const ITEMS = '[role="menuitem"]:not([disabled])'
  */
 export function ActionMenu({ label, items, className = '' }: { label: string; items: MenuItem[]; className?: string }) {
   const [open, setOpen] = useState(false)
+  /** Stays on until the menu has faded out, so it isn't drawn under the cards below while it closes. */
+  const [raised, setRaised] = useState(false)
   const root = useRef<HTMLDivElement>(null)
+  // The items vanish with the menu: focus goes back to the ⋯ button, so Tab and closing sheets carry on from there.
+  const focusButton = () => root.current?.querySelector<HTMLElement>('button[aria-haspopup]')?.focus({ preventScroll: true })
 
   useEffect(() => {
     if (!open) return
@@ -28,11 +32,10 @@ export function ActionMenu({ label, items, className = '' }: { label: string; it
       if (!root.current?.contains(e.target as Node)) setOpen(false)
     }
     const keys = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setOpen(false)
-        root.current?.querySelector<HTMLElement>('button')?.focus()
-      } else if (e.key === 'Tab') setOpen(false)
+      if (e.key === 'Escape') e.preventDefault()
+      if (e.key !== 'Escape' && e.key !== 'Tab') return
+      focusButton()
+      setOpen(false)
     }
     window.addEventListener('pointerdown', outside)
     window.addEventListener('keydown', keys)
@@ -54,9 +57,18 @@ export function ActionMenu({ label, items, className = '' }: { label: string; it
   return (
     <div ref={root} className={className}>
       {/* Above the cards that come after it while open. */}
-      <div className={`relative ${open ? 'z-30' : ''}`}>
-        <IconButton icon={MoreHorizontal} label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)} />
-        <AnimatePresence>
+      <div className={`relative ${open || raised ? 'z-30' : ''}`}>
+        <IconButton
+          icon={MoreHorizontal}
+          label={label}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => {
+            setRaised(true)
+            setOpen((o) => !o)
+          }}
+        />
+        <AnimatePresence onExitComplete={() => setRaised(false)}>
           {open && (
             <motion.div
               role="menu"
@@ -75,6 +87,8 @@ export function ActionMenu({ label, items, className = '' }: { label: string; it
                   role="menuitem"
                   disabled={it.disabled}
                   onClick={() => {
+                    // First, so a sheet this opens gives focus back to the ⋯ button when it closes.
+                    focusButton()
                     setOpen(false)
                     it.onSelect()
                   }}
