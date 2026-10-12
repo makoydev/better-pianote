@@ -1,6 +1,7 @@
 import { ALargeSmall, Ear, Flame, Hand, ListMusic, Pause, Play, RotateCcw, SkipBack, SkipForward, Type, Volume2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { MicPrompt } from '../../components/layout/MicPrompt'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { type Marks, Piano } from '../../components/piano/Piano'
@@ -9,6 +10,7 @@ import { Button, IconButton } from '../../components/ui/Button'
 import { Segmented, Toggle } from '../../components/ui/controls'
 import { type Song, findSong } from '../../content/songs'
 import { useElementSize } from '../../hooks/useElementSize'
+import { useHandsFree } from '../../hooks/useHandsFree'
 import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { playNotes } from '../../lib/audio/play'
@@ -774,6 +776,11 @@ function Player({ song }: { song: Song }) {
     startPlayback({ from, lo: 0, hi: tl.total, looping: false, bar: false, count: countInOn ? countIn(song, tl, from) : undefined })
   }
 
+  // Hands-free (Enter, a deliberate pedal tap or the top C): Play again once you've finished (from the results or
+  // after closing them), or Continue while that's offered. Enter on a focused button just clicks it, and the
+  // note or pedal that finished the run can't also restart it.
+  useHandsFree(finished ? () => reset() : offerResume ? () => startFrom(resumeBar) : null)
+
   return (
     // The screen's height, shared out: controls, the music (whatever's left), the keyboard. It only scrolls when
     // the controls alone don't fit (a phone).
@@ -993,6 +1000,8 @@ function Player({ song }: { song: Song }) {
             </span>
           ) : null}
           {mode === 'wait' && octaveHint && <span className="text-sm font-bold text-coral">Right note, wrong octave: play the key that’s lit.</span>}
+          {/* No USB keyboard: offer the mic (on an iPad it's how the app hears you), then show what it hears */}
+          {mode === 'wait' && <MicPrompt />}
           <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1">
             {mode === 'wait' && (
               <AnimatePresence>
