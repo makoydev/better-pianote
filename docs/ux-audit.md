@@ -106,11 +106,12 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   scroll; Back always goes to a fixed parent page (Chord Trainer opened from Home → Back → Practice).
   *Where:* `App.tsx` (`scrollTo(0,0)`), `TopBar.tsx`, `LearnPath.tsx`. `S`
   *Done:* Back on full-screen pages returns to the page you came from (`goBack` in `router.ts`, pushState with a depth), main pages remember their scroll for Back/Forward, and Learn opens scrolled to your next lesson. Lesson → next lesson replaces the history entry. Checked: Chord Trainer from Home → Back → Home at the same scroll.
-- [ ] **23. Fit screens to the window.** On a 13" MacBook, lesson pictures, Chord Explorer and Jam push the keyboard
+- [x] **23. Fit screens to the window.** On a 13" MacBook, lesson pictures, Chord Explorer and Jam push the keyboard
   below the fold, and Start is below the fold on game setup screens (reproduced). Sticky action bar, measured
   heights. `M`
   *Partly done:* the Jam fits the screen while the band plays (Now/Next, beat dots, strip, keyboard sized to what's left; settings in a sheet below xl). Lessons, games, Chord Explorer and the song player come with their batches.
   *Partly done:* lesson pictures fit the window (checked: u1-l1 step 1's 61-key map is fully visible at 1440×813); a few widget steps still scroll a little.
+  *Done:* every screen fits a 13" MacBook (measured at 1440×757): game setups keep Start in view, Chord Trainer, Ear Training and Key Quiz fit (dbdc0a9), the Jam and Chord Explorer fit, the song player fills the screen (#51), and all 38 lessons were measured step by step. Every lesson step fits except the note-values list and one play step that scrolls 7 px without a USB keyboard (4c47db5, 80a4d34).
 - [x] **24. Work offline.** No service worker: the iPad app needs the network on every cold launch and re-downloads
   the 2 MB piano. Precache the shell and samples, show "New version – Reload". `M`
   *Done:* a service worker (written at build time by `vite.config.ts` from `scripts/service-worker.js`) keeps the whole build on the device: 132 files, 3.8 MB including the piano. A new build installs in the background and "A new version of Tonic is ready · Reload" lets you switch when you like (`lib/offline.ts`, `UpdateBanner.tsx`). Checked with the production build: installed, updated through the banner, and loaded with the server stopped.
@@ -263,6 +264,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   *Partly done:* shared controls: switches, small toggles and small buttons are 44 px, the dialog close button 48 px, dialogs take focus, keep Tab inside and give it back, and lesson note chips follow the Do Re Mi setting (`lib/naming.ts`).
   *Partly done:* screen readers hear chord names once ("F sharp m", not the drawn letters too: `MusicText`), every Settings switch row toggles from its text, and the compact connection pill has a spoken label. Screen-specific sizes and ✓/✗ cues come with the area batches.
   *Partly done:* the Jam's transpose buttons are 48 px and its × 44 px; the octave picker's black keys have a 44 px tap area.
+  *Partly done:* single notes follow the Do Re Mi setting in Free Play, the mic readout ("Heard: Mi4") and the lesson labs too (this commit), on top of lessons, songs and the keyboard and staff labels. Games (Ear Training, Chord Trainer, Note Rush) and the Explore tools still name notes with letters; whether chord symbols and key names should follow it (Rem, Sol7, Mi♭ major) is still to decide. Games show ✓/✗ with screen-reader text, every game choice is a radio or has aria-pressed, and the shared chips too (43a9a14).
 - [x] **73. Performance:** with the mic on, hidden connect sheets re-render 25 times a second; pause the animated
   background on full-screen pages. `S`
   *Done:* the connect sheet's live parts only exist while it's open (no more hidden re-renders 25×/s), and the background lights hold still on full-screen pages (`Aurora calm`).

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNoteEvents } from '../../lib/input/bus'
+import { nameNote } from '../../lib/naming'
 import { fromMidi, noteName } from '../../lib/theory'
+import { useSettings } from '../../state/settings'
 import { MusicText } from '../MusicText'
 import { Piano } from '../piano/Piano'
 import { Staff, type StaffItem } from '../staff/Staff'
@@ -18,6 +20,7 @@ export function StaffMapper({ clef }: { clef: 'treble' | 'bass' | 'grand' }) {
   const short = useShortScreen()
   const [kbRef, kb] = useFitKeyboard(170, { below: 24, room: 56, min: short ? 92 : 100 })
   const tight = kb.fit && short
+  const naming = useSettings((s) => s.naming)
 
   useNoteEvents((e) => {
     if (e.type !== 'on') return
@@ -47,7 +50,7 @@ export function StaffMapper({ clef }: { clef: 'treble' | 'bass' | 'grand' }) {
         </Paper>
         <div className="min-w-40 text-center">
           <div className="text-sm font-extrabold uppercase tracking-widest text-ink-mute">You played</div>
-          <div className="font-display text-6xl font-bold text-gold">{last ? <MusicText text={noteName(fromMidi(last.midi))} /> : '–'}</div>
+          <div className="font-display text-6xl font-bold text-gold">{last ? <MusicText text={nameNote(fromMidi(last.midi), naming, { octave: true })} /> : '–'}</div>
           <div className="text-sm text-ink-mute">{last ? '' : 'Play any key'}</div>
         </div>
       </div>

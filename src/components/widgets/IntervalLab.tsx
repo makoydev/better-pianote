@@ -4,6 +4,7 @@ import { useContext, useState } from 'react'
 import { playNotes, playSequence } from '../../lib/audio/play'
 import { letterColor } from '../../lib/colors'
 import { heldNow, useNoteEvents } from '../../lib/input/bus'
+import { nameNote } from '../../lib/naming'
 import {
   IV,
   INTERVAL_SONGS,
@@ -13,9 +14,9 @@ import {
   fromMidi,
   intervalBetween,
   midiOf,
-  noteName,
   transpose,
 } from '../../lib/theory'
+import { useSettings } from '../../state/settings'
 import { MusicText } from '../MusicText'
 import { Piano } from '../piano/Piano'
 import { Staff } from '../staff/Staff'
@@ -61,6 +62,7 @@ export function IntervalLab() {
   // keyboard get a little smaller, so the whole lab fits.
   const short = useShortScreen()
   const tight = useContext(InStep) && short
+  const naming = useSettings((s) => s.naming)
   const [kbRef, kb] = useFitKeyboard(170, { below: 24, min: tight ? 88 : 100 })
 
   const pick = (m: number) => {
@@ -160,7 +162,7 @@ export function IntervalLab() {
                       {semis === 6 && <span className="text-lg font-bold text-ink-mute">(the tritone)</span>}
                     </div>
                     <p className="mt-1 text-lg font-bold text-ink">
-                      <MusicText text={noteName(pair[0])} /> → <MusicText text={noteName(pair[1])} />
+                      <MusicText text={nameNote(pair[0], naming, { octave: true })} /> → <MusicText text={nameNote(pair[1], naming, { octave: true })} />
                     </p>
                   </div>
                   {tight && hear}

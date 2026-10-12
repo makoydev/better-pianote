@@ -4,6 +4,7 @@ import { useContext, useMemo, useState, useId } from 'react'
 import { playNotes, playSequence } from '../../lib/audio/play'
 import { letterColor } from '../../lib/colors'
 import { heldNow, useNoteEvents } from '../../lib/input/bus'
+import { nameNote } from '../../lib/naming'
 import {
   CHORD_TYPE,
   type Chord,
@@ -20,6 +21,7 @@ import {
   spellRoot,
   voicedChord,
 } from '../../lib/theory'
+import { useSettings } from '../../state/settings'
 import { MusicText } from '../MusicText'
 import { type Marks, Piano } from '../piano/Piano'
 import { Staff } from '../staff/Staff'
@@ -62,6 +64,8 @@ export function ChordBuilder({ root = 'C', quality = 'maj' }: { root?: string; q
   // the keyboard get a little smaller, so the whole lab fits.
   const short = useShortScreen()
   const tight = useContext(InStep) && short
+  // The chord's notes are named as you chose in Settings; chord names and roots stay letters, like the symbol.
+  const naming = useSettings((s) => s.naming)
   const [kbRef, kb] = useFitKeyboard(170, { below: 24, min: tight ? 84 : 100 })
 
   const type = CHORD_TYPE[typeId]
@@ -223,7 +227,7 @@ export function ChordBuilder({ root = 'C', quality = 'maj' }: { root?: string; q
                     style={{ background: `${letterColor(t.letter)}22`, border: `1px solid ${letterColor(t.letter)}66` }}
                   >
                     <span className="text-base font-extrabold" style={{ color: letterColor(t.letter) }}>
-                      <MusicText text={pitchName(t)} />
+                      <MusicText text={nameNote(t, naming)} />
                     </span>
                     <span className="mt-0.5 text-[0.7rem] font-bold text-ink-mute">{type.degrees[i]}</span>
                   </span>
@@ -232,7 +236,7 @@ export function ChordBuilder({ root = 'C', quality = 'maj' }: { root?: string; q
               {tones.length > rootPos.length &&
                 tones.slice(rootPos.length).map((t, i) => (
                   <span key={`x${i}`} className="ml-1 rounded-xl border border-dashed border-white/20 px-2 py-2 text-base font-extrabold text-ink-soft">
-                    + <MusicText text={pitchName(t)} /> <span className="text-xs text-ink-mute">({type.degrees[rootPos.length + i]})</span>
+                    + <MusicText text={nameNote(t, naming)} /> <span className="text-xs text-ink-mute">({type.degrees[rootPos.length + i]})</span>
                   </span>
                 ))}
               {tight && <span className="ml-2 text-sm text-ink-mute">Numbers between notes = half steps.</span>}

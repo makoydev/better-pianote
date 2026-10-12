@@ -16,6 +16,7 @@ import { noteColor } from '../../lib/colors'
 import { toast } from '../../lib/fx'
 import { heldNow, useNoteEvents } from '../../lib/input/bus'
 import { useMicChords } from '../../lib/input/mic'
+import { nameNote } from '../../lib/naming'
 import {
   ALL_MAJOR_KEYS,
   ALL_MINOR_KEYS,
@@ -39,7 +40,6 @@ import {
   noteName,
   parseKey,
   pcOf,
-  pitchName,
   spellChordInKey,
   spellInKey,
   voiceProgression,
@@ -47,7 +47,7 @@ import {
 import { useLive } from '../../state/live'
 import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
-import { useSettings } from '../../state/settings'
+import { type Naming, useSettings } from '../../state/settings'
 import { guitarVoicings } from '../explore/guitar'
 import { GuitarDiagram } from '../explore/GuitarDiagram'
 import { openChord, openJamWith } from '../explore/links'
@@ -84,11 +84,11 @@ const KEY_MEMORY_MS = 90_000
 /** Seconds per chord when the chart plays back. */
 const PLAY_ALL_GAP = 1.4
 
-/** A few notes that aren't a chord, in words: "E5", "C + E · Major 3rd", "C D E". */
-function describeNotes(notes: Note[]): string {
-  if (notes.length === 1) return noteName(notes[0])
-  if (notes.length === 2) return `${pitchName(notes[0])} + ${pitchName(notes[1])} · ${intervalBetween(notes[0], notes[1]).name}`
-  return notes.map((n) => pitchName(n)).join(' ')
+/** A few notes that aren't a chord, in words, named as you chose in Settings: "E5", "C + E · Major 3rd", "C D E". */
+function describeNotes(notes: Note[], naming: Naming): string {
+  if (notes.length === 1) return nameNote(notes[0], naming, { octave: true })
+  if (notes.length === 2) return `${nameNote(notes[0], naming)} + ${nameNote(notes[1], naming)} · ${intervalBetween(notes[0], notes[1]).name}`
+  return notes.map((n) => nameNote(n, naming)).join(' ')
 }
 
 export function FreePlay() {
@@ -110,6 +110,7 @@ export function FreePlay() {
   // under it doesn't jump from chord to chord; it's drawn a little smaller on short screens.
   const short = useViewportHeight() < 900
   const reserve = useSettings((s) => s.staffLabels) ? 4.8 : 2.4
+  const naming = useSettings((s) => s.naming)
 
   // The mic hears whole chords here (not just single notes).
   useMicChords()
@@ -299,15 +300,15 @@ export function FreePlay() {
     headline = head.symbol
     sub = `${head.name}${head.inversion > 0 ? ` · ${INVERSION_NAMES[head.inversion]}` : ''}${head.no5 ? ' · no 5th' : ''}`
     if (current && named?.det === current && named.fifthGuessed) sub += ' · 5th not heard'
-    if (dim && spelledNow.length) now = `Now: ${describeNotes(spelledNow)}`
+    if (dim && spelledNow.length) now = `Now: ${describeNotes(spelledNow, naming)}`
   } else if (spelledNow.length === 1) {
-    headline = noteName(spelledNow[0])
+    headline = nameNote(spelledNow[0], naming, { octave: true })
     sub = 'Add more notes to make a chord'
   } else if (spelledNow.length === 2) {
-    headline = spelledNow.map((n) => pitchName(n)).join(' + ')
+    headline = spelledNow.map((n) => nameNote(n, naming)).join(' + ')
     sub = intervalBetween(spelledNow[0], spelledNow[1]).name
   } else if (spelledNow.length > 2) {
-    headline = spelledNow.map((n) => pitchName(n)).join(' ')
+    headline = spelledNow.map((n) => nameNote(n, naming)).join(' ')
     sub = 'Not a standard chord name. Try moving one note.'
   }
   const roman = head && key ? chordToRoman(head.chord, key) : null
@@ -330,7 +331,7 @@ export function FreePlay() {
   const marks: Record<number, KeyMark> = {}
   if (showKey && key) {
     const pcs = new Set(keyScale(key).map(pcOf))
-    for (let m = from; m <= to; m++) if (pcs.has(mod(m, 12))) marks[m] = { kind: 'scale', label: pitchName(spellInKey(m, key)) }
+    for (let m = from; m <= to; m++) if (pcs.has(mod(m, 12))) marks[m] = { kind: 'scale', label: nameNote(spellInKey(m, key), naming) }
   }
 
   return (

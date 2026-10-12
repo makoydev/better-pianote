@@ -1,7 +1,9 @@
 import { Mic } from 'lucide-react'
 import { startMic } from '../../lib/input/mic'
-import { fromMidi, noteName } from '../../lib/theory'
+import { nameNote } from '../../lib/naming'
+import { fromMidi } from '../../lib/theory'
 import { useLive } from '../../state/live'
+import { useSettings } from '../../state/settings'
 import { MusicText } from '../MusicText'
 import { Button } from '../ui/Button'
 
@@ -28,10 +30,11 @@ export function MicPrompt({ className = '' }: { className?: string }) {
 function Heard({ className }: { className: string }) {
   const level = useLive((s) => s.micLevel)
   const note = useLive((s) => (s.lastSource === 'mic' ? s.lastNote : null))
+  const naming = useSettings((s) => s.naming)
   return (
     <div className={`flex items-center justify-center gap-3 text-sm font-bold text-ink-soft ${className}`} aria-live="polite">
       <Mic size={16} className="text-violet" />
-      <span className="min-w-24">{note === null ? 'Listening…' : <MusicText text={`Heard: ${noteName(fromMidi(note))}`} />}</span>
+      <span className="min-w-24">{note === null ? 'Listening…' : <MusicText text={`Heard: ${nameNote(fromMidi(note), naming, { octave: true })}`} />}</span>
       <span className="flex h-2 w-24 overflow-hidden rounded-full bg-white/10" aria-hidden>
         <span className="h-full bg-violet transition-[width] duration-75" style={{ width: `${Math.min(1, level) * 100}%` }} />
       </span>

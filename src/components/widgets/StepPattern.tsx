@@ -4,7 +4,9 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { audio } from '../../lib/audio/engine'
 import { playNotes } from '../../lib/audio/play'
 import { useNoteEvents } from '../../lib/input/bus'
-import { type Note, SCALE_TYPE, midiOf, mod, parseNote, pcOf, pitchName, scaleNotes, stepPattern } from '../../lib/theory'
+import { nameNote } from '../../lib/naming'
+import { type Note, SCALE_TYPE, midiOf, mod, parseNote, pcOf, scaleNotes, stepPattern } from '../../lib/theory'
+import { useSettings } from '../../state/settings'
 import { MusicText } from '../MusicText'
 import { type Marks, Piano } from '../piano/Piano'
 import { Staff } from '../staff/Staff'
@@ -30,6 +32,8 @@ export function StepPattern({ tonic, scale }: { tonic: string; scale: string }) 
   // start notes sit beside the ladder, and the staff, gaps and keyboard get a little smaller.
   const short = useShortScreen()
   const tight = useContext(InStep) && short
+  // Note names as you chose in Settings (C D E or Do Re Mi).
+  const naming = useSettings((s) => s.naming)
   const [kbRef, kb] = useFitKeyboard(170, { below: 24, min: tight ? 88 : 100 })
 
   const clearTimers = () => {
@@ -78,12 +82,12 @@ export function StepPattern({ tonic, scale }: { tonic: string; scale: string }) 
   const hi = midiOf(notes[notes.length - 1])
   const marks: Marks = {}
   notes.slice(0, shown).forEach((n, i) => {
-    marks[midiOf(n)] = { kind: i === 0 || i === notes.length - 1 ? 'root' : 'chord', label: pitchName(n) }
+    marks[midiOf(n)] = { kind: i === 0 || i === notes.length - 1 ? 'root' : 'chord', label: nameNote(n, naming) }
   })
   if (bad !== null) marks[bad] = 'bad'
 
   const starts = scale === 'major' ? MAJOR_STARTS : scale === 'minor' || scale === 'harmonic-minor' ? MINOR_STARTS : ['C4', 'G4', 'D4', 'A3', 'E4', 'F4']
-  const label = `${pitchName(tonicNote)} ${type.name.toLowerCase()}`
+  const label = `${nameNote(tonicNote, naming)} ${type.name.toLowerCase()}`
   const doneText = notes.length === 8 ? 'Done! Notice every letter appears exactly once.' : `Done! ${notes.length - 1} notes, then home again.`
 
   const startPicker = (
@@ -101,7 +105,7 @@ export function StepPattern({ tonic, scale }: { tonic: string; scale: string }) 
               onClick={() => reset(s)}
               className={`h-11 rounded-xl border text-base font-extrabold ${tight ? 'min-w-11 px-2' : 'min-w-12 px-3'} ${on ? 'border-gold bg-gold text-night-900' : 'border-white/10 bg-night-750 text-ink-soft hover:text-ink'}`}
             >
-              <MusicText text={pitchName(n)} />
+              <MusicText text={nameNote(n, naming)} />
             </motion.button>
           )
         })}
@@ -162,7 +166,7 @@ export function StepPattern({ tonic, scale }: { tonic: string; scale: string }) 
                     transition={{ type: 'spring', stiffness: 520, damping: 22 }}
                     className="flex h-11 min-w-11 items-center justify-center rounded-xl bg-white/10 px-2 text-lg font-extrabold text-ink"
                   >
-                    <MusicText text={pitchName(n)} />
+                    <MusicText text={nameNote(n, naming)} />
                   </motion.span>
                 ) : (
                   <span className="flex h-11 min-w-11 items-center justify-center rounded-xl border-2 border-dashed border-white/12 text-lg font-extrabold text-ink-mute">?</span>
