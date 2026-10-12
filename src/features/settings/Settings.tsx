@@ -29,29 +29,17 @@ export function Settings() {
           <Row label="Connection" hint="USB cable, Bluetooth, microphone or on-screen keys.">
             <ConnectionPill />
           </Row>
-          <Row label="App piano sound for keyboard notes" hint="Off: your keyboard makes its own sound.">
-            <Toggle checked={s.midiThru} onChange={(v) => set({ midiThru: v })} label="App sound for keyboard notes" />
-          </Row>
-          <Row label="Play demos through my keyboard" hint="Example chords come out of your keyboard's speakers.">
-            <Toggle checked={s.demoToKeyboard} onChange={(v) => set({ demoToKeyboard: v })} label="Play demos through my keyboard" />
-          </Row>
-          <Row label="Computer keys play notes" hint="A S D F … for white keys, W E T Y U for black keys, Z / X octave.">
-            <Toggle checked={s.computerKeys} onChange={(v) => set({ computerKeys: v })} label="Computer keys play notes" />
-          </Row>
-          <Row label="I'm using headphones" hint="The mic can't hear the app then, so it never has to ignore the app's notes and clicks.">
-            <Toggle checked={s.headphones} onChange={(v) => set({ headphones: v })} label="I'm using headphones" />
-          </Row>
-          <Row label="Top C continues" hint="Playing the highest C (C7) works like Enter or a pedal tap: Continue, Start, Play again. Handy with the mic.">
-            <Toggle checked={s.topCContinue} onChange={(v) => set({ topCContinue: v })} label="Top C continues" />
-          </Row>
+          <ToggleRow label="App piano sound for keyboard notes" hint="Off: your keyboard makes its own sound." checked={s.midiThru} onChange={(v) => set({ midiThru: v })} />
+          <ToggleRow label="Play demos through my keyboard" hint="Example chords come out of your keyboard's speakers." checked={s.demoToKeyboard} onChange={(v) => set({ demoToKeyboard: v })} />
+          <ToggleRow label="Computer keys play notes" hint="A S D F … for white keys, W E T Y U for black keys, Z / X octave." checked={s.computerKeys} onChange={(v) => set({ computerKeys: v })} />
+          <ToggleRow label="I'm using headphones" hint="The mic can't hear the app then, so it never has to ignore the app's notes and clicks." checked={s.headphones} onChange={(v) => set({ headphones: v })} />
+          <ToggleRow label="Top C continues" hint="Playing the highest C (C7) works like Enter or a pedal tap: Continue, Start, Play again. Handy with the mic." checked={s.topCContinue} onChange={(v) => set({ topCContinue: v })} />
           <Row label="Shortcuts" hint="Keys and hands-free moves for every screen (or press ?).">
             <Button size="sm" variant="secondary" icon={Keyboard} onClick={openShortcuts}>
               Show shortcuts
             </Button>
           </Row>
-          <Row label="Exact octave in games" hint="Off: any C counts as C. On: it must be the written octave.">
-            <Toggle checked={s.strictOctave} onChange={(v) => set({ strictOctave: v })} label="Exact octave in games" />
-          </Row>
+          <ToggleRow label="Exact octave in games" hint="Off: any C counts as C. On: it must be the written octave." checked={s.strictOctave} onChange={(v) => set({ strictOctave: v })} />
         </Section>
 
         <Section icon={<Monitor size={22} />} title="Display">
@@ -67,9 +55,7 @@ export function Settings() {
               ]}
             />
           </Row>
-          <Row label="Rainbow notes" hint="Each note name gets its own colour (C red, D orange, E yellow …).">
-            <Toggle checked={s.colorNotes} onChange={(v) => set({ colorNotes: v })} label="Rainbow notes" />
-          </Row>
+          <ToggleRow label="Rainbow notes" hint="Each note name gets its own colour (C red, D orange, E yellow …)." checked={s.colorNotes} onChange={(v) => set({ colorNotes: v })} />
           <Row label="Names on keys">
             <Segmented<KeyLabels>
               value={s.keyLabels}
@@ -82,12 +68,8 @@ export function Settings() {
               ]}
             />
           </Row>
-          <Row label="Keep the screen on while practising" hint="Lessons, games, songs and tools. Your hands are on the keys, not the screen.">
-            <Toggle checked={s.keepAwake} onChange={(v) => set({ keepAwake: v })} label="Keep the screen on while practising" />
-          </Row>
-          <Row label="Note names under the staff" hint="Training wheels for reading. Turn off when you're ready.">
-            <Toggle checked={s.staffLabels} onChange={(v) => set({ staffLabels: v })} label="Note names under the staff" />
-          </Row>
+          <ToggleRow label="Keep the screen on while practising" hint="Lessons, games, songs and tools. Your hands are on the keys, not the screen." checked={s.keepAwake} onChange={(v) => set({ keepAwake: v })} />
+          <ToggleRow label="Note names under the staff" hint="Training wheels for reading. Turn off when you're ready." checked={s.staffLabels} onChange={(v) => set({ staffLabels: v })} />
           <Row label="Note names">
             <Segmented<Naming>
               value={s.naming}
@@ -110,12 +92,8 @@ export function Settings() {
               </Button>
             </div>
           </Row>
-          <Row label="Concert-hall reverb">
-            <Toggle checked={s.reverb} onChange={(v) => set({ reverb: v })} label="Reverb" />
-          </Row>
-          <Row label="Feedback sounds" hint="Little dings for right answers.">
-            <Toggle checked={s.uiSounds} onChange={(v) => set({ uiSounds: v })} label="Feedback sounds" />
-          </Row>
+          <ToggleRow label="Concert-hall reverb" checked={s.reverb} onChange={(v) => set({ reverb: v })} />
+          <ToggleRow label="Feedback sounds" hint="Little dings for right answers." checked={s.uiSounds} onChange={(v) => set({ uiSounds: v })} />
         </Section>
 
         <Section icon={<User size={22} />} title="You">
@@ -253,4 +231,17 @@ function backupNote(at: number | null): string {
   if (!at) return 'No backup yet.'
   const days = Math.floor((Date.now() - at) / 864e5)
   return `Last backup: ${days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`}.`
+}
+
+/** A setting that's a switch: the whole row (text included) toggles it. */
+function ToggleRow({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-3 py-3.5">
+      <span className="min-w-0 flex-1">
+        <span className="block font-bold text-ink">{label}</span>
+        {hint && <span className="block text-sm text-ink-mute">{hint}</span>}
+      </span>
+      <Toggle checked={checked} onChange={onChange} label={label} />
+    </label>
+  )
 }

@@ -229,6 +229,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **72. Accessibility and touch sweep:** controls under 44 px, ✓/✗ alongside red/green, focus in dialogs,
   screen-reader announcements, Do-Re-Mi naming everywhere. `S–M`
   *Partly done:* shared controls: switches, small toggles and small buttons are 44 px, the dialog close button 48 px, dialogs take focus, keep Tab inside and give it back, and lesson note chips follow the Do Re Mi setting (`lib/naming.ts`).
+  *Partly done:* screen readers hear chord names once ("F sharp m", not the drawn letters too: `MusicText`), every Settings switch row toggles from its text, and the compact connection pill has a spoken label. Screen-specific sizes and ✓/✗ cues come with the area batches.
 - [x] **73. Performance:** with the mic on, hidden connect sheets re-render 25 times a second; pause the animated
   background on full-screen pages. `S`
   *Done:* the connect sheet's live parts only exist while it's open (no more hidden re-renders 25×/s), and the background lights hold still on full-screen pages (`Aurora calm`).

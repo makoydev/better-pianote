@@ -8,21 +8,20 @@ import { ACC_RE, splitMusic } from '../lib/musicText'
 
 export function MusicText({ text, className }: { text: string; className?: string }) {
   if (!ACC_RE.test(text)) return <span className={className}>{text}</span>
+  // Screen readers get the spoken version only ("F sharp m"), not the drawn letters as well.
   return (
     <span className={className}>
-      {splitMusic(text).map((part, i) =>
-        part.acc ? (
-          <span
-            key={i}
-            aria-hidden
-            style={{ fontFamily: 'Bravura', fontSize: '0.86em', lineHeight: 0, margin: '0 0.03em 0 0.02em', fontWeight: 400 }}
-          >
-            {part.s}
-          </span>
-        ) : (
-          <Fragment key={i}>{part.s}</Fragment>
-        ),
-      )}
+      <span aria-hidden>
+        {splitMusic(text).map((part, i) =>
+          part.acc ? (
+            <span key={i} style={{ fontFamily: 'Bravura', fontSize: '0.86em', lineHeight: 0, margin: '0 0.03em 0 0.02em', fontWeight: 400 }}>
+              {part.s}
+            </span>
+          ) : (
+            <Fragment key={i}>{part.s}</Fragment>
+          ),
+        )}
+      </span>
       <span className="sr-only">{text.replace(/♯/g, ' sharp').replace(/♭/g, ' flat')}</span>
     </span>
   )

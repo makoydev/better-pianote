@@ -46,6 +46,7 @@ export function ConnectionPill({ compact = false }: { compact?: boolean }) {
         }}
         className="inline-flex h-11 max-w-[15rem] items-center gap-2 rounded-full border border-white/10 bg-night-750/90 px-3.5 text-sm font-extrabold text-ink-soft transition-colors hover:border-white/20 hover:text-ink"
         title="Keyboard connection"
+        aria-label={`Keyboard connection: ${label}`}
       >
         <span className="relative flex size-2.5 shrink-0">
           {dot === '#3ddc97' && <span className="absolute inset-0 animate-ping rounded-full opacity-60" style={{ background: dot }} />}
