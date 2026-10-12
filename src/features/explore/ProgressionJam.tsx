@@ -1,4 +1,22 @@
-import { Check, ChevronLeft, ChevronRight, Drum, Eraser, Info, Minus, Play, Plus, Repeat, Square, Target, Timer, Undo2, X } from 'lucide-react'
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Drum,
+  Eraser,
+  Info,
+  KeyboardMusic,
+  Minus,
+  Music2,
+  Play,
+  Plus,
+  Repeat,
+  Square,
+  Target,
+  Timer,
+  Undo2,
+  X,
+} from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MusicText } from '../../components/MusicText'
@@ -6,7 +24,7 @@ import { TopBar } from '../../components/layout/TopBar'
 import { type KeyMark, Piano } from '../../components/piano/Piano'
 import { Button, IconButton } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
-import { Segmented, Slider, Toggle } from '../../components/ui/controls'
+import { Chips, Segmented, Slider, Toggle } from '../../components/ui/controls'
 import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
 import { playNotes } from '../../lib/audio/play'
@@ -16,12 +34,20 @@ import { usePref } from '../../state/prefs'
 import { spellVoicing } from './chordTools'
 import { hat, kick, snare } from './drums'
 import {
+  CHORD_LENGTHS,
+  type ChordLength,
+  FEELS,
+  FEEL_IDS,
   MAX_CHORDS,
   PALETTE_GROUPS,
   PRESETS,
   type PatternId,
+  accented,
   cardKeys,
+  chordTicks,
   drumHits,
+  lengthsFor,
+  meterOf,
   isMinorProgression,
   isProgression,
   jamChords,
@@ -44,14 +70,17 @@ const RIVER = PRESETS.find((p) => p.id === 'river')!
 const CUSTOM = 'custom'
 const PRESET_IDS = [...PRESETS.map((p) => p.id), CUSTOM]
 const KEYS = Array.from({ length: 12 }, (_, pc) => pc)
-const FEELS: PatternId[] = ['block', 'fingerstyle', 'ballad']
 const NO_CHORDS: string[] = []
 const UNDO_STEPS = 30
+const LENGTH_LABEL: Record<ChordLength, string> = { 4: '2 beats', 8: '1 bar', 16: '2 bars' }
 
 interface Pos {
   /** Chord index, or -1 during the count-in. */
   chord: number
+  /** Count within the chord (quarters, or eighths in 6/8). */
   beat: number
+  /** Count within the bar, for the beat dots. */
+  count: number
 }
 
 /** What Undo puts back: the progression on screen, your own one, and the settings a load can change. */
@@ -61,7 +90,7 @@ interface Snapshot {
   tonic: number
   bpm: number
   pattern: PatternId
-  perChord: 8 | 4
+  length: ChordLength
 }
 
 export function ProgressionJam() {
@@ -70,11 +99,18 @@ export function ProgressionJam() {
   const [tonic, setTonic] = usePref('jam:tonic', tonicPc(RIVER.tonic), KEYS)
   const [savedBpm, setBpm] = usePref('jam:bpm', 76)
   const bpm = Math.min(160, Math.max(50, savedBpm))
-  const [pattern, setPattern] = usePref<PatternId>('jam:feel', 'ballad', FEELS)
+  const [pattern, setPattern] = usePref<PatternId>('jam:feel', 'ballad', FEEL_IDS)
   const [drums, setDrums] = usePref('jam:drums', false)
+  // Sit the band's bass or chords out to play that part yourself.
+  const [bassOn, setBassOn] = usePref('jam:bass', true)
+  const [chordsOn, setChordsOn] = usePref('jam:chords', true)
   const [loop, setLoop] = usePref('jam:loop', true)
   const [countIn, setCountIn] = usePref('jam:count-in', true)
-  const [perChord, setPerChord] = usePref<8 | 4>('jam:chord-length', 8, [8, 4])
+  const [savedLength, setLength] = usePref<ChordLength>('jam:chord-length', 8, CHORD_LENGTHS)
+  const meter = meterOf(pattern)
+  // "2 beats" only fits 4/4; the saved choice comes back when you return to a 4/4 feel.
+  const length = lengthsFor(meter).includes(savedLength) ? savedLength : 8
+  const perChord = chordTicks(length, meter)
   const [playing, setPlaying] = useState(false)
   const [pos, setPos] = useState<Pos | null>(null)
   const [focus, setFocus] = useState(0)
@@ -100,9 +136,9 @@ export function ProgressionJam() {
   const pcsList = useMemo(() => chords.map((c) => chordPcs(c)), [chords])
 
   // The scheduler reads the latest settings on every tick, so changes apply while playing.
-  const live = useRef({ voicings, basses, pcsList, pattern, drums, loop, perChord, bpm })
+  const live = useRef({ voicings, basses, pcsList, pattern, drums, bassOn, chordsOn, loop, length, bpm, countIn })
   useEffect(() => {
-    live.current = { voicings, basses, pcsList, pattern, drums, loop, perChord, bpm }
+    live.current = { voicings, basses, pcsList, pattern, drums, bassOn, chordsOn, loop, length, bpm, countIn }
   })
 
   const clock = useRef<Clock | null>(null)
@@ -117,46 +153,53 @@ export function ProgressionJam() {
   }, [])
   useEffect(() => stop, [stop])
 
+  /** Start the band (or restart it, e.g. in a new metre). Reads its settings from `live`, which handlers update first. */
   const start = () => {
     if (!romans.length) return
     stop()
-    const countTicks = countIn ? 8 : 0
+    // The metre can only change with a restart, so it's fixed for this run.
+    const m = meterOf(live.current.pattern)
+    const countTicks = live.current.countIn ? m.bar : 0
     const ui = (time: number, fn: () => void) => {
       timers.current = [...timers.current.slice(-40), audio.at(time, fn)]
     }
     const c = new Clock({
-      interval: () => 60 / live.current.bpm / 2,
+      interval: () => 60 / live.current.bpm / m.beat,
       onTick: (i, time) => {
         const L = live.current
-        const tick = 60 / L.bpm / 2
+        const tick = 60 / L.bpm / m.beat
         if (i < countTicks) {
-          if (i % 2 === 0) {
-            audio.click(i === 0, time + 0.03)
-            ui(time, () => setPos({ chord: -1, beat: i / 2 }))
+          if (i % m.count === 0) {
+            const count = i / m.count
+            audio.click(accented(m, count), time + 0.03)
+            ui(time, () => setPos({ chord: -1, beat: count, count }))
           }
           return
         }
         const n = L.voicings.length
         if (!n) return
+        const per = chordTicks(L.length, m)
         const j = i - countTicks
-        const chordNo = Math.floor(j / L.perChord)
+        const chordNo = Math.floor(j / per)
         if (!L.loop && chordNo >= n) {
           clock.current?.stop()
           ui(time + tick, stop)
           return
         }
         const ci = chordNo % n
-        const t = j % L.perChord
-        for (const h of patternHits(L.pattern, L.voicings[ci], L.basses[ci], L.pcsList[ci], L.perChord)) {
-          if (h.tick === t) playNotes(h.notes, { delay: Math.max(0, time - audio.now), dur: h.dur * tick, vel: h.vel })
+        const t = j % per
+        for (const h of patternHits(L.pattern, L.voicings[ci], L.basses[ci], L.pcsList[ci], per)) {
+          if (h.tick !== t || !(h.part === 'bass' ? L.bassOn : L.chordsOn)) continue
+          playNotes(h.notes, { delay: Math.max(0, time - audio.now), dur: h.dur * tick, vel: h.vel })
         }
         if (L.drums) {
-          const d = drumHits(j)
+          const d = drumHits(j, m.id)
           if (d.kick) kick(time + 0.03)
-          if (d.snare) snare(time + 0.03, 0.9)
+          // A waltz keeps its 2 and 3 light.
+          if (d.snare) snare(time + 0.03, m.id === '3/4' ? 0.5 : 0.9)
           hat(time + 0.03, d.hat)
         }
-        if (t % 2 === 0) ui(time, () => setPos({ chord: ci, beat: t / 2 }))
+        if (t % m.count === 0) ui(time, () => setPos({ chord: ci, beat: t / m.count, count: (j % m.bar) / m.count }))
       },
     })
     clock.current = c
@@ -164,7 +207,24 @@ export function ProgressionJam() {
     setPlaying(true)
   }
 
-  const remember = () => setHistory((h) => [...h.slice(1 - UNDO_STEPS), { presetId, own, tonic, bpm, pattern, perChord }])
+  /** Hand new settings to a playing band at once; a new metre or chord length restarts it, so the bars line up. */
+  const retune = (patch: { pattern?: PatternId; length?: ChordLength }) => {
+    const before = live.current
+    const after = { ...before, ...patch }
+    live.current = after
+    const grid = (s: typeof before) => `${meterOf(s.pattern).id}:${chordTicks(s.length, meterOf(s.pattern))}`
+    if (playing && grid(after) !== grid(before)) start()
+  }
+  const changeFeel = (p: PatternId) => {
+    setPattern(p)
+    retune({ pattern: p })
+  }
+  const changeLength = (v: ChordLength) => {
+    setLength(v)
+    retune({ length: v })
+  }
+
+  const remember = () => setHistory((h) => [...h.slice(1 - UNDO_STEPS), { presetId, own, tonic, bpm, pattern, length: savedLength }])
   const undo = () => {
     const last = history[history.length - 1]
     if (!last) return
@@ -174,12 +234,13 @@ export function ProgressionJam() {
     setTonic(last.tonic)
     setBpm(last.bpm)
     setPattern(last.pattern)
-    setPerChord(last.perChord)
+    setLength(last.length)
     setSelected(null)
     setReplaced(false)
     const back = PRESETS.find((p) => p.id === last.presetId)?.romans ?? last.own
     setFocus((f) => Math.min(f, Math.max(0, back.length - 1)))
     if (!back.length) stop()
+    else retune({ pattern: last.pattern, length: last.length })
   }
 
   const choosePreset = (id: string) => {
@@ -236,7 +297,8 @@ export function ProgressionJam() {
   const keys = cardKeys(romans)
   const cur = pos && pos.chord >= 0 ? pos.chord : Math.min(focus, Math.max(0, n - 1))
   const next = n ? (cur + 1) % n : 0
-  const beats = perChord / 2
+  const beats = perChord / meter.count
+  const barCounts = meter.bar / meter.count
   const lastBeat = !!pos && pos.chord >= 0 && pos.beat === beats - 1 && (loop || cur < n - 1)
 
   const marks: Record<number, KeyMark> = {}
@@ -492,12 +554,12 @@ export function ProgressionJam() {
               )}
             </div>
             <div className="flex justify-center gap-2" aria-hidden>
-              {Array.from({ length: beats }, (_, b) => (
+              {Array.from({ length: barCounts }, (_, b) => (
                 <motion.span
                   key={b}
-                  animate={{ scale: pos && pos.beat === b ? 1.35 : 1, opacity: pos && pos.beat === b ? 1 : 0.35 }}
+                  animate={{ scale: pos && pos.count === b ? 1.35 : 1, opacity: pos && pos.count === b ? 1 : 0.35 }}
                   transition={{ duration: 0.12 }}
-                  className={`size-4 rounded-full ${b === 0 ? 'bg-gold' : 'bg-violet'}`}
+                  className={`size-4 rounded-full ${accented(meter, b) ? 'bg-gold' : 'bg-violet'}`}
                 />
               ))}
             </div>
@@ -521,41 +583,48 @@ export function ProgressionJam() {
 
             <div>
               <div className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Feel</div>
-              <Segmented
-                value={pattern}
-                onChange={setPattern}
-                className="w-full"
-                options={[
-                  { value: 'block', label: 'Strum' },
-                  { value: 'fingerstyle', label: 'Fingerstyle' },
-                  { value: 'ballad', label: 'Ballad' },
-                ]}
-              />
+              <Chips value={pattern} onChange={changeFeel} options={FEELS.map((f) => ({ value: f.id, label: f.label }))} />
+              {meter.id === '6/8' && <p className="mt-2 text-sm text-ink-mute">In 6/8 the tempo counts dotted quarters: two beats a bar, six eighths.</p>}
             </div>
 
             <div>
               <div className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">Each chord lasts</div>
               <Segmented
-                value={perChord}
-                onChange={(v) => {
-                  setPerChord(v)
-                  if (playing) window.setTimeout(start, 0)
-                }}
+                value={length}
+                onChange={changeLength}
                 className="w-full"
-                options={[
-                  { value: 8, label: '1 bar' },
-                  { value: 4, label: '2 beats' },
-                ]}
+                options={lengthsFor(meter).map((v) => ({ value: v, label: LENGTH_LABEL[v] }))}
               />
             </div>
 
-            <div className="space-y-3">
-              <label className="flex items-center justify-between gap-3 font-extrabold text-ink-soft">
-                <span className="flex items-center gap-2">
-                  <Drum size={18} /> Drums
-                </span>
-                <Toggle checked={drums} onChange={setDrums} label="Drums" />
-              </label>
+            <div>
+              <div className="mb-2 text-sm font-extrabold uppercase tracking-wider text-ink-mute">The band plays</div>
+              <div className="space-y-1">
+                <label className="flex items-center justify-between gap-3 font-extrabold text-ink-soft">
+                  <span className="flex items-center gap-2">
+                    <Music2 size={18} /> Bass <span className="font-semibold text-ink-mute">(left hand)</span>
+                  </span>
+                  <Toggle checked={bassOn} onChange={setBassOn} label="Bass" />
+                </label>
+                <label className="flex items-center justify-between gap-3 font-extrabold text-ink-soft">
+                  <span className="flex items-center gap-2">
+                    <KeyboardMusic size={18} /> Chords <span className="font-semibold text-ink-mute">(right hand)</span>
+                  </span>
+                  <Toggle checked={chordsOn} onChange={setChordsOn} label="Chords" />
+                </label>
+                <label className="flex items-center justify-between gap-3 font-extrabold text-ink-soft">
+                  <span className="flex items-center gap-2">
+                    <Drum size={18} /> Drums
+                  </span>
+                  <Toggle checked={drums} onChange={setDrums} label="Drums" />
+                </label>
+              </div>
+              {!bassOn && !chordsOn && (
+                <p className="mt-1 text-sm text-ink-mute">{drums ? 'Just the drums' : 'The band sits out'}: play the chords and the bass yourself.</p>
+              )}
+            </div>
+
+            <div className="space-y-1">
               <label className="flex items-center justify-between gap-3 font-extrabold text-ink-soft">
                 <span className="flex items-center gap-2">
                   <Repeat size={18} /> Loop

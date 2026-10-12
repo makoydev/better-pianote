@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import { bassFor, chordPcs, chordSymbol, mod, parseKey, pcOf, pitchName, romanToChord } from '../../lib/theory'
 import {
+  CHORD_LENGTHS,
+  FEELS,
+  FEEL_IDS,
   MORE_CHIPS,
   PALETTE,
   PALETTE_GROUPS,
+  type PatternId,
+  accented,
   cardKeys,
+  chordTicks,
+  drumHits,
   isMinorProgression,
+  lengthsFor,
+  meterOf,
   isProgression,
   jamChords,
   moveAt,
@@ -133,5 +142,84 @@ describe('left-hand patterns', () => {
       .slice(0, 4)
       .map((h) => h.notes[0])
     expect(wave).toEqual([48, 55, 60, 64])
+  })
+})
+
+describe('feels, metres and chord lengths', () => {
+  const rh = [60, 64, 67]
+  const C = [0, 4, 7]
+  const at = (pattern: PatternId, ticks: number, part: 'bass' | 'chords') =>
+    patternHits(pattern, rh, 48, C, ticks)
+      .filter((h) => h.part === part)
+      .map((h) => `${h.tick}:${h.notes.join('+')}`)
+
+  it('gives every feel a metre', () => {
+    expect(FEELS.map((f) => meterOf(f.id).id)).toEqual(['4/4', '4/4', '4/4', '3/4', '6/8'])
+    expect(new Set(FEEL_IDS).size).toBe(FEELS.length)
+  })
+
+  it('counts quarters, except eighths in 6/8 where the tempo counts dotted quarters', () => {
+    const m68 = meterOf('six-eight')
+    expect(m68.bar / m68.count).toBe(6)
+    expect(m68.beat).toBe(3)
+    expect([0, 1, 2, 3, 4, 5].filter((c) => accented(m68, c))).toEqual([0, 3])
+    const m34 = meterOf('waltz')
+    expect(m34.bar / m34.count).toBe(3)
+    expect([0, 1, 2].filter((c) => accented(m34, c))).toEqual([0])
+  })
+
+  it('turns a chord length into ticks for each metre', () => {
+    const m44 = meterOf('ballad')
+    const m34 = meterOf('waltz')
+    const m68 = meterOf('six-eight')
+    expect(CHORD_LENGTHS.map((l) => chordTicks(l, m44))).toEqual([4, 8, 16])
+    // Half a bar doesn't split 3/4 or 6/8 into whole beats: those get a bar.
+    expect(CHORD_LENGTHS.map((l) => chordTicks(l, m34))).toEqual([6, 6, 12])
+    expect(CHORD_LENGTHS.map((l) => chordTicks(l, m68))).toEqual([6, 6, 12])
+    expect(lengthsFor(m34)).toEqual([8, 16])
+  })
+
+  it('plays a waltz: bass on 1, the chord on 2 and 3, the fifth in a second bar', () => {
+    expect(at('waltz', 6, 'bass')).toEqual(['0:48'])
+    expect(at('waltz', 6, 'chords')).toEqual(['2:60+64+67', '4:60+64+67'])
+    expect(at('waltz', 12, 'bass')).toEqual(['0:48', '6:55'])
+    expect(at('waltz', 12, 'chords')).toEqual(['2:60+64+67', '4:60+64+67', '8:60+64+67', '10:60+64+67'])
+  })
+
+  it('rolls 1–5–8–10–8–5 across a 6/8 bar', () => {
+    expect(at('six-eight', 6, 'bass')).toEqual(['0:48', '1:55', '2:60', '3:64', '4:60', '5:55'])
+    expect(at('six-eight', 6, 'chords')).toEqual(['0:60+64+67'])
+  })
+
+  it('keeps the groove going through a two-bar chord', () => {
+    expect(at('block', 16, 'bass')).toEqual(['0:48', '8:48'])
+    expect(at('block', 16, 'chords').map((s) => s.split(':')[0])).toEqual(['0', '2', '4', '6', '8', '10', '12', '14'])
+    expect(at('fingerstyle', 16, 'bass')).toEqual(['0:48', '4:55', '8:48', '12:55'])
+    expect(at('ballad', 16, 'chords')).toEqual(['0:60+64+67', '8:60+64+67'])
+  })
+
+  it('labels every hit as the band’s bass or chords, inside the chord, on chord tones', () => {
+    for (const f of FEEL_IDS) {
+      for (const ticks of [4, 6, 8, 12, 16]) {
+        for (const h of patternHits(f, rh, 48, C, ticks)) {
+          expect(h.tick, f).toBeLessThan(ticks)
+          // The right hand plays the voiced chord (or notes of it); the left hand one note at a time.
+          if (h.part === 'chords') expect(h.notes.every((n) => rh.includes(n)), f).toBe(true)
+          else expect(h.notes, f).toHaveLength(1)
+          for (const n of h.notes) expect(C).toContain(n % 12)
+        }
+      }
+    }
+  })
+
+  it('drums in each metre', () => {
+    const kit = (meter: '3/4' | '6/8') =>
+      [0, 1, 2, 3, 4, 5].map((t) => {
+        const d = drumHits(t, meter)
+        return d.kick ? 'K' : d.snare ? 'S' : '-'
+      })
+    expect(kit('3/4').join('')).toBe('K-S-S-')
+    expect(kit('6/8').join('')).toBe('K--S--')
+    expect(drumHits(3, '6/8').hat).toBeGreaterThan(drumHits(4, '6/8').hat)
   })
 })

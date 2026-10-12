@@ -219,7 +219,54 @@ function bassDegree(rn: string): string | null {
   }
 }
 
-export type PatternId = 'block' | 'fingerstyle' | 'ballad'
+export type PatternId = 'block' | 'fingerstyle' | 'ballad' | 'waltz' | 'six-eight'
+
+/** The band's feels. Each one has its own metre. */
+export const FEELS: { id: PatternId; label: string }[] = [
+  { id: 'block', label: 'Strum' },
+  { id: 'fingerstyle', label: 'Fingerstyle' },
+  { id: 'ballad', label: 'Ballad' },
+  { id: 'waltz', label: 'Waltz 3/4' },
+  { id: 'six-eight', label: 'Ballad 6/8' },
+]
+export const FEEL_IDS = FEELS.map((f) => f.id)
+
+export type MeterId = '4/4' | '3/4' | '6/8'
+
+export interface Meter {
+  id: MeterId
+  /** Eighth-note ticks in a bar. */
+  bar: number
+  /** Ticks per count: what the beat dots and the count-in follow (quarters; eighths in 6/8, "1 2 3 4 5 6"). */
+  count: number
+  /** Ticks per beat, the note the tempo counts: a quarter, or a dotted quarter in 6/8. */
+  beat: number
+}
+
+const METER: Record<MeterId, Meter> = {
+  '4/4': { id: '4/4', bar: 8, count: 2, beat: 2 },
+  '3/4': { id: '3/4', bar: 6, count: 2, beat: 2 },
+  '6/8': { id: '6/8', bar: 6, count: 1, beat: 3 },
+}
+
+export const meterOf = (pattern: PatternId): Meter => METER[pattern === 'waltz' ? '3/4' : pattern === 'six-eight' ? '6/8' : '4/4']
+
+/** Counts that start a beat get the accent: the first, and in 6/8 the second dotted quarter too. */
+export const accented = (meter: Meter, count: number) => count === 0 || (meter.id === '6/8' && count === 3)
+
+/**
+ * How long each chord lasts, as saved in "jam:chord-length": 4 = two beats, 8 = a bar, 16 = two bars (in eighths
+ * of a 4/4 bar, the original unit). Half a bar only splits 4/4 into whole beats, so 3/4 and 6/8 offer bars.
+ */
+export type ChordLength = 4 | 8 | 16
+export const CHORD_LENGTHS: ChordLength[] = [4, 8, 16]
+export const lengthsFor = (meter: Meter): ChordLength[] => (meter.id === '4/4' ? CHORD_LENGTHS : [8, 16])
+
+/** A chord's length in ticks (eighth notes) in this metre. */
+export function chordTicks(length: ChordLength, meter: Meter): number {
+  if (!lengthsFor(meter).includes(length)) return meter.bar
+  return (meter.bar * length) / 8
+}
 
 export interface Hit {
   /** Eighth-note position inside the chord (0 = the chord's downbeat). */
@@ -228,6 +275,8 @@ export interface Hit {
   /** Length in eighth notes. */
   dur: number
   vel: number
+  /** The band's left hand (bass) or right hand (chords), so either can sit out while you play it. */
+  part: 'bass' | 'chords'
 }
 
 /** The lowest chord tone at or above `from` (MIDI). */
@@ -254,36 +303,66 @@ function upperBass(bass: number, pcs: number[]): number {
 }
 
 /**
- * What to play over one chord. `ticks` is the chord's length in eighth notes (8 = one bar of 4/4).
- * `pcs` are the chord tones (root first), `rh` the voiced right hand, `bass` the left-hand bass note (the root,
- * or the slash note of a slash chord). Left-hand patterns only use chord tones, so C/E or B° never get a stray note.
+ * What to play over one chord. `ticks` is the chord's length in eighth notes (8 = one bar of 4/4), played bar by
+ * bar in the pattern's metre (a half-bar chord plays the first half). `pcs` are the chord tones (root first), `rh`
+ * the voiced right hand, `bass` the left-hand bass note (the root, or the slash note of a slash chord).
+ * Left-hand patterns only use chord tones, so C/E or B° never get a stray note.
  */
 export function patternHits(pattern: PatternId, rh: number[], bass: number, pcs: number[], ticks: number): Hit[] {
+  const { bar } = meterOf(pattern)
   const hits: Hit[] = []
-  if (pattern === 'block') {
-    hits.push({ tick: 0, notes: [bass], dur: ticks, vel: 0.68 })
-    for (let t = 0; t < ticks; t += 2) hits.push({ tick: t, notes: rh, dur: 1.7, vel: t === 0 ? 0.66 : t === 4 ? 0.54 : 0.44 })
-  } else if (pattern === 'fingerstyle') {
-    // Alternating bass like Travis picking, fingers rolling through the chord.
-    hits.push({ tick: 0, notes: [bass], dur: 4, vel: 0.66 })
-    if (ticks > 4) hits.push({ tick: 4, notes: [upperBass(bass, pcs)], dur: 4, vel: 0.56 })
-    const order = rh.length >= 4 ? [0, 1, 2, 3, 2, 1, 2, 3] : [0, 1, 2, 1, 0, 1, 2, 1]
-    for (let t = 0; t < ticks; t++) {
-      const n = rh[Math.min(order[t % 8], rh.length - 1)]
-      hits.push({ tick: t, notes: [n], dur: 2, vel: t % 2 === 0 ? 0.52 : 0.42 })
-    }
-  } else {
-    // Ballad: the left hand rolls 1–5–8–10, the flowing piano-ballad pattern, under a soft held chord.
-    const wave = [bass, toneAbove(bass + 6, pcs), bass + 12, toneAbove(bass + 14, pcs)]
-    const order = [0, 1, 2, 3, 2, 1, 2, 1]
-    hits.push({ tick: 0, notes: rh, dur: ticks, vel: 0.4 })
-    for (let t = 0; t < ticks; t++) hits.push({ tick: t, notes: [wave[order[t % 8]]], dur: 3, vel: t === 0 ? 0.6 : 0.46 })
+  for (let start = 0, b = 0; start < ticks; start += bar, b++) {
+    for (const h of barHits(pattern, rh, bass, pcs, Math.min(bar, ticks - start), b)) hits.push({ ...h, tick: h.tick + start })
   }
   return hits
 }
 
-/** Drum kit for one eighth-note tick of a 4/4 bar: kick on 1 and 3, snare on 2 and 4, hats on every eighth. */
-export function drumHits(tickInBar: number): { kick: boolean; snare: boolean; hat: number } {
-  const t = mod(tickInBar, 8)
-  return { kick: t === 0 || t === 4, snare: t === 2 || t === 6, hat: t % 2 === 0 ? 0.7 : 0.45 }
+/** One bar (or the first `len` ticks of it); `b` counts the bars of a chord that lasts several. */
+function barHits(pattern: PatternId, rh: number[], bass: number, pcs: number[], len: number, b: number): Hit[] {
+  const hits: Hit[] = []
+  const held = b === 0 ? 0.4 : 0.34
+  if (pattern === 'block') {
+    hits.push({ tick: 0, notes: [bass], dur: len, vel: 0.68, part: 'bass' })
+    for (let t = 0; t < len; t += 2) hits.push({ tick: t, notes: rh, dur: 1.7, vel: t === 0 ? 0.66 : t === 4 ? 0.54 : 0.44, part: 'chords' })
+  } else if (pattern === 'fingerstyle') {
+    // Alternating bass like Travis picking, fingers rolling through the chord.
+    hits.push({ tick: 0, notes: [bass], dur: 4, vel: 0.66, part: 'bass' })
+    if (len > 4) hits.push({ tick: 4, notes: [upperBass(bass, pcs)], dur: 4, vel: 0.56, part: 'bass' })
+    const order = rh.length >= 4 ? [0, 1, 2, 3, 2, 1, 2, 3] : [0, 1, 2, 1, 0, 1, 2, 1]
+    for (let t = 0; t < len; t++) {
+      const n = rh[Math.min(order[t % 8], rh.length - 1)]
+      hits.push({ tick: t, notes: [n], dur: 2, vel: t % 2 === 0 ? 0.52 : 0.42, part: 'chords' })
+    }
+  } else if (pattern === 'ballad') {
+    // Ballad: the left hand rolls 1–5–8–10, the flowing piano-ballad pattern, under a soft held chord.
+    const wave = [bass, toneAbove(bass + 6, pcs), bass + 12, toneAbove(bass + 14, pcs)]
+    const order = [0, 1, 2, 3, 2, 1, 2, 1]
+    hits.push({ tick: 0, notes: rh, dur: len, vel: held, part: 'chords' })
+    for (let t = 0; t < len; t++) hits.push({ tick: t, notes: [wave[order[t % 8]]], dur: 3, vel: t === 0 ? 0.6 : 0.46, part: 'bass' })
+  } else if (pattern === 'waltz') {
+    // Oom-pah-pah: bass on 1 (root, then the fifth in a chord's second bar), the chord on 2 and 3.
+    hits.push({ tick: 0, notes: [b % 2 ? upperBass(bass, pcs) : bass], dur: 2, vel: 0.66, part: 'bass' })
+    for (const t of [2, 4]) if (t < len) hits.push({ tick: t, notes: rh, dur: 1.6, vel: t === 2 ? 0.5 : 0.44, part: 'chords' })
+  } else {
+    // 6/8: the left hand rolls 1–5–8–10–8–5 across the six eighths, under a soft held chord.
+    const fifth = toneAbove(bass + 6, pcs)
+    const wave = [bass, fifth, bass + 12, toneAbove(bass + 14, pcs), bass + 12, fifth]
+    hits.push({ tick: 0, notes: rh, dur: len, vel: held, part: 'chords' })
+    for (let t = 0; t < len; t++) hits.push({ tick: t, notes: [wave[t]], dur: 2.5, vel: t === 0 ? 0.6 : t === 3 ? 0.52 : 0.44, part: 'bass' })
+  }
+  return hits
+}
+
+/**
+ * Drum kit for one eighth-note tick of a bar. 4/4: kick on 1 and 3, snare on 2 and 4. 3/4: kick on 1, snare on
+ * 2 and 3. 6/8: kick on 1, snare on 4. Hats on every eighth, louder on the counts.
+ */
+export function drumHits(tickInBar: number, meter: MeterId = '4/4'): { kick: boolean; snare: boolean; hat: number } {
+  if (meter === '4/4') {
+    const t = mod(tickInBar, 8)
+    return { kick: t === 0 || t === 4, snare: t === 2 || t === 6, hat: t % 2 === 0 ? 0.7 : 0.45 }
+  }
+  const t = mod(tickInBar, 6)
+  if (meter === '3/4') return { kick: t === 0, snare: t === 2 || t === 4, hat: t % 2 === 0 ? 0.7 : 0.45 }
+  return { kick: t === 0, snare: t === 3, hat: t === 0 || t === 3 ? 0.7 : 0.45 }
 }
