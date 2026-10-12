@@ -212,8 +212,9 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 
 ## Settings & platform
 
-- [ ] **67. Safer Export/Import:** iPad share sheet, preview with merge or replace (Import overwrites everything today),
+- [x] **67. Safer Export/Import:** iPad share sheet, preview with merge or replace (Import overwrites everything today),
   undo, last-backup reminder. iPad check. `M`
+  *Done:* Import now shows what's in the file next to this device (XP, lessons, stars, songs, when it was saved) and offers Merge (every lesson and best score from either device, days joined into one streak) or Replace; device settings (size, mic, sound routing) are never imported; "Undo import" works until the app is closed; the app reloads after an import so every saved store picks it up. Export uses the share sheet on iPad (Save to Files, AirDrop) and carries every saved store (practice stats, song history…), and Settings says when you last backed up (`lib/backup.ts`, `ImportPreview.tsx`, tests). iPad check for the share sheet.
 - [x] **68. Onboarding:** "Coming from another device? Import" and "Show welcome again" in Settings. `S`
   *Done:* onboarding's first step has "Coming from another device? Import your progress", and Settings → You has "Show welcome again". Export/import now live in `lib/backup.ts` (shared by both).
 - [x] **69. Connect sheet:** a live test strip (last note heard, source, pedal), keyboard connected/disconnected

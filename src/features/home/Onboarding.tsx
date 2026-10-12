@@ -3,8 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useRef, useState } from 'react'
 import { LogoMark } from '../../components/layout/Logo'
 import { Button } from '../../components/ui/Button'
-import { importBackup } from '../../lib/backup'
-import { toast } from '../../lib/fx'
+import { applyBackup, readBackup } from '../../lib/backup'
 import { connectMidi } from '../../lib/input/midi'
 import { startMic } from '../../lib/input/mic'
 import { go } from '../../router'
@@ -29,10 +28,12 @@ export function Onboarding() {
   }
   // Already using Tonic on another device (e.g. the Mac): bring that progress here and skip the tour.
   const importFile = async (f: File) => {
-    const r = await importBackup(f)
-    if (!r.ok) return setImportError(r.message)
-    toast({ kind: 'info', title: r.message })
-    finish('/')
+    try {
+      // A new device has nothing to lose, so the file simply replaces it (the app reloads with your progress).
+      await applyBackup(await readBackup(f), 'replace')
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : 'That file isn’t a Tonic progress file.')
+    }
   }
 
   return (

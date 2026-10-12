@@ -1,13 +1,14 @@
-import { Download, Keyboard, Monitor, Music, RotateCcw, Sparkles, Upload, User, Volume2 } from 'lucide-react'
+import { Download, Keyboard, Monitor, Music, RotateCcw, Sparkles, Undo2, Upload, User, Volume2 } from 'lucide-react'
 import { type ReactNode, useRef, useState } from 'react'
 import { ConnectionPill } from '../../components/layout/ConnectionPill'
 import { Page } from '../../components/layout/Page'
 import { Button } from '../../components/ui/Button'
 import { Segmented, Slider, Toggle } from '../../components/ui/controls'
 import { audio } from '../../lib/audio/engine'
-import { exportBackup, importBackup } from '../../lib/backup'
+import { type Backup, canUndoImport, exportBackup, lastBackupAt, readBackup, undoImport } from '../../lib/backup'
 import { openShortcuts } from '../../lib/shortcuts'
 import { useProgress } from '../../state/progress'
+import { ImportPreview } from './ImportPreview'
 import { type KeyLabels, type Naming, type UiScale, useSettings } from '../../state/settings'
 
 export function Settings() {
@@ -17,6 +18,8 @@ export function Settings() {
   const setGoal = useProgress((p) => p.setGoal)
   const [confirmReset, setConfirmReset] = useState(false)
   const [importMsg, setImportMsg] = useState<string | null>(null)
+  const [pending, setPending] = useState<Backup | null>(null)
+  const [lastBackup, setLastBackup] = useState(lastBackupAt)
   const file = useRef<HTMLInputElement>(null)
 
   return (
@@ -137,9 +140,17 @@ export function Settings() {
               ]}
             />
           </Row>
-          <Row label="Move your progress" hint="Your progress and imported songs live in this browser. Export them to move to another device.">
-            <div className="flex gap-2">
-              <Button size="sm" variant="secondary" icon={Download} onClick={exportBackup}>
+          <Row
+            label="Move your progress"
+            hint={`Your progress and imported songs live in this browser. Export them to move to another device (or keep a backup). ${backupNote(lastBackup)}`}
+          >
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={Download}
+                onClick={() => void exportBackup().then(() => setLastBackup(lastBackupAt()))}
+              >
                 Export
               </Button>
               <Button size="sm" variant="secondary" icon={Upload} onClick={() => file.current?.click()}>
@@ -152,13 +163,22 @@ export function Settings() {
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0]
-                  if (f) void importBackup(f).then((r) => setImportMsg(r.message))
+                  if (f) {
+                    setImportMsg(null)
+                    readBackup(f).then(setPending, (err: Error) => setImportMsg(err.message))
+                  }
                   e.target.value = ''
                 }}
               />
+              {canUndoImport() && (
+                <Button size="sm" variant="ghost" icon={Undo2} onClick={undoImport}>
+                  Undo import
+                </Button>
+              )}
             </div>
           </Row>
-          {importMsg && <p className="text-sm font-bold text-teal">{importMsg}</p>}
+          {importMsg && <p className="text-sm font-bold text-bad">{importMsg}</p>}
+          <ImportPreview backup={pending} onClose={() => setPending(null)} />
           <Row label="Welcome tour" hint="See the first-launch steps again (connecting your keyboard, where to start).">
             <Button size="sm" variant="secondary" icon={Sparkles} onClick={() => set({ onboarded: false })}>
               Show welcome again
@@ -227,4 +247,10 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
       {children}
     </div>
   )
+}
+
+function backupNote(at: number | null): string {
+  if (!at) return 'No backup yet.'
+  const days = Math.floor((Date.now() - at) / 864e5)
+  return `Last backup: ${days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`}.`
 }
