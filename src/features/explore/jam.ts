@@ -1,4 +1,4 @@
-import { type Chord, type Key, type Note, chordTones, mod, parseNote, pcOf, romanToChord, spellRoot } from '../../lib/theory'
+import { type Chord, FLAT_SPELL, type Key, type Note, SHARP_SPELL, chordTones, midiOf, mod, parseNote, pcOf, placeAtMidi, romanToChord, spellRoot } from '../../lib/theory'
 
 /** Progression Jam: presets, roman-numeral helpers and accompaniment patterns (pure, testable). */
 
@@ -78,6 +78,23 @@ export const PALETTE = [
   'i', 'iv', 'bIII', 'bVI', 'bVII',
 ]
 
+/**
+ * More chips: the blues' dominant sevenths, sus4s, the I and V with their 3rd in the bass (C/E and G/B in C),
+ * and the major II and III, which pull to V and vi.
+ */
+export const MORE_CHIPS = ['I7', 'IV7', 'Isus4', 'Vsus4', 'I/3', 'V/3', 'II', 'III']
+
+/** Every chip, grouped for the picker. */
+export const PALETTE_GROUPS: { title: string; romans: string[] }[] = [
+  { title: 'In the key', romans: ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'] },
+  { title: 'Sevenths', romans: ['Imaj7', 'ii7', 'iii7', 'IVmaj7', 'V7', 'vi7', 'I7', 'IV7'] },
+  { title: 'Sus and slash', romans: ['Isus4', 'Vsus4', 'I/3', 'V/3'] },
+  { title: 'Outside the key', romans: ['i', 'iv', 'bIII', 'bVI', 'bVII', 'II', 'III'] },
+]
+
+/** The longest progression you can build. */
+export const MAX_CHORDS = 16
+
 /** Numerals with a real flat sign: "bVII" → "♭VII". */
 export const romanLabel = (rn: string) => rn.replace(/^b/, '♭').replace(/^#/, '♯')
 
@@ -102,18 +119,30 @@ export function jamTonic(pc: number, minor: boolean): Note {
   return parseNote(`${(minor ? MINOR_TONICS : MAJOR_TONICS)[mod(pc, 12)]}4`)
 }
 
-/** Roots no chord chart uses: double flats and sharps, and F♭ C♭ E♯ B♯. */
-function awkwardRoot(n: Note): boolean {
+/** Names no chord chart uses: double flats and sharps, and F♭ C♭ E♯ B♯. */
+function awkward(n: Note): boolean {
   return Math.abs(n.acc) > 1 || (n.acc === -1 && (n.letter === 0 || n.letter === 3)) || (n.acc === 1 && (n.letter === 2 || n.letter === 6))
 }
 
-/** A chord with an awkward root, respelled from its simpler enharmonic: B𝄫 → A, C♭ → B, E♯ → F. */
+/** The plain name of an awkward note, keeping to its side: C𝄪 → D, E♯ → F, C𝄫 → B♭. */
+function plainNote(n: Note): Note {
+  const [letter, acc] = (n.acc > 0 ? SHARP_SPELL : FLAT_SPELL)[pcOf(n)]
+  return placeAtMidi(letter, acc, midiOf(n))
+}
+
+/**
+ * A chord with an awkward root, respelled from its simpler enharmonic: B𝄫 → A, C♭ → B, E♯ → F. An awkward
+ * slash bass is written plainly too, the way chord charts do: C♯/E♯ → C♯/F, A♯/C𝄪 → A♯/D.
+ */
 export function plainSpelling(c: Chord): Chord {
-  if (!awkwardRoot(c.root)) return c
-  const root = { ...spellRoot(pcOf(c.root), c.type, c.root.acc > 0 ? 'sharp' : 'flat'), oct: c.root.oct }
-  const bass = c.bass
-  if (!bass) return { ...c, root }
-  return { ...c, root, bass: chordTones(root, c.type).find((n) => pcOf(n) === pcOf(bass)) ?? bass }
+  let out = c
+  if (awkward(c.root)) {
+    const root = { ...spellRoot(pcOf(c.root), c.type, c.root.acc > 0 ? 'sharp' : 'flat'), oct: c.root.oct }
+    const bass = c.bass
+    out = bass ? { ...c, root, bass: chordTones(root, c.type).find((n) => pcOf(n) === pcOf(bass)) ?? bass } : { ...c, root }
+  }
+  if (out.bass && awkward(out.bass)) out = { ...out, bass: plainNote(out.bass) }
+  return out
 }
 
 /**
@@ -140,17 +169,31 @@ export function isProgression(v: unknown): v is string[] {
 }
 
 const ROMANS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
+const accSign = (acc: number) => (acc < 0 ? '♭'.repeat(-acc) : '♯'.repeat(acc))
 
-/** Nashville number for a numeral: vi → 6m, V7 → 57, ♭VII → ♭7, vii° → 7°. */
+/**
+ * Nashville number for a numeral: vi → 6m, V7 → 57, ♭VII → ♭7, vii° → 7°. A slash numeral names its bass by
+ * scale degree, as Nashville charts do: I/3 (C/E) → 1/3, V/3 (G/B) → 5/7.
+ */
 export function nashville(rn: string): string {
-  const m = /^([b#♭♯]?)(VII|VI|V|IV|III|II|I|vii|vi|v|iv|iii|ii|i)(.*)$/.exec(rn)
+  const m = /^([b#♭♯]?)(VII|VI|V|IV|III|II|I|vii|vi|v|iv|iii|ii|i)(.*?)(\/\d)?$/.exec(rn)
   if (!m) return rn
-  const [, acc, num, suffix] = m
+  const [, acc, num, suffix, slash] = m
   const deg = ROMANS.indexOf(num.toUpperCase()) + 1
   const lower = num !== num.toUpperCase()
   const a = acc === 'b' || acc === '♭' ? '♭' : acc ? '♯' : ''
   const q = suffix.startsWith('°') || suffix.startsWith('ø') ? suffix : lower ? `m${suffix}` : suffix
-  return `${a}${deg}${q}`
+  return `${a}${deg}${q}${slash ? `/${bassDegree(rn) ?? slash.slice(1)}` : ''}`
+}
+
+/** The scale degree of a slash numeral's bass, e.g. "7" for V/3 or "♭6" for iv/3 (read in C, where every degree is natural). */
+function bassDegree(rn: string): string | null {
+  try {
+    const bass = romanToChord(rn, { tonic: parseNote('C4'), mode: 'major' }).bass
+    return bass ? `${accSign(bass.acc)}${bass.letter + 1}` : null
+  } catch {
+    return null
+  }
 }
 
 export type PatternId = 'block' | 'fingerstyle' | 'ballad'
@@ -164,9 +207,33 @@ export interface Hit {
   vel: number
 }
 
+/** The lowest chord tone at or above `from` (MIDI). */
+function toneAbove(from: number, pcs: number[]): number {
+  let m = from
+  while (!pcs.includes(mod(m, 12))) m++
+  return m
+}
+
+/** The highest chord tone at or below `from` (MIDI). */
+function toneBelow(from: number, pcs: number[]): number {
+  let m = from
+  while (!pcs.includes(mod(m, 12))) m--
+  return m
+}
+
+/**
+ * The left hand's "fifth": the chord tone about a fifth above the bass (the real 5th of a root-position chord,
+ * ♭5 of a diminished one, the root above a 3rd in the bass), or a 4th-ish below when that would climb too high.
+ */
+function upperBass(bass: number, pcs: number[]): number {
+  const up = toneAbove(bass + 6, pcs)
+  return up > 55 ? toneBelow(bass - 4, pcs) : up
+}
+
 /**
  * What to play over one chord. `ticks` is the chord's length in eighth notes (8 = one bar of 4/4).
- * `pcs` are the chord tones (root first), `rh` the voiced right hand, `bass` the left-hand root.
+ * `pcs` are the chord tones (root first), `rh` the voiced right hand, `bass` the left-hand bass note (the root,
+ * or the slash note of a slash chord). Left-hand patterns only use chord tones, so C/E or B° never get a stray note.
  */
 export function patternHits(pattern: PatternId, rh: number[], bass: number, pcs: number[], ticks: number): Hit[] {
   const hits: Hit[] = []
@@ -176,10 +243,7 @@ export function patternHits(pattern: PatternId, rh: number[], bass: number, pcs:
   } else if (pattern === 'fingerstyle') {
     // Alternating bass like Travis picking, fingers rolling through the chord.
     hits.push({ tick: 0, notes: [bass], dur: 4, vel: 0.66 })
-    if (ticks > 4) {
-      const fifth = bass + 7 > 55 ? bass - 5 : bass + 7
-      hits.push({ tick: 4, notes: [fifth], dur: 4, vel: 0.56 })
-    }
+    if (ticks > 4) hits.push({ tick: 4, notes: [upperBass(bass, pcs)], dur: 4, vel: 0.56 })
     const order = rh.length >= 4 ? [0, 1, 2, 3, 2, 1, 2, 3] : [0, 1, 2, 1, 0, 1, 2, 1]
     for (let t = 0; t < ticks; t++) {
       const n = rh[Math.min(order[t % 8], rh.length - 1)]
@@ -187,8 +251,7 @@ export function patternHits(pattern: PatternId, rh: number[], bass: number, pcs:
     }
   } else {
     // Ballad: the left hand rolls 1–5–8–10, the flowing piano-ballad pattern, under a soft held chord.
-    const third = pcs.length > 1 ? mod(pcs[1] - pcs[0], 12) : 7
-    const wave = [bass, bass + 7, bass + 12, bass + 12 + third]
+    const wave = [bass, toneAbove(bass + 6, pcs), bass + 12, toneAbove(bass + 14, pcs)]
     const order = [0, 1, 2, 3, 2, 1, 2, 1]
     hits.push({ tick: 0, notes: rh, dur: ticks, vel: 0.4 })
     for (let t = 0; t < ticks; t++) hits.push({ tick: t, notes: [wave[order[t % 8]]], dur: 3, vel: t === 0 ? 0.6 : 0.46 })

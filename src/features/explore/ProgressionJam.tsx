@@ -15,7 +15,20 @@ import { heldMidis, useLive } from '../../state/live'
 import { usePref } from '../../state/prefs'
 import { spellVoicing } from './chordTools'
 import { hat, kick, snare } from './drums'
-import { PALETTE, PRESETS, type PatternId, drumHits, isMinorProgression, isProgression, jamChords, jamTonic, nashville, patternHits, romanLabel } from './jam'
+import {
+  MAX_CHORDS,
+  PALETTE_GROUPS,
+  PRESETS,
+  type PatternId,
+  drumHits,
+  isMinorProgression,
+  isProgression,
+  jamChords,
+  jamTonic,
+  nashville,
+  patternHits,
+  romanLabel,
+} from './jam'
 import { OctavePicker } from './OctavePicker'
 import { useMicChords } from '../../lib/input/mic'
 
@@ -55,7 +68,11 @@ export function ProgressionJam() {
   const minor = useMemo(() => isMinorProgression(romans), [romans])
   const tonicName = (pc: number) => pitchName(jamTonic(pc, minor))
   const chords = useMemo(() => jamChords(romans, tonic, minor), [romans, tonic, minor])
-  const paletteChords = useMemo(() => jamChords(PALETTE, tonic, minor), [tonic, minor])
+  const paletteChords = useMemo(() => {
+    const all = PALETTE_GROUPS.flatMap((g) => g.romans)
+    const cs = jamChords(all, tonic, minor)
+    return Object.fromEntries(all.map((r, i) => [r, cs[i]]))
+  }, [tonic, minor])
   const voicings = useMemo(() => voiceProgression(chords, { center: 64, low: 57, high: 79 }), [chords])
   const basses = useMemo(() => chords.map((c) => bassFor(c, 40)), [chords])
   const pcsList = useMemo(() => chords.map((c) => chordPcs(c)), [chords])
@@ -310,32 +327,46 @@ export function ProgressionJam() {
                 </Button>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {PALETTE.map((r, i) => (
-                <motion.button
-                  key={r}
-                  type="button"
-                  whileTap={{ scale: 0.92 }}
-                  disabled={romans.length >= 16}
-                  onClick={() => {
-                    edit([...romans, r])
-                    const c = paletteChords[i]
-                    playNotes([bassFor(c, 40), ...voiceProgression([c], { center: 64, low: 57, high: 79 })[0]], { dur: 1.2, strum: 0.02 })
-                  }}
-                  className="flex min-w-[4.5rem] flex-col items-center rounded-2xl border border-white/10 bg-night-750 px-3 py-1.5 transition-colors hover:border-gold/50 disabled:opacity-40"
-                >
-                  <span className="text-sm font-extrabold text-gold">
-                    <MusicText text={romanLabel(r)} />
-                  </span>
-                  <span className="font-display text-lg font-bold">
-                    <MusicText text={chordSymbol(paletteChords[i])} />
-                  </span>
-                </motion.button>
+            <div className="space-y-3">
+              {PALETTE_GROUPS.map((g) => (
+                <div key={g.title}>
+                  <div className="mb-1.5 text-xs font-extrabold uppercase tracking-wider text-ink-mute">{g.title}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {g.romans.map((r) => {
+                      const c = paletteChords[r]
+                      return (
+                        <motion.button
+                          key={r}
+                          type="button"
+                          whileTap={{ scale: 0.92 }}
+                          disabled={romans.length >= MAX_CHORDS}
+                          onClick={() => {
+                            edit([...romans, r])
+                            playNotes([bassFor(c, 40), ...voiceProgression([c], { center: 64, low: 57, high: 79 })[0]], { dur: 1.2, strum: 0.02 })
+                          }}
+                          className="flex min-h-14 min-w-[4.5rem] flex-col items-center justify-center rounded-2xl border border-white/10 bg-night-750 px-3 py-1.5 transition-colors hover:border-gold/50 disabled:opacity-40"
+                        >
+                          <span className="text-sm font-extrabold text-gold">
+                            <MusicText text={romanLabel(r)} />
+                          </span>
+                          <span className="font-display text-lg font-bold">
+                            <MusicText text={chordSymbol(c)} />
+                          </span>
+                        </motion.button>
+                      )
+                    })}
+                  </div>
+                </div>
               ))}
             </div>
             <p className="mt-3 flex gap-2 text-sm text-ink-mute">
               <Info size={16} className="mt-0.5 shrink-0" />
-              Numerals count up the major scale of the key: uppercase = major chord, lowercase = minor. ♭ numerals borrow chords from the minor key.
+              <MusicText
+                text={
+                  'Numerals count up the major scale of the key: uppercase = major chord, lowercase = minor. ♭ numerals borrow chords from the minor key, ' +
+                  'and II and III are major chords that pull to V and vi. A slash puts a chord note in the bass: I/3 is the I chord over its 3rd (C/E in C).'
+                }
+              />
             </p>
           </Card>
         </section>
