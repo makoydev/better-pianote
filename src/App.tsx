@@ -5,6 +5,7 @@ import { ErrorBoundary } from './components/layout/ErrorBoundary'
 import { Sidebar, type Tab, TabBar } from './components/layout/Nav'
 import { ShortcutSheet } from './components/layout/ShortcutSheet'
 import { SoundWake } from './components/layout/SoundWake'
+import { UpdateBanner } from './components/layout/UpdateBanner'
 import { Toaster } from './components/layout/Toaster'
 import { XpToaster } from './components/layout/XpToaster'
 import { Home } from './features/home/Home'
@@ -167,6 +168,7 @@ export function App() {
       <Toaster />
       <ShortcutSheet />
       <SoundWake />
+      <UpdateBanner />
       {!onboarded && <Onboarding />}
     </MotionConfig>
   )

@@ -9,6 +9,7 @@ import { installClickBlur } from './lib/focus'
 import { installComputerKeys } from './lib/input/keys'
 import { autoStartMic } from './lib/input/mic'
 import { autoConnectMidi } from './lib/input/midi'
+import { registerServiceWorker } from './lib/offline'
 import { loadLibrary } from './state/library'
 
 if (STATIC) MotionGlobalConfig.skipAnimations = true
@@ -53,3 +54,6 @@ createRoot(document.getElementById('root')!).render(
 
 // Download the piano once the first screen is up, so it's ready before your first note.
 window.setTimeout(prefetchSamples, 800)
+
+// Offline support for the built app (not the dev server, not automated screenshots).
+if (import.meta.env.PROD && !STATIC) registerServiceWorker()

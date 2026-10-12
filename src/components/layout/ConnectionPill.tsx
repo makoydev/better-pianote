@@ -1,6 +1,7 @@
 import { Keyboard, Mic, Usb } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'
+import { startMic } from '../../lib/input/mic'
 import { useLive } from '../../state/live'
 import { ConnectSheet } from './ConnectSheet'
 
@@ -24,17 +25,25 @@ export function ConnectionPill({ compact = false }: { compact?: boolean }) {
   } else if (midi === 'ready') {
     dot = '#ffc857'
     label = 'No keyboard found'
+  } else if (midi === 'unsupported' && mic !== 'unsupported') {
+    // iPad: the mic is the way to play the real keyboard, so one tap starts it.
+    label = 'Use mic'
+    Icon = Mic
   } else if (midi === 'unsupported') {
     label = 'On-screen keys'
     Icon = Keyboard
   }
+  const startsMic = midi === 'unsupported' && (mic === 'off' || mic === 'denied')
 
   return (
     <>
       <motion.button
         type="button"
         whileTap={{ scale: 0.96 }}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          if (startsMic) void startMic()
+          setOpen(true)
+        }}
         className="inline-flex h-11 max-w-[15rem] items-center gap-2 rounded-full border border-white/10 bg-night-750/90 px-3.5 text-sm font-extrabold text-ink-soft transition-colors hover:border-white/20 hover:text-ink"
         title="Keyboard connection"
       >

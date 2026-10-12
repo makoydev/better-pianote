@@ -1,4 +1,4 @@
-import { ArrowRight, Disc3, Ear, Flame, Layers, ListMusic, Music, Piano, Sparkles, Target, Usb, Zap } from 'lucide-react'
+import { ArrowRight, Disc3, Ear, Flame, Layers, ListMusic, Mic, Music, Piano, Sparkles, Target, Usb, Zap } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 import { ConnectSheet } from '../../components/layout/ConnectSheet'
@@ -8,6 +8,7 @@ import { Tile } from '../../components/ui/Card'
 import { Icon } from '../../components/ui/Icon'
 import { ProgressBar, ProgressRing } from '../../components/ui/progress'
 import { ALL_LESSONS, UNITS, nextLesson } from '../../content'
+import { startMic } from '../../lib/input/mic'
 import { levelFor } from '../../lib/levels'
 import { go } from '../../router'
 import { useLive } from '../../state/live'
@@ -31,6 +32,7 @@ export function Home() {
   const chords = useProgress((s) => s.chordsFound.length)
   const midi = useLive((s) => s.midi)
   const devices = useLive((s) => s.midiDevices)
+  const mic = useLive((s) => s.mic)
   const [connectOpen, setConnectOpen] = useState(false)
   const level = levelFor(xp)
   const next = nextLesson(lessons)
@@ -107,6 +109,22 @@ export function Home() {
               </span>
             </div>
           </motion.button>
+        )}
+
+        {/* iPad: no USB keyboard possible, so offer the microphone */}
+        {midi === 'unsupported' && mic !== 'on' && mic !== 'unsupported' && (
+          <motion.div variants={item} className="glass flex flex-wrap items-center gap-4 rounded-3xl p-5">
+            <span className="flex size-14 items-center justify-center rounded-2xl bg-violet/15 text-violet">
+              <Mic size={28} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-lg font-extrabold">Play your keyboard through the mic</div>
+              <div className="text-ink-soft">The app listens to your CT-S1’s speakers, so lessons and games react to your real keys. Turn the keyboard up a little.</div>
+            </div>
+            <Button variant="violet" icon={Mic} onClick={() => void startMic()} disabled={mic === 'starting'}>
+              {mic === 'denied' ? 'Allow the mic' : 'Start listening'}
+            </Button>
+          </motion.div>
         )}
 
         {/* Connect */}

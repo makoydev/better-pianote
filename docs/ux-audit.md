@@ -107,12 +107,14 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **23. Fit screens to the window.** On a 13" MacBook, lesson pictures, Chord Explorer and Jam push the keyboard
   below the fold, and Start is below the fold on game setup screens (reproduced). Sticky action bar, measured
   heights. `M`
-- [ ] **24. Work offline.** No service worker: the iPad app needs the network on every cold launch and re-downloads
+- [x] **24. Work offline.** No service worker: the iPad app needs the network on every cold launch and re-downloads
   the 2 MB piano. Precache the shell and samples, show "New version – Reload". `M`
+  *Done:* a service worker (written at build time by `vite.config.ts` from `scripts/service-worker.js`) keeps the whole build on the device: 132 files, 3.8 MB including the piano. A new build installs in the background and "A new version of Tonic is ready · Reload" lets you switch when you like (`lib/offline.ts`, `UpdateBanner.tsx`). Checked with the production build: installed, updated through the banner, and loaded with the server stopped.
 - [ ] **25. Put the mic first on iPad.** The connect sheet opens on a disabled USB button saying "try Chrome or Edge".
   Mic first when Web MIDI is missing, an inline "Start listening" on play steps, a "Heard: C4" readout, headphones
   mode. `S–M`
   *Partly done:* play steps show `MicPrompt`: "Playing on your keyboard? Start listening" when there's no USB keyboard, then "Heard: E4" with a level bar.
+  *Partly done:* on an iPad the connect sheet leads with the microphone (USB and Bluetooth tucked under "On a Mac or PC"), the header pill reads "Use mic" and one tap starts it, and Home offers "Play your keyboard through the mic". Games and songs get `MicPrompt` in their batches.
 - [x] **26. Celebrate level-ups and the daily goal when they happen**, and show goal progress on results screens.
   *Where:* `state/progress.ts`, `XpToaster.tsx`, results screens. `S`
   *Partly done:* level-ups and the daily goal pop a toast with sound and confetti the moment they happen (`progress.ts` → `Toaster.tsx`); a goal bar (`GoalProgress`) is on the lesson complete screen. Games and song results get it once those batches are merged.

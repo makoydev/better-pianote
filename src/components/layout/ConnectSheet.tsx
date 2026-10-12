@@ -10,6 +10,7 @@ import { MusicText } from '../MusicText'
 import { Button } from '../ui/Button'
 import { Slider, Toggle } from '../ui/controls'
 import { Modal } from '../ui/Modal'
+import { openShortcuts } from '../../lib/shortcuts'
 
 /** How to hook up a Casio CT-S1 (or any keyboard), plus the mic and computer-key fallbacks. */
 export function ConnectSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -33,125 +34,159 @@ function SheetBody() {
   const set = useSettings((s) => s.set)
   const connected = midi === 'ready' && devices.length > 0
 
+  // On an iPad (no Web MIDI) the microphone is the way to play your keyboard, so it comes first.
+  const noMidi = midi === 'unsupported'
+  const usb = (
+    <section className="rounded-2xl border border-white/8 bg-night-850 p-5">
+      <div className="mb-3 flex items-center gap-3">
+        <span className="flex size-11 items-center justify-center rounded-xl bg-good/15 text-good">
+          <Usb size={24} />
+        </span>
+        <div>
+          <h3 className="text-lg font-extrabold text-ink">USB cable (best)</h3>
+          <p className="text-sm">The app sees every key you press, how hard, and your sustain pedal.</p>
+        </div>
+      </div>
+      <ol className="mb-4 space-y-2 pl-1 text-[0.98rem]">
+        <li>
+          <b className="text-ink">1.</b> Plug a USB cable into the keyboard's <b className="text-ink">USB TO HOST</b> port and your computer. On the CT-S1
+          that's the small <b className="text-ink">micro-USB</b> port on the back. The bigger USB-A port (USB TO DEVICE) is for Casio's Bluetooth adapter
+          and won't talk to a computer.
+        </li>
+        <li>
+          <b className="text-ink">2.</b> Turn the keyboard on. Use <b className="text-ink">Chrome or Edge</b> (Safari and iPhone/iPad browsers can't read MIDI yet).
+        </li>
+        <li>
+          <b className="text-ink">3.</b> Press Connect and allow MIDI access.
+        </li>
+      </ol>
+      {midi === 'ready' && !connected && <Troubleshoot />}
+      {connected ? (
+        <div className="flex items-center gap-2 rounded-xl bg-good/12 px-4 py-3 font-extrabold text-good">
+          <CheckCircle2 size={22} /> Connected: {devices.join(', ')}. Play a note!
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button icon={Usb} onClick={() => void connectMidi()} disabled={midi === 'unsupported' || midi === 'requesting'}>
+            {midi === 'requesting' ? 'Waiting for permission…' : 'Connect'}
+          </Button>
+          <span className="text-sm">
+            {midi === 'unsupported' && 'This browser can’t read MIDI.'}
+            {midi === 'denied' && 'MIDI access was blocked. Allow it from the address bar’s site settings, then try again.'}
+            {midi === 'ready' && 'MIDI is on, but no keyboard is plugged in yet.'}
+          </span>
+        </div>
+      )}
+      <div className="mt-4 space-y-3 border-t border-white/8 pt-4">
+        <label className="flex items-center justify-between gap-4">
+          <span>
+            <span className="block font-bold text-ink">Also play the app's piano sound</span>
+            <span className="text-sm">Off: your keyboard makes its own sound.</span>
+          </span>
+          <Toggle checked={midiThru} onChange={(v) => set({ midiThru: v })} label="Play app sound for keyboard notes" />
+        </label>
+        <label className="flex items-center justify-between gap-4">
+          <span>
+            <span className="block font-bold text-ink">Play demos through my keyboard</span>
+            <span className="text-sm">Example chords come out of the keyboard's speakers.</span>
+          </span>
+          <Toggle checked={demoToKeyboard} onChange={(v) => set({ demoToKeyboard: v })} label="Play demos through my keyboard" />
+        </label>
+      </div>
+    </section>
+  )
+  const bluetooth = (
+    <section className="flex gap-3 rounded-2xl border border-white/8 bg-night-850 p-5">
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-sky/15 text-sky">
+        <Bluetooth size={24} />
+      </span>
+      <div>
+        <h3 className="text-lg font-extrabold text-ink">Bluetooth</h3>
+        <p className="text-sm">
+          With Casio's WU-BT10 adapter the CT-S1 can do Bluetooth MIDI. Pair it in your computer's Bluetooth/MIDI settings first
+          (on a Mac: Audio MIDI Setup → MIDI Studio → Bluetooth), then press Connect above.
+        </p>
+      </div>
+    </section>
+  )
+  const listen = (
+    <section className="rounded-2xl border border-white/8 bg-night-850 p-5">
+      <div className="mb-3 flex items-center gap-3">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-violet/15 text-violet">
+          <Mic size={24} />
+        </span>
+        <div>
+          <h3 className="text-lg font-extrabold text-ink">{noMidi ? 'Play through the microphone' : 'No cable? Use the microphone'}</h3>
+          <p className="text-sm">Works on iPad too. It hears single notes in games and lessons, and whole chords in Free Play and chord exercises. Turn the keyboard up a little and keep the room quiet.</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-4">
+        {mic === 'on' ? (
+          <Button variant="secondary" icon={MicOff} onClick={stopMic}>
+            Stop listening
+          </Button>
+        ) : (
+          <Button variant="violet" icon={Mic} onClick={() => void startMic()} disabled={mic === 'unsupported' || mic === 'starting'}>
+            Start listening
+          </Button>
+        )}
+        {mic === 'on' && connected && <span className="text-sm font-bold">Paused while your USB keyboard is connected.</span>}
+        {mic === 'on' && !connected && (
+          <div className="flex h-3 w-40 overflow-hidden rounded-full bg-white/10" aria-label="Mic level">
+            <div className="h-full bg-sky transition-[width] duration-75" style={{ width: `${micLevel * 100}%` }} />
+          </div>
+        )}
+        {mic === 'denied' && <span className="text-sm text-bad">Microphone access was blocked.</span>}
+      </div>
+    </section>
+  )
+  const keys = (
+    <section className="rounded-2xl border border-white/8 bg-night-850 p-5">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold">
+            <Keyboard size={24} />
+          </span>
+          <div>
+            <h3 className="text-lg font-extrabold text-ink">Computer keyboard</h3>
+            <p className="text-sm">Handy away from the piano. Z and X change octave (now: C{keysOctave}).</p>
+          </div>
+        </div>
+        <Toggle checked={computerKeys} onChange={(v) => set({ computerKeys: v })} label="Computer keyboard playing" />
+      </div>
+      <KeyHints />
+      <Button size="sm" variant="ghost" icon={Keyboard} onClick={openShortcuts} className="mt-3">
+        All shortcuts (?)
+      </Button>
+    </section>
+  )
+
   return (
     <div className="space-y-5 text-ink-soft">
       <TestStrip />
-      <section className="rounded-2xl border border-white/8 bg-night-850 p-5">
-        <div className="mb-3 flex items-center gap-3">
-          <span className="flex size-11 items-center justify-center rounded-xl bg-good/15 text-good">
-            <Usb size={24} />
-          </span>
-          <div>
-            <h3 className="text-lg font-extrabold text-ink">USB cable (best)</h3>
-            <p className="text-sm">The app sees every key you press, how hard, and your sustain pedal.</p>
-          </div>
-        </div>
-        <ol className="mb-4 space-y-2 pl-1 text-[0.98rem]">
-          <li>
-            <b className="text-ink">1.</b> Plug a USB cable into the keyboard's <b className="text-ink">USB TO HOST</b> port and your computer. On the CT-S1
-            that's the small <b className="text-ink">micro-USB</b> port on the back. The bigger USB-A port (USB TO DEVICE) is for Casio's Bluetooth adapter
-            and won't talk to a computer.
-          </li>
-          <li>
-            <b className="text-ink">2.</b> Turn the keyboard on. Use <b className="text-ink">Chrome or Edge</b> (Safari and iPhone/iPad browsers can't read MIDI yet).
-          </li>
-          <li>
-            <b className="text-ink">3.</b> Press Connect and allow MIDI access.
-          </li>
-        </ol>
-        {midi === 'ready' && !connected && <Troubleshoot />}
-        {connected ? (
-          <div className="flex items-center gap-2 rounded-xl bg-good/12 px-4 py-3 font-extrabold text-good">
-            <CheckCircle2 size={22} /> Connected: {devices.join(', ')}. Play a note!
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button icon={Usb} onClick={() => void connectMidi()} disabled={midi === 'unsupported' || midi === 'requesting'}>
-              {midi === 'requesting' ? 'Waiting for permission…' : 'Connect'}
-            </Button>
-            <span className="text-sm">
-              {midi === 'unsupported' && 'This browser has no MIDI support. Try Chrome or Edge, or use the mic below.'}
-              {midi === 'denied' && 'MIDI access was blocked. Allow it from the address bar’s site settings, then try again.'}
-              {midi === 'ready' && 'MIDI is on, but no keyboard is plugged in yet.'}
-            </span>
-          </div>
-        )}
-        <div className="mt-4 space-y-3 border-t border-white/8 pt-4">
-          <label className="flex items-center justify-between gap-4">
-            <span>
-              <span className="block font-bold text-ink">Also play the app's piano sound</span>
-              <span className="text-sm">Off: your keyboard makes its own sound.</span>
-            </span>
-            <Toggle checked={midiThru} onChange={(v) => set({ midiThru: v })} label="Play app sound for keyboard notes" />
-          </label>
-          <label className="flex items-center justify-between gap-4">
-            <span>
-              <span className="block font-bold text-ink">Play demos through my keyboard</span>
-              <span className="text-sm">Example chords come out of the keyboard's speakers.</span>
-            </span>
-            <Toggle checked={demoToKeyboard} onChange={(v) => set({ demoToKeyboard: v })} label="Play demos through my keyboard" />
-          </label>
-        </div>
-      </section>
-
-      <section className="flex gap-3 rounded-2xl border border-white/8 bg-night-850 p-5">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-sky/15 text-sky">
-          <Bluetooth size={24} />
-        </span>
-        <div>
-          <h3 className="text-lg font-extrabold text-ink">Bluetooth</h3>
-          <p className="text-sm">
-            With Casio's WU-BT10 adapter the CT-S1 can do Bluetooth MIDI. Pair it in your computer's Bluetooth/MIDI settings first
-            (on a Mac: Audio MIDI Setup → MIDI Studio → Bluetooth), then press Connect above.
-          </p>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-white/8 bg-night-850 p-5">
-        <div className="mb-3 flex items-center gap-3">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-violet/15 text-violet">
-            <Mic size={24} />
-          </span>
-          <div>
-            <h3 className="text-lg font-extrabold text-ink">No cable? Use the microphone</h3>
-            <p className="text-sm">Works on iPad too. It hears single notes in games and lessons, and whole chords in Free Play and chord exercises. Turn the keyboard up a little and keep the room quiet.</p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-4">
-          {mic === 'on' ? (
-            <Button variant="secondary" icon={MicOff} onClick={stopMic}>
-              Stop listening
-            </Button>
-          ) : (
-            <Button variant="violet" icon={Mic} onClick={() => void startMic()} disabled={mic === 'unsupported' || mic === 'starting'}>
-              Start listening
-            </Button>
-          )}
-          {mic === 'on' && connected && <span className="text-sm font-bold">Paused while your USB keyboard is connected.</span>}
-          {mic === 'on' && !connected && (
-            <div className="flex h-3 w-40 overflow-hidden rounded-full bg-white/10" aria-label="Mic level">
-              <div className="h-full bg-sky transition-[width] duration-75" style={{ width: `${micLevel * 100}%` }} />
+      {noMidi ? (
+        <>
+          {listen}
+          {keys}
+          <details className="rounded-2xl border border-white/8 bg-night-850 p-5">
+            <summary className="cursor-pointer text-lg font-extrabold text-ink">On a Mac or PC: USB cable or Bluetooth</summary>
+            <p className="mt-2 text-sm">
+              iPad and iPhone browsers can’t read MIDI yet. On a computer, open Tonic in Chrome or Edge and connect the CT-S1 with a USB cable.
+            </p>
+            <div className="mt-4 space-y-5">
+              {usb}
+              {bluetooth}
             </div>
-          )}
-          {mic === 'denied' && <span className="text-sm text-bad">Microphone access was blocked.</span>}
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-white/8 bg-night-850 p-5">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold">
-              <Keyboard size={24} />
-            </span>
-            <div>
-              <h3 className="text-lg font-extrabold text-ink">Computer keyboard</h3>
-              <p className="text-sm">Handy away from the piano. Z and X change octave (now: C{keysOctave}).</p>
-            </div>
-          </div>
-          <Toggle checked={computerKeys} onChange={(v) => set({ computerKeys: v })} label="Computer keyboard playing" />
-        </div>
-        <KeyHints />
-      </section>
+          </details>
+        </>
+      ) : (
+        <>
+          {usb}
+          {bluetooth}
+          {listen}
+          {keys}
+        </>
+      )}
     </div>
   )
 }
