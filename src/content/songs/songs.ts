@@ -1,12 +1,13 @@
-import type { SongSource } from './types'
+import type { SongText } from './parse'
 
 /**
  * Public-domain pieces only, listed from easiest to hardest (the Songs page keeps this order).
  * Melodies are for the right hand; chord symbols are simple, standard harmonisations you can play
- * with the left hand (or strum in your head, guitar-style).
- * Format: see SongSource in ./types.ts. songs.test.ts checks every bar adds up.
+ * with the left hand (or strum in your head, guitar-style). The Advanced pieces have both hands as the
+ * composer wrote them, transcribed note for note from public-domain editions (sources noted on each).
+ * Format: see SongSource in ./types.ts and SongText in ./parse.ts. songs.test.ts checks every bar adds up.
  */
-export const SONG_SOURCES: SongSource[] = [
+export const SONG_SOURCES: SongText[] = [
   {
     id: 'hot-cross-buns',
     title: 'Hot Cross Buns',
@@ -332,14 +333,21 @@ export const SONG_SOURCES: SongSource[] = [
     keySig: 1,
     time: [3, 4],
     bpm: 96,
-    tags: ['3/4 time', 'Key of G', 'Eighth notes', 'Classical'],
+    tags: ['3/4 time', 'Key of G', 'Eighth notes', 'Both hands', 'Classical'],
     about:
-      'From the notebook J. S. Bach kept for his wife Anna Magdalena, and long credited to Bach himself. Every F is F♯ here: look at the key signature.',
+      'From the notebook J. S. Bach kept for his wife Anna Magdalena, and long credited to Bach himself. Every F is F♯ here: look at the key signature. The left hand starts on a G major chord, then plays a slower bass line under the tune: learn the right hand first, then add it.',
+    // Both hands from the Bach-Gesellschaft edition (Mutopia: BachJS/BWVAnh114/anna-magdalena-04), first half without the repeat.
     rh: `
       {G}D5:q/5 G4:8/1 A4:8/2 B4:8/3 C5:8/4 | D5:q/5 G4:q/1 G4:q/1 | {C}E5:q C5:8 D5:8 E5:8 F#5:8 | {G}G5:q G4:q G4:q |
       {Am}C5:q D5:8 C5:8 B4:8 A4:8 | {G}B4:q C5:8 B4:8 A4:8 G4:8 | {D}F#4:q G4:8 A4:8 B4:8 G4:8 | A4:h. |
       {G}D5:q G4:8 A4:8 B4:8 C5:8 | D5:q G4:q G4:q | {C}E5:q C5:8 D5:8 E5:8 F#5:8 | {G}G5:q G4:q G4:q |
       {Am}C5:q D5:8 C5:8 B4:8 A4:8 | {G}B4:q C5:8 B4:8 A4:8 G4:8 | {D7}A4:q B4:8 A4:8 G4:8 F#4:8 | {G}G4:h.
+    `,
+    lh: `
+      [G3,B3,D4]:h A3:q | B3:h. | C4:h. | B3:h. |
+      A3:h. | G3:h. | D4:q B3 G3 | D4:q D3:8 C4 B3 A3 |
+      B3:h A3:q | G3:q B3 G3 | C4:h. | B3:q C4:8 B3 A3 G3 |
+      A3:h F#3:q | G3:h B3:q | C4:q D4 D3 | G3:h G2:q
     `,
   },
   {
@@ -353,13 +361,19 @@ export const SONG_SOURCES: SongSource[] = [
     time: [3, 8],
     bpm: 50,
     pickup: 0.5,
-    tags: ['3/8 time', 'Sixteenth notes', 'A minor', 'Classical'],
+    tags: ['3/8 time', 'Sixteenth notes', 'A minor', 'Both hands', 'Classical'],
     about:
-      'The famous opening theme, right hand only, with a simple final note instead of the repeat. Count in eighth notes: “1 2 3” per bar. The E–D♯ wiggle is a half step; the natural sign cancels the D♯ later in the bar.',
+      'The famous opening theme, with a simple final note instead of the repeat. Count in eighth notes: “1 2 3” per bar. The E–D♯ wiggle is a half step; the natural sign cancels the D♯ later in the bar. The broken chords pass from hand to hand: the left hand plays A–E–A, then the right hand carries on up with C–E–A.',
+    // Both hands from the Breitkopf & Härtel edition of 1888 (Mutopia: BeethovenLv/WoO59/fur_Elise_WoO59).
     rh: `
       E5:16 D#5 |
       E5 D#5 E5 B4 D5 C5 | {Am}A4:8 r:16 C4 E4 A4 | {E}B4:8 r:16 E4 G#4 B4 | {Am}C5:8 r:16 E4 E5 D#5 |
       E5 D#5 E5 B4 D5 C5 | {Am}A4:8 r:16 C4 E4 A4 | {E}B4:8 r:16 E4 C5 B4 | {Am}A4:q.
+    `,
+    lh: `
+      r:8 |
+      r:q. | A2:16 E3 A3 r r:8 | E2:16 E3 G#3 r r:8 | A2:16 E3 A3 r r:8 |
+      r:q. | A2:16 E3 A3 r r:8 | E2:16 E3 G#3 r r:8 | A2:16 E3 A3 r r:8
     `,
   },
   {
@@ -372,19 +386,36 @@ export const SONG_SOURCES: SongSource[] = [
     keySig: 0,
     time: [4, 4],
     bpm: 66,
-    tags: ['Sixteenth notes', 'Broken chords', 'Classical'],
+    tags: ['Sixteenth notes', 'Broken chords', 'Both hands', 'Classical'],
     about:
-      'The first prelude of Bach’s Well-Tempered Clavier. Each bar is one chord picked out in running sixteenth notes, like fingerpicking: read the chord, then let your fingers run the shape. Pianists play the first two notes of each group with the left hand. This is the first eight bars, then a C chord to finish.',
+      'The first prelude of Bach’s Well-Tempered Clavier. Each bar is one chord picked out in running sixteenth notes, like fingerpicking: read the chord, then let your fingers run the shape. The left hand plays the first two notes of each half bar and holds them while the right hand runs on above. This is the first eight bars, then the C chord the whole piece ends on.',
+    // Both hands from Mutopia (BachJS/BWV846/wtk1-prelude1): bars 1–8, then the final bar (35). The left hand
+    // is two lines on one staff: the half-note bass, and a note that comes in a sixteenth later and is held.
     rh: `
-      {C}C4:16 E4 G4 C5 E5 G4 C5 E5 C4 E4 G4 C5 E5 G4 C5 E5 |
-      {Dm7/C}C4 D4 A4 D5 F5 A4 D5 F5 C4 D4 A4 D5 F5 A4 D5 F5 |
-      {G7/B}B3 D4 G4 D5 F5 G4 D5 F5 B3 D4 G4 D5 F5 G4 D5 F5 |
-      {C}C4 E4 G4 C5 E5 G4 C5 E5 C4 E4 G4 C5 E5 G4 C5 E5 |
-      {Am/C}C4 E4 A4 E5 A5 A4 E5 A5 C4 E4 A4 E5 A5 A4 E5 A5 |
-      {D7/C}C4 D4 F#4 A4 D5 F#4 A4 D5 C4 D4 F#4 A4 D5 F#4 A4 D5 |
-      {G/B}B3 D4 G4 D5 G5 G4 D5 G5 B3 D4 G4 D5 G5 G4 D5 G5 |
-      {Cmaj7/B}B3 C4 E4 G4 C5 E4 G4 C5 B3 C4 E4 G4 C5 E4 G4 C5 |
-      {C}[C4,E4,G4,C5]:w
+      {C}r:8 G4:16 C5 E5 G4 C5 E5 r:8 G4:16 C5 E5 G4 C5 E5 |
+      {Dm7/C}r:8 A4:16 D5 F5 A4 D5 F5 r:8 A4:16 D5 F5 A4 D5 F5 |
+      {G7/B}r:8 G4:16 D5 F5 G4 D5 F5 r:8 G4:16 D5 F5 G4 D5 F5 |
+      {C}r:8 G4:16 C5 E5 G4 C5 E5 r:8 G4:16 C5 E5 G4 C5 E5 |
+      {Am/C}r:8 A4:16 E5 A5 A4 E5 A5 r:8 A4:16 E5 A5 A4 E5 A5 |
+      {D7/C}r:8 F#4:16 A4 D5 F#4 A4 D5 r:8 F#4:16 A4 D5 F#4 A4 D5 |
+      {G/B}r:8 G4:16 D5 G5 G4 D5 G5 r:8 G4:16 D5 G5 G4 D5 G5 |
+      {Cmaj7/B}r:8 E4:16 G4 C5 E4 G4 C5 r:8 E4:16 G4 C5 E4 G4 C5 |
+      {C}[E4,G4,C5]:w
     `,
+    lh: `
+      C4:h C4 | C4 C4 | B3 B3 | C4 C4 | C4 C4 | C4 C4 | B3 B3 | B3 B3 | C2:w
+    `,
+    voices: [
+      {
+        hand: 'lh',
+        bars: `
+          r:16 E4:8.~ E4:q r:16 E4:8.~ E4:q | r:16 D4:8.~ D4:q r:16 D4:8.~ D4:q |
+          r:16 D4:8.~ D4:q r:16 D4:8.~ D4:q | r:16 E4:8.~ E4:q r:16 E4:8.~ E4:q |
+          r:16 E4:8.~ E4:q r:16 E4:8.~ E4:q | r:16 D4:8.~ D4:q r:16 D4:8.~ D4:q |
+          r:16 D4:8.~ D4:q r:16 D4:8.~ D4:q | r:16 C4:8.~ C4:q r:16 C4:8.~ C4:q |
+          C3:w
+        `,
+      },
+    ],
   },
 ]

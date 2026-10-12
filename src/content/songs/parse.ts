@@ -32,7 +32,17 @@ export function parseBars(src: string): SongEvent[][] {
     )
 }
 
-export function parseSong(s: SongSource): Song {
-  const { rh, lh, ...meta } = s
-  return { ...meta, rh: parseBars(rh), lh: lh ? parseBars(lh) : undefined }
+/**
+ * A built-in song as written in songs.ts: SongSource plus extra lines in the same format, bar for bar with
+ * `rh`. A hand needs one when it holds a note while moving on above or below it (Bach's Prelude in C).
+ */
+export interface SongText extends SongSource {
+  voices?: { hand: 'rh' | 'lh'; bars: string }[]
+}
+
+export function parseSong(s: SongText): Song {
+  const { rh, lh, voices, ...meta } = s
+  const song: Song = { ...meta, rh: parseBars(rh), lh: lh ? parseBars(lh) : undefined }
+  if (voices?.length) song.voices = voices.map((v) => ({ hand: v.hand, bars: parseBars(v.bars) }))
+  return song
 }
