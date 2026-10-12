@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, Eraser, Footprints, Layers, Sparkles, Wand2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { Piano } from '../../components/piano/Piano'
@@ -11,30 +11,34 @@ import { Modal } from '../../components/ui/Modal'
 import { useElementSize } from '../../hooks/useElementSize'
 import { playChord } from '../../lib/audio/play'
 import { noteColor } from '../../lib/colors'
+import { heldNow, useNoteEvents } from '../../lib/input/bus'
 import { useMicChords } from '../../lib/input/mic'
-import { nameHeardChord } from '../../lib/input/micMatch'
 import {
   ALL_MAJOR_KEYS,
   ALL_MINOR_KEYS,
   CHORD_TYPES,
   type Chord,
+  type DetectedChord,
   INVERSION_NAMES,
   type Key,
+  type Note,
   chordSymbol,
   chordToRoman,
-  detectChord,
   guessKey,
   intervalBetween,
   keyFifths,
   keyId,
   keyName,
+  midiOf,
   noteName,
   parseKey,
+  pitchName,
   spellInKey,
 } from '../../lib/theory'
-import { heldMidis, useLive } from '../../state/live'
+import { useLive } from '../../state/live'
 import { usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
+import { Sounding, nameSounding, withinChord } from './sounding'
 
 interface HistoryItem {
   id: number
@@ -50,8 +54,14 @@ const FULL_KEYBOARD_WIDTH = 1100
 /** Where the two-octave keyboard can start: C2 … C5, so it stays within the CT-S1's C2–C7. */
 const COMPACT_OCTAVES = [2, 3, 4, 5]
 
+/** A few notes that aren't a chord, in words: "E5", "C + E · Major 3rd", "C D E". */
+function describeNotes(notes: Note[]): string {
+  if (notes.length === 1) return noteName(notes[0])
+  if (notes.length === 2) return `${pitchName(notes[0])} + ${pitchName(notes[1])} · ${intervalBetween(notes[0], notes[1]).name}`
+  return notes.map((n) => pitchName(n)).join(' ')
+}
+
 export function FreePlay() {
-  const held = useLive((s) => s.held)
   const sustain = useLive((s) => s.sustain)
   const mic = useLive((s) => s.mic)
   const midiKeyboards = useLive((s) => s.midiDevices.length)
@@ -64,25 +74,62 @@ export function FreePlay() {
   const [area, { height: areaH, width: areaW }] = useElementSize<HTMLDivElement>()
   const nextId = useRef(1)
 
-  // With the mic only one note is heard at a time, so chords are notes played close together.
   // The mic hears whole chords here (not just single notes).
   useMicChords()
-  const midis = useMemo(() => heldMidis(held), [held])
+
+  // What's sounding: held keys, plus notes ringing under the pedal or played as a broken chord.
+  const [tracker] = useState(() => {
+    const s = new Sounding()
+    const t = performance.now()
+    s.setPedal(useLive.getState().sustain)
+    for (const m of heldNow()) s.noteOn(m, t)
+    return s
+  })
+  const [sound, setSound] = useState(() => ({ all: tracker.notes(performance.now()), held: tracker.heldNotes() }))
+  const look = useCallback(() => setSound({ all: tracker.notes(performance.now()), held: tracker.heldNotes() }), [tracker])
+  useNoteEvents((e) => {
+    if (e.type === 'on') tracker.noteOn(e.midi, e.time)
+    else tracker.noteOff(e.midi, e.time)
+    look()
+  })
+  // The pedal, straight from the input store: lifting it stops what was ringing.
+  useEffect(
+    () =>
+      useLive.subscribe((s, prev) => {
+        if (s.sustain === prev.sustain) return
+        tracker.setPedal(s.sustain)
+        look()
+      }),
+    [tracker, look],
+  )
+  // A broken chord fades out on its own: look again when it does.
+  useEffect(() => {
+    const t = performance.now()
+    const at = tracker.nextExpiry(t)
+    if (at === null) return
+    const id = window.setTimeout(look, at - t + 20)
+    return () => window.clearTimeout(id)
+  }, [sound, tracker, look])
 
   const guessed = useMemo(() => guessKey(history.slice(-8).map((h) => h.chord)), [history])
   const key: Key | null = keyChoice === 'none' ? null : keyChoice === 'auto' ? guessed : parseKey(keyChoice)
   const prefer = key ? (keyFifths(key) < 0 ? 'flat' : keyFifths(key) > 0 ? 'sharp' : undefined) : undefined
-  // Through the mic a chord's 5th often goes unheard, so a root plus its 3rd is read as the full chord.
-  const named = mic === 'on' ? nameHeardChord(midis, prefer) : null
-  const det = mic === 'on' ? (named?.det ?? null) : midis.length >= 2 ? detectChord(midis, prefer) : null
-  const fifthGuessed = named?.fifthGuessed ?? false
+
+  // Name it. A partial arpeggio of the last chord (or its bass struck again) is still that chord; once you let
+  // go, the last chord stays on screen, dimmed, until the next one.
+  const named = nameSounding(sound.all, sound.held, { pedal: sustain, prefer, mic: mic === 'on' })
+  const real = named && named.det.chord.type.ivs.length >= 3 ? named.det : null
+  const [last, setLast] = useState<DetectedChord | null>(null)
+  const current = real ?? (last && withinChord(sound.all, last.chord) ? last : (named?.det ?? null))
+  // Remembered as you play (React's "information from previous renders" pattern, no effect needed).
+  if (current && current.symbol !== last?.symbol) setLast(current)
 
   // Once a chord has been held steadily for a moment, add it to the history (and the collection).
-  const stableSymbol = det && det.chord.type.ivs.length >= 3 ? det.symbol : null
+  const realSymbol = real?.symbol ?? null
   const commitChord = useEffectEvent(() => {
-    if (!det || !stableSymbol) return
-    setHistory((h) => (h[h.length - 1]?.symbol === stableSymbol ? h : [...h.slice(-23), { id: nextId.current++, chord: det.chord, symbol: stableSymbol }]))
-    const base = chordSymbol({ ...det.chord, bass: undefined })
+    if (!real) return
+    setHistory((h) => (h[h.length - 1]?.symbol === real.symbol ? h : [...h.slice(-23), { id: nextId.current++, chord: real.chord, symbol: real.symbol }]))
+    const base = chordSymbol({ ...real.chord, bass: undefined })
     const p = useProgress.getState()
     if (p.findChord(base)) {
       p.addXp(5)
@@ -91,30 +138,39 @@ export function FreePlay() {
     }
   })
   useEffect(() => {
-    if (!stableSymbol) return
+    if (!realSymbol) return
     const id = window.setTimeout(commitChord, 260)
     return () => window.clearTimeout(id)
-  }, [stableSymbol])
+  }, [realSymbol])
 
-  const spelled = det ? det.notes : midis.map((m) => spellInKey(m, key))
-  const staffItems: StaffItem[] = spelled.length ? [{ key: 'now', notes: spelled.map((n) => noteName(n)), dur: 'w' }] : [{ key: 'empty', dur: 'w', hidden: true }]
-
+  // What the big name shows: the chord you're playing, else the last one (dimmed), else the notes.
+  const head = current ?? last
+  const dim = !current && !!last
+  const spelledNow = sound.all.map((m) => current?.notes.find((n) => midiOf(n) === m) ?? spellInKey(m, key))
   let headline = ''
   let sub = ''
-  if (det) {
-    headline = det.symbol
-    sub = `${det.name}${det.inversion > 0 ? ` · ${INVERSION_NAMES[det.inversion]}` : ''}${det.no5 ? ' · no 5th' : ''}${fifthGuessed ? ' · 5th not heard' : ''}`
-  } else if (spelled.length === 1) {
-    headline = noteName(spelled[0])
+  // Under a faded chord, what you're playing now (a melody note, say) takes the line below it.
+  let now = ''
+  if (head) {
+    headline = head.symbol
+    sub = `${head.name}${head.inversion > 0 ? ` · ${INVERSION_NAMES[head.inversion]}` : ''}${head.no5 ? ' · no 5th' : ''}`
+    if (current && named?.det === current && named.fifthGuessed) sub += ' · 5th not heard'
+    if (dim && spelledNow.length) now = `Now: ${describeNotes(spelledNow)}`
+  } else if (spelledNow.length === 1) {
+    headline = noteName(spelledNow[0])
     sub = 'Add more notes to make a chord'
-  } else if (spelled.length === 2) {
-    headline = spelled.map((n) => noteName(n, { octave: false })).join(' + ')
-    sub = intervalBetween(spelled[0], spelled[1]).name
-  } else if (spelled.length > 2) {
-    headline = spelled.map((n) => noteName(n, { octave: false })).join(' ')
+  } else if (spelledNow.length === 2) {
+    headline = spelledNow.map((n) => pitchName(n)).join(' + ')
+    sub = intervalBetween(spelledNow[0], spelledNow[1]).name
+  } else if (spelledNow.length > 2) {
+    headline = spelledNow.map((n) => pitchName(n)).join(' ')
     sub = 'Not a standard chord name. Try moving one note.'
   }
-  const roman = det && key ? chordToRoman(det.chord, key) : null
+  const roman = head && key ? chordToRoman(head.chord, key) : null
+
+  const staffNotes = spelledNow.length ? spelledNow : (last?.notes ?? [])
+  const staffItems: StaffItem[] = staffNotes.length ? [{ key: 'now', notes: staffNotes.map((n) => noteName(n)), dur: 'w' }] : [{ key: 'empty', dur: 'w', hidden: true }]
+
   // All 61 keys, like the CT-S1, when it's plugged in or the screen is wide. Otherwise (mic, or tapping the
   // keys on an iPad) two big octaves that ◀ ▶ move along. Phones always get the two octaves.
   const compact = areaW > 0 && (areaW < 640 || (midiKeyboards === 0 && areaW < FULL_KEYBOARD_WIDTH))
@@ -146,18 +202,26 @@ export function FreePlay() {
           <div className="glass relative flex min-h-52 flex-col items-center justify-center overflow-hidden rounded-[2rem] p-5 pb-10 text-center">
             <AnimatePresence mode="popLayout">
               {headline ? (
-                <motion.div key={headline} initial={{ scale: 0.85, opacity: 0, y: 8 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 1.05 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }}>
+                <motion.div
+                  key={headline}
+                  initial={{ scale: 0.85, opacity: 0, y: 8 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 1.05 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                >
                   <div
-                    className="font-display text-6xl font-bold leading-none sm:text-7xl [@media(min-height:820px)]:sm:text-8xl"
-                    style={{ color: det ? '#f7f3ea' : spelled[0] ? noteColor(midis[0]) : undefined, textShadow: det ? '0 0 40px rgba(255,200,87,.35)' : undefined }}
+                    className={`font-display text-6xl font-bold leading-none transition-opacity duration-300 sm:text-7xl [@media(min-height:820px)]:sm:text-8xl ${dim ? 'opacity-50' : ''}`}
+                    style={{ color: head ? '#f7f3ea' : spelledNow[0] ? noteColor(sound.all[0]) : undefined, textShadow: head && !dim ? '0 0 40px rgba(255,200,87,.35)' : undefined }}
                   >
                     <MusicText text={headline} />
                   </div>
-                  <div className="mt-3 text-xl font-bold text-ink-soft first-letter:uppercase">
-                    <MusicText text={sub} />
+                  <div className={`mt-3 text-xl font-bold first-letter:uppercase ${now ? 'text-ink' : 'text-ink-soft'} ${dim && !now ? 'opacity-60' : ''}`}>
+                    <MusicText text={now || sub} />
                   </div>
                   {roman && (
-                    <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-violet/15 px-4 py-1.5 font-display text-2xl font-bold text-[#c9c0ff]">
+                    <div
+                      className={`mt-3 inline-flex items-center gap-2 rounded-full bg-violet/15 px-4 py-1.5 font-display text-2xl font-bold text-[#c9c0ff] transition-opacity ${dim ? 'opacity-60' : ''}`}
+                    >
                       <MusicText text={roman} />
                       <span className="font-sans text-sm font-bold text-ink-mute">
                         in <MusicText text={keyName(key!)} />
@@ -192,8 +256,8 @@ export function FreePlay() {
             </div>
           </div>
 
-          {/* On the staff */}
-          <Paper className="flex items-center">
+          {/* On the staff (the last chord, faded, once you let go) */}
+          <Paper className={`flex items-center transition-opacity ${!sound.all.length && last ? 'opacity-60' : ''}`}>
             <Staff clef="grand" items={staffItems} sp={16} minSlot={6} reserveAbove={2.6} reserveBelow={2.6} animate={false} />
           </Paper>
         </div>
