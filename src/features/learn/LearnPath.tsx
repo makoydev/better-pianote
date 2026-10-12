@@ -8,6 +8,7 @@ import { ALL_LESSONS, UNITS, nextLesson } from '../../content'
 import type { Lesson, Unit } from '../../content/types'
 import { go, navKind } from '../../router'
 import { useProgress } from '../../state/progress'
+import { useResumeStep } from './resume'
 
 // Horizontal wiggle of the trail, in rem.
 const OFFSETS = [0, 3.5, 5.5, 3.5, 0, -3.5, -5.5, -3.5]
@@ -118,7 +119,10 @@ function Connector({ from, to, color, lit }: { from: number; to: number; color: 
 function LessonNode({ lesson, unit, offset, isCurrent }: { lesson: Lesson; unit: Unit; offset: number; isCurrent: boolean }) {
   const record = useProgress((s) => s.lessons[lesson.id])
   const done = !!record
-  const status = done ? `done, ${record.stars} of 3 stars` : isCurrent ? 'up next' : ''
+  // Part-way through (a first try or a replay): "Step 7 of 9" and a ring that far round.
+  const at = useResumeStep(lesson.id, lesson.steps.length)
+  const partial = at === null ? null : `Step ${at + 1} of ${lesson.steps.length}`
+  const status = [done ? `done, ${record.stars} of 3 stars` : isCurrent && !partial ? 'up next' : '', partial?.toLowerCase()].filter(Boolean).join(', ')
   return (
     <div className="relative" data-current-lesson={isCurrent || undefined} style={{ transform: `translateX(calc(var(--wig) * ${offset}))` }}>
       {/* One button for the circle and the text, so each lesson is a single tab stop. */}
@@ -142,7 +146,7 @@ function LessonNode({ lesson, unit, offset, isCurrent }: { lesson: Lesson; unit:
               animate={{ y: [0, -5, 0] }}
               transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
             >
-              {done ? 'Again?' : 'Start'}
+              {partial ? 'Resume' : done ? 'Again?' : 'Start'}
               <span className="absolute left-1/2 top-full -translate-x-1/2 border-x-[7px] border-t-[7px] border-x-transparent" style={{ borderTopColor: unit.color }} />
             </motion.span>
           )}
@@ -150,10 +154,12 @@ function LessonNode({ lesson, unit, offset, isCurrent }: { lesson: Lesson; unit:
             className="relative flex size-[5.2rem] items-center justify-center rounded-full transition-transform duration-150 group-hover:scale-[1.06] group-active:scale-[0.94] group-focus-visible:outline-3 group-focus-visible:outline-offset-4 group-focus-visible:outline-gold"
             style={{
               background: done ? `linear-gradient(150deg, ${unit.color}, ${unit.color}aa)` : isCurrent ? '#282752' : '#201f45',
-              boxShadow: done ? `0 7px 0 ${unit.color}66, 0 0 30px -6px ${unit.color}` : isCurrent ? `0 7px 0 #100f27, 0 0 0 4px ${unit.color}` : '0 7px 0 #100f27',
-              color: done ? '#0d0c24' : isCurrent ? unit.color : '#938fbb',
+              // An unfinished lesson's ring shows how far you got instead of a full ring.
+              boxShadow: done ? `0 7px 0 ${unit.color}66, 0 0 30px -6px ${unit.color}` : isCurrent && !partial ? `0 7px 0 #100f27, 0 0 0 4px ${unit.color}` : '0 7px 0 #100f27',
+              color: done ? '#0d0c24' : isCurrent || partial ? unit.color : '#938fbb',
             }}
           >
+            {at !== null && <PartRing value={at / lesson.steps.length} color={unit.color} />}
             {isCurrent && <span className="absolute inset-0 animate-pulse-ring rounded-full" style={{ boxShadow: `0 0 0 3px ${unit.color}` }} />}
             <Icon name={lesson.icon} size={34} />
             {done && (
@@ -169,9 +175,20 @@ function LessonNode({ lesson, unit, offset, isCurrent }: { lesson: Lesson; unit:
           <span className="mt-1 flex items-center gap-2 text-xs font-bold text-ink-mute">
             <Clock size={13} /> {lesson.minutes} min
             {record && <Stars value={record.stars} size={15} />}
+            {partial && <span style={{ color: unit.color }}>· {partial}</span>}
           </span>
         </span>
       </button>
     </div>
+  )
+}
+
+/** How far into an unfinished lesson you are, drawn round its circle. */
+function PartRing({ value, color }: { value: number; color: string }) {
+  return (
+    <svg aria-hidden viewBox="0 0 100 100" className="pointer-events-none absolute -inset-[7px] -rotate-90">
+      <circle cx="50" cy="50" r="47" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="4" />
+      <circle cx="50" cy="50" r="47" fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" pathLength={100} strokeDasharray={`${Math.max(4, value * 100)} 100`} />
+    </svg>
   )
 }
