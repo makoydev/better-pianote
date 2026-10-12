@@ -61,12 +61,20 @@ export function readChart(v: unknown): ChartEntry[] {
   return v.filter(ok).slice(-CHART_MAX)
 }
 
-const same = (a: Chord, b: Chord) => chordSymbol(a) === chordSymbol(b)
+/** The same chord by ear: root, type and bass note, whatever their spelling (G♭ and F♯ are one chord). */
+export const sameSound = (a: Chord, b: Chord) =>
+  pcOf(a.root) === pcOf(b.root) && a.type.id === b.type.id && pcOf(a.bass ?? a.root) === pcOf(b.bass ?? b.root)
 
-/** Add a chord to the end of the chart, unless it's the chord already there. Keeps the newest CHART_MAX. */
+/**
+ * Add a chord to the end of the chart, unless the chord already there sounds the same. That one may be spelled
+ * again (G♭ becomes F♯ once the key is found): it takes the new spelling. Keeps the newest CHART_MAX.
+ */
 export function addToChart(chart: ChartEntry[], chord: Chord): ChartEntry[] {
   const last = chart[chart.length - 1]
-  if (last && same(fromEntry(last), chord)) return chart
+  if (last && sameSound(fromEntry(last), chord)) {
+    const respelled = toEntry(chord, last.id)
+    return respelled.root === last.root && respelled.bass === last.bass ? chart : [...chart.slice(0, -1), respelled]
+  }
   const id = chart.reduce((m, e) => Math.max(m, e.id), 0) + 1
   return [...chart, toEntry(chord, id)].slice(-CHART_MAX)
 }
@@ -77,7 +85,7 @@ export function addToChart(chart: ChartEntry[], chord: Chord): ChartEntry[] {
  */
 export function chartLoop(chords: Chord[], max = 16): Chord[] {
   for (let p = 1; p <= 8 && p + 2 <= chords.length; p++) {
-    if (chords.every((c, i) => i < p || same(c, chords[i - p]))) return chords.slice(0, p)
+    if (chords.every((c, i) => i < p || sameSound(c, chords[i - p]))) return chords.slice(0, p)
   }
   return chords.slice(-max)
 }

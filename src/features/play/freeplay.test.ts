@@ -53,6 +53,17 @@ describe('the chord chart', () => {
     expect(c).toHaveLength(CHART_MAX)
   })
 
+  it('records a chord once when it’s spelled again, keeping the newer spelling', () => {
+    // Once the key is found, a held G♭ is named F♯: still one chord on the chart.
+    let c: ChartEntry[] = []
+    for (const s of ['Db', 'Bbm', 'Gb', 'F#', 'Ab']) c = addToChart(c, parseChord(s))
+    expect(symbols(c.map(fromEntry))).toBe('D♭ B♭m F♯ A♭')
+    expect(c.map((e) => e.id)).toEqual([1, 2, 3, 4])
+    // Spelled the same, nothing changes; another bass is another chord.
+    expect(addToChart(c, parseChord('Ab'))).toBe(c)
+    expect(addToChart(c, parseChord('Ab/C'))).toHaveLength(5)
+  })
+
   it('finds the loop a chart goes round', () => {
     expect(symbols(chartLoop(chart('F#m D A E F#m D A E')))).toBe('F♯m D A E')
     expect(symbols(chartLoop(chart('F#m D A E F#m D')))).toBe('F♯m D A E')
