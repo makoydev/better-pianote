@@ -1,8 +1,10 @@
 import { type ReactNode, Fragment } from 'react'
 import { playChord, playNotes } from '../../lib/audio/play'
 import { letterColor } from '../../lib/colors'
-import { chordSymbol, midiOf, noteName, parseChord, parseNote } from '../../lib/theory'
+import { nameNote } from '../../lib/naming'
+import { chordSymbol, midiOf, parseChord, parseNote } from '../../lib/theory'
 import { go } from '../../router'
+import { useSettings } from '../../state/settings'
 import { MusicText } from '../MusicText'
 
 /**
@@ -73,6 +75,7 @@ function inline(s: string): ReactNode {
 }
 
 export function NoteChip({ note, showOctave }: { note: string; showOctave?: boolean }) {
+  const naming = useSettings((s) => s.naming)
   let n
   try {
     n = parseNote(note)
@@ -81,6 +84,7 @@ export function NoteChip({ note, showOctave }: { note: string; showOctave?: bool
   }
   const hasOct = /\d/.test(note)
   const color = letterColor(n.letter)
+  const label = nameNote(n, naming, { octave: showOctave ?? hasOct })
   return (
     <button
       type="button"
@@ -89,7 +93,7 @@ export function NoteChip({ note, showOctave }: { note: string; showOctave?: bool
       style={{ color, borderColor: `${color}66`, background: `${color}1f` }}
       title="Tap to hear"
     >
-      <MusicText text={noteName(n, { octave: showOctave ?? hasOct })} />
+      <MusicText text={label} />
     </button>
   )
 }

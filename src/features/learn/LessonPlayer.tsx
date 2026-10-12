@@ -5,13 +5,13 @@ import { TopBar } from '../../components/layout/TopBar'
 import { Button } from '../../components/ui/Button'
 import { GoalProgress } from '../../components/ui/GoalProgress'
 import { Icon } from '../../components/ui/Icon'
+import { useHandsFree } from '../../hooks/useHandsFree'
 import { ProgressBar, Stars } from '../../components/ui/progress'
 import { ALL_LESSONS, findLesson } from '../../content'
 import type { Lesson, Step } from '../../content/types'
 import { audio } from '../../lib/audio/engine'
-import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
+import { isPlainKey, isTypingTarget } from '../../lib/focus'
 import { burst, celebrate } from '../../lib/fx'
-import { heldNow, recentNotes } from '../../lib/input/bus'
 import { go } from '../../router'
 import { useLive } from '../../state/live'
 import { liveStreak, useProgress } from '../../state/progress'
@@ -68,7 +68,6 @@ export function LessonPlayer({ lessonId }: { lessonId: string }) {
   useEffect(() => {
     started.current = Date.now()
   }, [])
-  const sustain = useLive((s) => s.sustain)
   const midiReady = useLive((s) => s.midi === 'ready' && s.midiDevices.length > 0)
 
   const lesson = found?.lesson
@@ -149,40 +148,18 @@ export function LessonPlayer({ lessonId }: { lessonId: string }) {
     return () => window.clearTimeout(id)
   }, [finished, justSolved, i])
 
-  // Enter / → to continue, ← to go back. Keys inside widgets, sliders and focused buttons stay theirs.
+  // → to continue, ← to go back. Keys inside widgets, sliders and focused buttons stay theirs.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (finished || !isPlainKey(e) || isTypingTarget(e.target)) return
-      if (e.key === 'Enter' && !isButtonTarget(e.target)) next()
       if (e.key === 'ArrowRight') next()
       if (e.key === 'ArrowLeft') back()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   })
-
-  // Tapping the sustain pedal continues, so your hands can stay on the keys. Only a deliberate tap counts
-  // (pressed and released quickly with no keys down), so pedalling while you play never skips a step.
-  const pedalDownAt = useRef<number | null>(null)
-  const onPedal = useEffectEvent((down: boolean) => {
-    if (!pedalContinue) return
-    const now = performance.now()
-    if (down) {
-      pedalDownAt.current = heldNow().length === 0 && recentNotes(1200).length === 0 ? now : null
-      return
-    }
-    const t0 = pedalDownAt.current
-    pedalDownAt.current = null
-    if (t0 === null || now - t0 > 600 || heldNow().length > 0 || recentNotes(now - t0 + 50).length > 0) return
-    if (finished) {
-      if (finished.next) go(`/learn/${finished.next.id}`, { replace: true })
-    } else next()
-  })
-  const prevSustain = useRef(sustain)
-  useEffect(() => {
-    if (sustain !== prevSustain.current) onPedal(sustain)
-    prevSustain.current = sustain
-  }, [sustain])
+  // Enter, a quick pedal tap or the top C continue, so your hands stay on the keys (no delay: steps are quick).
+  useHandsFree(!finished && canContinue ? next : null, { pedal: pedalContinue, delay: 0 })
 
   if (!found || !lesson || !step) {
     return (
@@ -194,7 +171,7 @@ export function LessonPlayer({ lessonId }: { lessonId: string }) {
   }
 
   if (finished) {
-    return <LessonComplete result={finished} unitColor={found.unit.color} onReplay={replay} />
+    return <LessonComplete result={finished} unitColor={found.unit.color} onReplay={replay} pedal={pedalContinue} />
   }
 
   const progress = (i + (canContinue ? 1 : 0)) / lesson.steps.length
@@ -270,7 +247,7 @@ export function LessonPlayer({ lessonId }: { lessonId: string }) {
   )
 }
 
-function LessonComplete({ result, unitColor, onReplay }: { result: Result; unitColor: string; onReplay: () => void }) {
+function LessonComplete({ result, unitColor, onReplay, pedal }: { result: Result; unitColor: string; onReplay: () => void; pedal: boolean }) {
   const streak = useProgress(liveStreak)
   const mins = Math.floor(result.seconds / 60)
   const secs = result.seconds % 60
@@ -285,20 +262,9 @@ function LessonComplete({ result, unitColor, onReplay }: { result: Result; unitC
     return () => window.clearTimeout(id)
   }, [result.unitDone])
 
-  // Enter goes on to the next lesson (after a moment, so the Enter that finished the lesson doesn't skip this).
-  const shownAt = useRef(0)
-  useEffect(() => {
-    shownAt.current = performance.now()
-  }, [])
-  const onEnter = useEffectEvent(() => goNext())
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Enter' || !isPlainKey(e) || isButtonTarget(e.target) || performance.now() - shownAt.current < 800) return
-      onEnter()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  // Enter, a pedal tap or the top C go on to the next lesson (not straight away, so the input that finished the
+  // lesson doesn't skip this screen).
+  useHandsFree(goNext, { pedal, delay: 800 })
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center px-5 py-10 text-center">

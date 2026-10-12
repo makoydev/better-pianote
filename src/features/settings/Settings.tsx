@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button'
 import { Segmented, Slider, Toggle } from '../../components/ui/controls'
 import { audio } from '../../lib/audio/engine'
 import { exportBackup, importBackup } from '../../lib/backup'
+import { openShortcuts } from '../../lib/shortcuts'
 import { useProgress } from '../../state/progress'
 import { type KeyLabels, type Naming, type UiScale, useSettings } from '../../state/settings'
 
@@ -33,6 +34,14 @@ export function Settings() {
           </Row>
           <Row label="Computer keys play notes" hint="A S D F … for white keys, W E T Y U for black keys, Z / X octave.">
             <Toggle checked={s.computerKeys} onChange={(v) => set({ computerKeys: v })} label="Computer keys play notes" />
+          </Row>
+          <Row label="Top C continues" hint="Playing the highest C (C7) works like Enter or a pedal tap: Continue, Start, Play again. Handy with the mic.">
+            <Toggle checked={s.topCContinue} onChange={(v) => set({ topCContinue: v })} label="Top C continues" />
+          </Row>
+          <Row label="Shortcuts" hint="Keys and hands-free moves for every screen (or press ?).">
+            <Button size="sm" variant="secondary" icon={Keyboard} onClick={openShortcuts}>
+              Show shortcuts
+            </Button>
           </Row>
           <Row label="Exact octave in games" hint="Off: any C counts as C. On: it must be the written octave.">
             <Toggle checked={s.strictOctave} onChange={(v) => set({ strictOctave: v })} label="Exact octave in games" />

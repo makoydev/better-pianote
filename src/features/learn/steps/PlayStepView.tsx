@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useElementSize } from '../../../hooks/useElementSize'
 import { useViewportHeight } from '../../../hooks/useViewport'
 import { MusicText } from '../../../components/MusicText'
+import { MicPrompt } from '../../../components/layout/MicPrompt'
 import { type Marks, Piano } from '../../../components/piano/Piano'
 import type { StaffItem } from '../../../components/staff/Staff'
 import { Button } from '../../../components/ui/Button'
@@ -294,6 +295,7 @@ export function PlayStepView({
             </Button>
           </div>
         )}
+        {!solved && <MicPrompt />}
       </div>
 
       {/* The keyboard takes whatever height is left, so it's always fully on screen. */}

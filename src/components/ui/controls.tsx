@@ -2,6 +2,7 @@ import { motion } from 'motion/react'
 import { type ReactNode, useId } from 'react'
 
 export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  // The switch looks 32px tall, but the button around it is 44px so it's easy to hit on an iPad.
   return (
     <button
       type="button"
@@ -9,14 +10,16 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
       aria-checked={checked}
       aria-label={label}
       onClick={() => onChange(!checked)}
-      className={`relative h-8 w-14 shrink-0 rounded-full transition-colors ${checked ? 'bg-good' : 'bg-night-600'}`}
+      className="relative flex h-11 w-16 shrink-0 items-center justify-center"
     >
-      <motion.span
-        layout
-        transition={{ type: 'spring', stiffness: 600, damping: 34 }}
-        className="absolute top-1 size-6 rounded-full bg-white shadow"
-        style={{ left: checked ? 'calc(100% - 1.75rem)' : '0.25rem' }}
-      />
+      <span className={`relative h-8 w-14 rounded-full transition-colors ${checked ? 'bg-good' : 'bg-night-600'}`}>
+        <motion.span
+          layout
+          transition={{ type: 'spring', stiffness: 600, damping: 34 }}
+          className="absolute top-1 size-6 rounded-full bg-white shadow"
+          style={{ left: checked ? 'calc(100% - 1.75rem)' : '0.25rem' }}
+        />
+      </span>
     </button>
   )
 }
@@ -34,7 +37,7 @@ export function Segmented<T extends string | number>({
   size?: 'sm' | 'md' | 'lg'
   className?: string
 }) {
-  const h = size === 'sm' ? 'h-9 text-sm' : size === 'lg' ? 'h-14 text-lg' : 'h-11 text-base'
+  const h = size === 'sm' ? 'h-11 text-sm' : size === 'lg' ? 'h-14 text-lg' : 'h-12 text-base'
   // Unique per control, so two controls with the same options don't share a highlight.
   const highlightId = useId()
   return (

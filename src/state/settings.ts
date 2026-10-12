@@ -29,6 +29,8 @@ export interface Settings {
   strictOctave: boolean
   /** Keep the screen on while a lesson, game, song or tool is open. */
   keepAwake: boolean
+  /** The top C (C7) works like Enter or a pedal tap: Continue, Start, Play again (handy through the mic). */
+  topCContinue: boolean
   name: string
   onboarded: boolean
   set: (patch: Partial<Omit<Settings, 'set'>>) => void
@@ -52,6 +54,7 @@ export const useSettings = create<Settings>()(
       computerKeys: true,
       strictOctave: false,
       keepAwake: true,
+      topCContinue: true,
       name: '',
       onboarded: false,
       set: (patch) => set(patch),

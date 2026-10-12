@@ -91,6 +91,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **20. Hands-free controls everywhere.** One scheme (pedal tap, Enter, Space) for Start, Next, Play again and Hear
   it again in games, songs, tools and the lesson complete screen. A shortcut sheet (`?`), and a spare key (top C7)
   as Continue for mic users without a pedal. `M`
+  *Partly done:* the shared pieces: `useHandsFree(action)` runs a screen's main action on Enter, a deliberate pedal tap (`lib/input/pedalTap.ts`) or the top C (C7, a setting, on by default); `?` opens a shortcut sheet (also in Settings). Lessons use it; the other screens are wired in the area batches.
 - [x] **21. Remember choices.** Note Rush setup, Rhythm Tap tempo/click, Ear Training level per mode, every Explore
   tool and the song list filter reset on each visit; game preferences aren't in Export. `S`
   *Partly done:* Note Rush, Rhythm Tap and Ear Training (4108ba9) and Free Play plus every Explore tool (981ab3b) remember their choices in the prefs store, which Export carries (e688569). The song list filter comes with the Songs batch.
@@ -107,6 +108,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [ ] **25. Put the mic first on iPad.** The connect sheet opens on a disabled USB button saying "try Chrome or Edge".
   Mic first when Web MIDI is missing, an inline "Start listening" on play steps, a "Heard: C4" readout, headphones
   mode. `S–M`
+  *Partly done:* play steps show `MicPrompt`: "Playing on your keyboard? Start listening" when there's no USB keyboard, then "Heard: E4" with a level bar.
 - [x] **26. Celebrate level-ups and the daily goal when they happen**, and show goal progress on results screens.
   *Where:* `state/progress.ts`, `XpToaster.tsx`, results screens. `S`
   *Partly done:* level-ups and the daily goal pop a toast with sound and confetti the moment they happen (`progress.ts` → `Toaster.tsx`); a goal bar (`GoalProgress`) is on the lesson complete screen. Games and song results get it once those batches are merged.
@@ -218,6 +220,7 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   *Done:* safe-area padding on pages and the sidebar plus a dark strip behind the status bar, `touch-action: manipulation` and no long-press callout on buttons, wide keyboards scroll to the lit keys, labels under the sidebar icons on the iPad-portrait icon rail. Checked at 900 px; still worth a look on the iPad itself.
 - [ ] **72. Accessibility and touch sweep:** controls under 44 px, ✓/✗ alongside red/green, focus in dialogs,
   screen-reader announcements, Do-Re-Mi naming everywhere. `S–M`
+  *Partly done:* shared controls: switches, small toggles and small buttons are 44 px, the dialog close button 48 px, dialogs take focus, keep Tab inside and give it back, and lesson note chips follow the Do Re Mi setting (`lib/naming.ts`).
 - [x] **73. Performance:** with the mic on, hidden connect sheets re-render 25 times a second; pause the animated
   background on full-screen pages. `S`
   *Done:* the connect sheet's live parts only exist while it's open (no more hidden re-renders 25×/s), and the background lights hold still on full-screen pages (`Aurora calm`).
