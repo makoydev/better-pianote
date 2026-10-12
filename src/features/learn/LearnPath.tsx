@@ -57,19 +57,18 @@ export function LearnPath() {
           <div className="flex items-center gap-2 text-lg font-extrabold text-gold">
             <Star className="fill-gold" size={24} /> {stars} <span className="text-sm text-ink-mute">/ {ALL_LESSONS.length * 3}</span>
           </div>
-          <Button
-            variant="secondary"
-            size="md"
-            icon={Repeat}
-            onClick={() => go(`/learn/${REVIEW_ID}`)}
-            disabled={done === 0}
-            title={done === 0 ? 'Finish a lesson first' : 'Ten questions from lessons you’ve finished, mostly ones with fewer stars'}
-          >
-            Quick review
-          </Button>
+          {/* Up to ten questions from finished lessons, so there's nothing to review until you've finished one. */}
+          {done > 0 && (
+            <Button variant="secondary" size="md" icon={Repeat} onClick={() => go(`/learn/${REVIEW_ID}`)} title="Up to ten questions from lessons you’ve finished">
+              Quick review
+            </Button>
+          )}
         </div>
         <SearchBox value={query} onChange={setQuery} onSubmit={() => hits[0] && go(`/learn/${hits[0].lesson.id}`)} />
       </div>
+      <p aria-live="polite" className="sr-only">
+        {searching ? resultCount(hits.length, query.trim()) : ''}
+      </p>
       {searching ? (
         <SearchResults hits={hits} query={query.trim()} />
       ) : (
@@ -118,13 +117,13 @@ function SearchBox({ value, onChange, onSubmit }: { value: string; onChange: (v:
   )
 }
 
+const resultCount = (n: number, query: string) => (n === 0 ? `No lessons match “${query}”.` : `${n} lesson${n === 1 ? '' : 's'}`)
+
 function SearchResults({ hits, query }: { hits: LessonHit[]; query: string }) {
   const lessons = useProgress((s) => s.lessons)
   return (
     <section aria-label="Search results">
-      <p aria-live="polite" className="mb-3 text-sm font-bold text-ink-mute">
-        {hits.length === 0 ? `No lessons match “${query}”.` : `${hits.length} lesson${hits.length === 1 ? '' : 's'}`}
-      </p>
+      <p className="mb-3 text-sm font-bold text-ink-mute">{resultCount(hits.length, query)}</p>
       <ul className="space-y-3">
         {hits.map((h) => (
           <li key={h.lesson.id}>
@@ -178,8 +177,9 @@ function UnitStrip() {
   }
 
   return (
-    <nav aria-label="Units" className="sticky top-[calc(env(safe-area-inset-top)+0.5rem)] z-20 mb-8 flex justify-center">
-      <div className="glass flex max-w-full gap-1 overflow-x-auto rounded-2xl p-1.5 shadow-[0_12px_30px_-12px_rgba(0,0,0,.8)] scrollbar-none">
+    // Only the chips take taps: the lessons scrolling past either side of them stay tappable.
+    <nav aria-label="Units" className="pointer-events-none sticky top-[calc(env(safe-area-inset-top)+0.5rem)] z-20 mb-8 flex justify-center">
+      <div className="glass pointer-events-auto flex max-w-full gap-1 overflow-x-auto rounded-2xl p-1.5 shadow-[0_12px_30px_-12px_rgba(0,0,0,.8)] scrollbar-none">
         {UNITS.map((u, k) => {
           const done = u.lessons.filter((l) => lessons[l.id]).length
           const on = k === active
