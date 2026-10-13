@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type ProgressData, mergeProgress, streakOf, summarize } from './backup'
+import { type ProgressData, mergeProgress, mergeSavedList, streakOf, summarize } from './backup'
 
 const base = (over: Partial<ProgressData>): ProgressData => ({
   xp: 0,
@@ -67,5 +67,23 @@ describe('merging progress from two devices', () => {
 
   it('summarises a device for the import preview', () => {
     expect(summarize(mac, 2)).toEqual({ xp: 500, lessons: 2, stars: 5, songs: 2, lastDay: '2026-10-10' })
+  })
+})
+
+describe('merging saved lists from two devices', () => {
+  const store = (ideas: { id: number; name: string }[]) => JSON.stringify({ state: { ideas }, version: 1 })
+
+  it('keeps both devices’ ideas, this one’s copy when both have it, newest first', () => {
+    const mac = store([{ id: 3, name: 'Mac' }, { id: 1, name: 'renamed on the Mac' }])
+    const ipad = store([{ id: 2, name: 'iPad' }, { id: 1, name: 'first' }])
+    expect(JSON.parse(mergeSavedList(mac, ipad, 'ideas')!)).toEqual({
+      state: { ideas: [{ id: 3, name: 'Mac' }, { id: 2, name: 'iPad' }, { id: 1, name: 'renamed on the Mac' }] },
+      version: 1,
+    })
+  })
+
+  it('leaves this device’s copy alone when the other one doesn’t read', () => {
+    expect(mergeSavedList(store([]), 'not json', 'ideas')).toBeNull()
+    expect(mergeSavedList(store([]), JSON.stringify({ state: {} }), 'ideas')).toBeNull()
   })
 })

@@ -14,6 +14,28 @@ const DEVICE_SETTINGS = ['uiScale', 'midiAuto', 'micAuto', 'midiThru', 'demoToKe
 /** Saved data with its own handling below; every other "tonic-…" key travels as-is. */
 const OWN_KEYS = ['tonic-settings', 'tonic-progress', 'tonic-prefs']
 
+/**
+ * Saved lists that a merge combines item by item (by id) instead of keeping this device's copy: the store's key and
+ * the list in it. Free Play's ideas from the Mac and the iPad both stay.
+ */
+const MERGED_LISTS: Record<string, string> = { 'tonic-ideas': 'ideas' }
+
+/** Both devices' copies of a saved list as one (this device's item when both have it), newest first; null if unreadable. */
+export function mergeSavedList(mine: string, theirs: string, field: string): string | null {
+  try {
+    const a = JSON.parse(mine) as { state?: Record<string, unknown> }
+    const b = JSON.parse(theirs) as { state?: Record<string, unknown> }
+    const la = a.state?.[field]
+    const lb = b.state?.[field]
+    if (!Array.isArray(la) || !Array.isArray(lb)) return null
+    const byId = new Map<number, { id: number }>()
+    for (const x of [...lb, ...la]) if (x && typeof x === 'object' && typeof (x as { id?: unknown }).id === 'number') byId.set((x as { id: number }).id, x as { id: number })
+    return JSON.stringify({ ...a, state: { ...a.state, [field]: [...byId.values()].sort((x, y) => y.id - x.id) } })
+  } catch {
+    return null
+  }
+}
+
 export type ProgressData = Omit<ReturnType<typeof useProgress.getState>, 'addXp' | 'completeLesson' | 'recordGame' | 'findChord' | 'setGoal' | 'resetAll'>
 
 export interface Backup {
@@ -200,7 +222,12 @@ export async function applyBackup(b: Backup, mode: 'merge' | 'replace'): Promise
   }
   for (const [k, v] of Object.entries(b.extras ?? {})) {
     if (!k.startsWith('tonic-') || OWN_KEYS.includes(k) || typeof v !== 'string') continue
-    if (mode === 'merge' && localStorage.getItem(k) !== null) continue
+    const mine = localStorage.getItem(k)
+    if (mode === 'merge' && mine !== null) {
+      const merged = MERGED_LISTS[k] ? mergeSavedList(mine, v, MERGED_LISTS[k]) : null
+      if (merged !== null) localStorage.setItem(k, merged)
+      continue
+    }
     localStorage.setItem(k, v)
   }
 

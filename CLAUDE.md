@@ -75,6 +75,9 @@ Claude's local memory doesn't travel between machines, so everything needed live
   `songScoreInput` (what the score engraver needs). The player has three modes: Practice (waits for each note),
   Play along (keeps going at your tempo, judged by `along.ts`) and Listen.
 - `src/features/`: screens. Routes are in `src/App.tsx` (hash router in `src/router.ts`).
+- `features/play/`: Free Play. `ideas.ts` keeps the last two minutes of playing in memory (`recorder`) so "Save that!"
+  can keep it afterwards as an idea (notes and pedal, key, chords) in the `tonic-ideas` store, which backups carry and
+  merge by id; `IdeasSheet.tsx` plays them back (through the keyboard too), renames, deletes and saves .mid files.
 - `features/practice/`: the games share `shared/` (setup and results cards, `finishGame`, weak spots). The daily
   workout (`DailyWorkout.tsx`, `shared/workout.ts`) plays Note Rush, Chord Trainer, Rhythm Tap and Ear Training in a
   row: each game takes an optional `workout` part (start at your level, a short round, hand back how it went).

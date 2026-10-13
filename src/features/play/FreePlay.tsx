@@ -1,13 +1,14 @@
-import { ArrowUpRight, ChevronLeft, ChevronRight, Sparkles, Wand2 } from 'lucide-react'
+import { ArrowUpRight, BookmarkPlus, ChevronLeft, ChevronRight, Lightbulb, Sparkles, Wand2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
 import { type KeyMark, Piano } from '../../components/piano/Piano'
 import { Staff, type StaffItem } from '../../components/staff/Staff'
-import { IconButton } from '../../components/ui/Button'
+import { Button, IconButton } from '../../components/ui/Button'
 import { Paper } from '../../components/ui/Card'
 import { useElementSize } from '../../hooks/useElementSize'
+import { useHandsFree } from '../../hooks/useHandsFree'
 import { useViewportHeight } from '../../hooks/useViewport'
 import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
@@ -53,6 +54,8 @@ import { GuitarDiagram } from '../explore/GuitarDiagram'
 import { openChord, openJamWith } from '../explore/links'
 import { ChordChart } from './ChordChart'
 import { Collection } from './Collection'
+import { IdeasSheet } from './IdeasSheet'
+import { PEDAL, lengthText, recorder, useIdeas } from './ideas'
 import {
   type ChartEntry,
   type NoteSpan,
@@ -144,6 +147,8 @@ export function FreePlay() {
   }
 
   useNoteEvents((e) => {
+    // Everything you play here is kept for a couple of minutes, for Save that!
+    recorder.add(e.time, e.midi, e.type === 'on' ? Math.min(127, Math.max(1, Math.round(e.velocity * 127))) : 0)
     if (e.type === 'on') {
       tracker.noteOn(e.midi, e.time)
       const keep = spans.current.filter((n) => e.time - n.on < KEY_MEMORY_MS).slice(-(KEY_NOTES - 1))
@@ -162,10 +167,13 @@ export function FreePlay() {
       useLive.subscribe((s, prev) => {
         if (s.sustain === prev.sustain) return
         tracker.setPedal(s.sustain)
+        recorder.add(performance.now(), PEDAL, s.sustain ? 1 : 0)
         look()
       }),
     [tracker, look],
   )
+  // The pedal as it is now: it may have gone up or down while you were on another screen.
+  useEffect(() => recorder.add(performance.now(), PEDAL, useLive.getState().sustain ? 1 : 0), [])
   // A broken chord fades out on its own: look again when it does.
   useEffect(() => {
     const t = performance.now()
@@ -286,6 +294,45 @@ export function FreePlay() {
     changeChart([])
     setSelected(null)
   }
+
+  // ---- Save that!: the last couple of minutes of playing, kept as an idea ----
+  const ideaCount = useIdeas((s) => s.ideas.length)
+  const [showIdeas, setShowIdeas] = useState(false)
+  const saveThat = () => {
+    const now = performance.now()
+    const take = recorder.take(now)
+    if (!take) {
+      toast({
+        kind: 'info',
+        title: ideaCount ? 'Nothing new to save' : 'Nothing to save yet',
+        detail: 'Play something first: Free Play keeps the last two minutes (since your last save).',
+      })
+      return
+    }
+    const id = Date.now()
+    // The chart's chords that came in while you played it, as the key spells them.
+    const began = id - (now - take.from) - 300
+    const chordsIn = chart.filter((e) => e.id >= began).map((e) => chordSymbol(spellChordInKey(fromEntry(e), key)))
+    const base = key ? `Idea in ${keyName(key)}` : 'Idea'
+    const names = new Set(useIdeas.getState().ideas.map((i) => i.name))
+    let name = base
+    for (let n = 2; names.has(name); n++) name = `${base} ${n}`
+    let kept = false
+    try {
+      kept = useIdeas.getState().add({ id, name, ms: take.ms, events: take.events, ...(key ? { key: keyId(key) } : {}), ...(chordsIn.length ? { chords: chordsIn } : {}) })
+    } catch {
+      // The browser wouldn't store it: don't show an idea that isn't really kept.
+      useIdeas.setState((st) => ({ ideas: st.ideas.filter((i) => i.id !== id) }))
+    }
+    if (!kept) {
+      toast({ kind: 'info', title: 'No room to save that', detail: 'Your ideas fill the space set aside for them. Delete a few in Your ideas, then try again.' })
+      return
+    }
+    recorder.saved(now)
+    toast({ kind: 'info', title: `Saved: ${name}`, detail: `${lengthText(take.ms)} of playing, kept in Your ideas.` })
+  }
+  // Enter saves too (the pedal and the top C are for playing here).
+  useHandsFree(saveThat, { pedal: false, topC: false })
 
   // What the big name shows, spelled for the key: the chord you're playing, else the last one (dimmed), else the notes.
   const currentInKey = current && respelled(current, key)
@@ -456,9 +503,22 @@ export function FreePlay() {
                   ))}
                 </>
               )}
-              <span className="flex-1" />
-              <span className={`rounded-full px-3 py-1 text-sm font-bold transition-colors ${sustain ? 'bg-teal/20 text-teal' : 'bg-white/5 text-ink-mute'}`}>
-                Pedal {sustain ? 'down' : 'up'}
+              {/* Save that!: what you just played, kept as an idea (Enter does it too). Kept together, on the right. */}
+              <span className="ml-auto flex items-center gap-2">
+                <Button size="sm" icon={BookmarkPlus} onClick={saveThat} title="Keep what you just played (up to the last two minutes) as an idea (Enter)">
+                  Save that!
+                </Button>
+                <span className="relative">
+                  <IconButton icon={Lightbulb} label={`Your ideas (${ideaCount})`} size={44} onClick={() => setShowIdeas(true)} />
+                  {ideaCount > 0 && (
+                    <span className="pointer-events-none absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-gold text-[0.7rem] font-extrabold text-night-900">
+                      {ideaCount}
+                    </span>
+                  )}
+                </span>
+                <span className={`rounded-full px-3 py-1 text-sm font-bold transition-colors ${sustain ? 'bg-teal/20 text-teal' : 'bg-white/5 text-ink-mute'}`}>
+                  Pedal {sustain ? 'down' : 'up'}
+                </span>
               </span>
             </div>
             <AnimatePresence>
@@ -536,6 +596,7 @@ export function FreePlay() {
       </div>
 
       <Collection open={showCollection} onClose={() => setShowCollection(false)} found={found} />
+      <IdeasSheet open={showIdeas} onClose={() => setShowIdeas(false)} />
     </div>
   )
 }

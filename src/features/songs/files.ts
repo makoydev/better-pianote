@@ -20,6 +20,7 @@ const MIME: Record<string, string> = {
   mxl: 'application/vnd.recordare.musicxml',
   musicxml: 'application/vnd.recordare.musicxml+xml',
   xml: 'application/xml',
+  mid: 'audio/midi',
 }
 
 export const mimeFor = (name: string) => MIME[/\.([^.]+)$/.exec(name)?.[1].toLowerCase() ?? ''] ?? 'application/octet-stream'
