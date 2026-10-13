@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RunJudge } from './timing'
+import { RunJudge, TempoMap } from './timing'
 
 // C D E F G at 60 BPM (a note a second), the first on the beat at 10 s.
 const C_MAJOR = [60, 62, 64, 65, 67]
@@ -189,5 +189,130 @@ describe('a rhythm in time', () => {
     expect(j.note(60, 10.15, { mic: true })).toBeNull()
     // Struck again on its own moment: the second C.
     expect(j.note(60, 10.5, { mic: true })).toBe(1)
+  })
+})
+
+// A song's bar at 60 BPM: a C major chord with the melody's E on top (C3 + C4 E4 G4) on beat 1, then D4 and E4.
+const chordBar = (slips?: boolean) =>
+  new RunJudge({
+    t0: 0,
+    beat: 1,
+    hands: 1,
+    strict: true,
+    slips,
+    targets: [
+      ...[48, 60, 64, 67].map((m) => ({ pc: m % 12, midis: [m], at: 0 })),
+      { pc: 2, midis: [62], at: 1 },
+      { pc: 4, midis: [64], at: 2 },
+    ],
+  })
+
+describe('a song played along with', () => {
+  it('judges each note of a chord on its own', () => {
+    const j = chordBar(false)
+    expect(j.note(60, 0.01)).toBe(1)
+    expect(j.note(48, -0.02)).toBe(0)
+    expect(j.note(67, 0.12)).toBe(3)
+    // The E is never played; D and the next E are.
+    j.note(62, 1)
+    j.note(64, 2)
+    j.close(10)
+    expect(j.results.map((r) => r.verdict)).toEqual(['perfect', 'perfect', 'miss', 'late', 'perfect', 'perfect'])
+  })
+
+  it('times a chord against the moments either side, not its other notes', () => {
+    const j = chordBar()
+    // A beat to D: the usual 200 ms window, not none at all.
+    expect(j.window(0)).toBeCloseTo(0.2)
+    expect(j.window(3)).toBeCloseTo(0.2)
+    // Half a beat early still reaches the chord.
+    expect(j.note(67, -0.5)).toBe(3)
+    expect(j.results[3].verdict).toBe('early')
+  })
+
+  it('only counts wrong notes when they make no note a slip', () => {
+    const lesson = chordBar()
+    expect(lesson.note(61, 1)).toBe('wrong')
+    expect(lesson.results[4].slip).toBe(true)
+    const song = chordBar(false)
+    expect(song.note(61, 1)).toBe('wrong')
+    expect(song.results[4].slip).toBe(false)
+    expect(song.extras).toBe(1)
+    song.note(62, 1.02)
+    expect(song.results[4].verdict).toBe('perfect')
+  })
+
+  it('lets the mic hear a chord from one of its notes', () => {
+    const j = chordBar(false)
+    expect(j.note(64, 0.03, { mic: true })).toBe(2)
+    expect(j.results.slice(0, 4).map((r) => r.verdict)).toEqual(['perfect', 'perfect', 'perfect', 'perfect'])
+    // Hearing another note of it a moment later is the chord still ringing.
+    expect(j.note(67, 0.2, { mic: true })).toBeNull()
+    expect(j.extras).toBe(0)
+  })
+
+  it('asks for the written octave note by note', () => {
+    const j = chordBar(false)
+    // C5 for C4: wrong from a USB keyboard, fine from computer keys set to any octave.
+    expect(j.note(72, 0, { exact: true })).toBe('wrong')
+    expect(j.note(72, 0.01, { exact: false })).toBe(0)
+  })
+
+  it('follows the tempo when it changes as it plays', () => {
+    // 60 BPM for the first two beats, then 120 BPM.
+    const tempo = new TempoMap(0, 1)
+    tempo.set(2, 2, 0.5)
+    expect(tempo.beats(3)).toBeCloseTo(4)
+    expect(tempo.time(5)).toBeCloseTo(3.5)
+    expect(tempo.beat(1)).toBe(1)
+    expect(tempo.beat(4)).toBe(0.5)
+    // A beat before the first one, at the first tempo.
+    expect(tempo.beats(-1)).toBeCloseTo(-1)
+    const j = new RunJudge({ t0: 0, beat: 1, hands: 1, strict: true, targets: [0, 1, 2, 3, 4].map((at) => ({ pc: 0, midis: [60], at })) }, tempo)
+    j.note(60, 0)
+    j.note(60, 1)
+    j.note(60, 2)
+    // Beat 3 is at 2.5 s now: 40 ms late, not a whole half second early.
+    expect(j.note(60, 2.54)).toBe(3)
+    expect(j.results[3]).toMatchObject({ verdict: 'perfect' })
+    expect(j.results[3].error).toBeCloseTo(0.04)
+    // Quarter notes at 120 BPM are 500 ms apart: a 200 ms window still.
+    expect(j.window(4)).toBeCloseTo(0.2)
+    expect(j.close(3.3)).toEqual([])
+    expect(j.close(3.5)).toEqual([4])
+  })
+
+  it('sizes each hand’s windows by its own rhythm', () => {
+    // A right-hand half note over left-hand eighths, at 60 BPM.
+    const j = new RunJudge({
+      t0: 0,
+      beat: 1,
+      hands: 1,
+      strict: true,
+      slips: false,
+      targets: [
+        { pc: 4, midis: [64], at: 0, lane: 0 },
+        ...[48, 55, 52, 55].map((m, k) => ({ pc: m % 12, midis: [m], at: k / 2, lane: 1 })),
+        { pc: 2, midis: [62], at: 2, lane: 0 },
+      ],
+    })
+    // The left hand's eighths: 200 ms. The right hand's half notes: 200 ms too, not squeezed to a quarter beat.
+    expect(j.window(2)).toBeCloseTo(0.2)
+    expect(j.window(0)).toBeCloseTo(0.2)
+    // The E 0.4 beats late still reaches its note (a quarter beat would have been the limit otherwise).
+    expect(j.note(64, 0.4)).toBe(0)
+    expect(j.results[0].verdict).toBe('late')
+  })
+
+  it('takes more notes as the music goes round again', () => {
+    const j = new RunJudge({ t0: 0, beat: 1, hands: 1, strict: true, slips: false, targets: [{ pc: 0, midis: [60], at: 0 }, { pc: 7, midis: [67], at: 1 }] })
+    j.add([{ pc: 0, midis: [60], at: 2 }, { pc: 7, midis: [67], at: 3 }])
+    // The second time round's C, a little early across the join.
+    j.note(60, 0)
+    j.note(67, 1)
+    expect(j.note(60, 1.9)).toBe(2)
+    expect(j.results[2].verdict).toBe('early')
+    j.close(10)
+    expect(j.summary()).toMatchObject({ total: 4, onTime: 2, early: 1, missed: 1 })
   })
 })
