@@ -5,7 +5,7 @@ import type { ScoreLayout } from './score'
 import type { LaidEvent, Layout, NoteState, StaffId, StaffNoteSpec } from './layout'
 import { WIDTH } from './glyphs'
 
-const STATE_COLOR: Partial<Record<NoteState, string>> = { correct: '#15a34a', wrong: '#e11d48' }
+const STATE_COLOR: Partial<Record<NoteState, string>> = { correct: '#15a34a', close: '#d97706', wrong: '#e11d48' }
 
 export interface StaffSvgProps {
   layout: Layout | ScoreLayout
@@ -29,14 +29,21 @@ export interface StaffSvgProps {
   dim?: StaffId
   /** Shaded stretches behind the music (x ranges): the looped bars, or bars being picked. */
   bands?: { x0: number; x1: number; kind: 'loop' | 'pick' }[]
+  /**
+   * Playing in time: notes marked correct, close or wrong get a soft disc of their colour behind them, so how each
+   * one went stands out from the rainbow note colours (a C is red, a D orange, an F green).
+   */
+  judged?: boolean
 }
+
+const JUDGED: NoteState[] = ['correct', 'close', 'wrong']
 
 const BAND_FILL = { loop: '#ffc857', pick: '#9b8cff' }
 
 const DIMMED = 0.25
 
 /** Draws a laid-out staff (from layoutStaff or layoutScore) as SVG. */
-export function StaffSvg({ layout, ink = '#1f1b33', colored, animate = true, cursor, cursorX, title, noteState, eventState, clip, maxWidth, dim, bands }: StaffSvgProps) {
+export function StaffSvg({ layout, ink = '#1f1b33', colored, animate = true, cursor, cursorX, title, noteState, eventState, clip, maxWidth, dim, bands, judged }: StaffSvgProps) {
   const headColor = (state: NoteState, letter: number, override?: string) =>
     STATE_COLOR[state] ?? override ?? (colored ? letterColor(letter, true) : ink)
   const inView = (x0: number, x1: number) => !clip || (x1 >= clip[0] && x0 <= clip[1])
@@ -70,6 +77,8 @@ export function StaffSvg({ layout, ink = '#1f1b33', colored, animate = true, cur
                 style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
               />
             </g>
+          ) : judged && states[i] && JUDGED.includes(states[i]!) ? (
+            <circle key={`mark${i}`} cx={n.x + e.headW / 2} cy={n.y} r={e.headW * 0.95} fill={STATE_COLOR[states[i]!]} opacity={0.24} />
           ) : null,
         )}
         {e.lines.map((l, i) => (

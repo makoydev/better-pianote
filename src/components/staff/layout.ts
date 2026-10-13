@@ -4,7 +4,8 @@ import { ENGRAVING, GLYPH, WIDTH, accidentalGlyph, timeSigDigit } from './glyphs
 /** Pure layout for a staff: turns notes into positioned glyphs, lines and text (all in px). */
 
 export type Duration = 'w' | 'h' | 'q' | '8' | '16' | '32' | '64'
-export type NoteState = 'normal' | 'active' | 'correct' | 'wrong' | 'ghost' | 'done'
+/** How a note is drawn: `close` is played in time but a little early or late (amber, between correct and wrong). */
+export type NoteState = 'normal' | 'active' | 'correct' | 'close' | 'wrong' | 'ghost' | 'done'
 export type StaffId = 'treble' | 'bass'
 export type ClefKind = 'treble' | 'bass' | 'grand' | 'rhythm'
 

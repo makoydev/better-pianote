@@ -26,7 +26,7 @@ export function KeyboardView({ k, sparks = true, lit = [] }: { k: KeyboardVisual
   )
 }
 
-export function StaffView({ s, className = '', sp = 20 }: { s: StaffVisual; className?: string; sp?: number }) {
+export function StaffView({ s, className = '', sp = 20, judged }: { s: StaffVisual; className?: string; sp?: number; judged?: boolean }) {
   return (
     <Paper className={className}>
       <Staff
@@ -38,6 +38,7 @@ export function StaffView({ s, className = '', sp = 20 }: { s: StaffVisual; clas
         spacing={s.spacing ?? (s.time ? 'proportional' : 'even')}
         sp={sp}
         endBar={!!s.time}
+        judged={judged}
       />
     </Paper>
   )

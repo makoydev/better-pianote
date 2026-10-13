@@ -35,6 +35,8 @@ export interface StaffProps {
   natural?: boolean
   /** Event index to mark with a playhead. */
   cursor?: number
+  /** Playing in time: notes marked correct, close or wrong stand out from rainbow colours (see StaffSvg). */
+  judged?: boolean
   animate?: boolean
   ink?: string
   className?: string
@@ -63,6 +65,7 @@ export function Staff({
   endBar = false,
   natural = false,
   cursor,
+  judged,
   animate = true,
   ink = '#1f1b33',
   className = '',
@@ -119,7 +122,7 @@ export function Staff({
 
   return (
     <div ref={ref} className={`w-full ${natural ? '' : 'overflow-hidden'} ${className}`}>
-      {layout && <StaffSvg layout={layout} ink={ink} colored={colored} animate={animate} cursor={cursor} title={title} />}
+      {layout && <StaffSvg layout={layout} ink={ink} colored={colored} animate={animate} cursor={cursor} title={title} judged={judged} />}
     </div>
   )
 }

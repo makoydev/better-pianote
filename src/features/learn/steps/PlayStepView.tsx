@@ -6,7 +6,7 @@ import { useViewportHeight } from '../../../hooks/useViewport'
 import { MusicText } from '../../../components/MusicText'
 import { MicPrompt } from '../../../components/layout/MicPrompt'
 import { type Marks, Piano } from '../../../components/piano/Piano'
-import type { StaffItem, StaffNoteSpec } from '../../../components/staff/Staff'
+import type { StaffItem } from '../../../components/staff/Staff'
 import { Button } from '../../../components/ui/Button'
 import { RichText } from '../../../components/ui/RichText'
 import type { KeyboardVisual, PlayStep, Target } from '../../../content/types'
@@ -16,7 +16,7 @@ import { burst } from '../../../lib/fx'
 import { type NoteSource, heldNow, useNoteEvents } from '../../../lib/input/bus'
 import { useMicChords } from '../../../lib/input/mic'
 import { micHearsNotes } from '../../../lib/input/micMatch'
-import { type Note, isBlackKey, mod } from '../../../lib/theory'
+import { isBlackKey, mod } from '../../../lib/theory'
 import { useLive } from '../../../state/live'
 import { useSettings } from '../../../state/settings'
 import { useDemoLights } from '../demoLights'
@@ -38,11 +38,6 @@ const PRAISE = ['Nice!', 'Perfect!', 'You got it!', 'Spot on!', 'Beautiful!', 'N
 
 /** Tempo for "Show me" on a staff with a time signature (a step not played in time). */
 const DEMO_BPM = 96
-
-/** Notes a little early or late, still in time, on the staff. */
-const CLOSE_COLOR = '#d97706'
-
-const tint = (n: string | Note | StaffNoteSpec, color: string): StaffNoteSpec => (typeof n === 'string' || 'letter' in n ? { note: n, color } : { ...n, color })
 
 /** A keyboard range that fits every target note, whole octaves C…B. */
 function defaultKeyboard(t: Target): KeyboardVisual {
@@ -269,7 +264,7 @@ export function PlayStepView({
         const r = run.results[k]
         if (r.verdict === null) return running && k === run.step ? { ...it, state: 'active' } : it
         if (r.verdict === 'perfect' || r.verdict === 'good') return { ...it, state: 'correct' }
-        if ((r.verdict === 'early' || r.verdict === 'late') && run.inTime[k]) return { ...it, notes: it.notes?.map((n) => tint(n, CLOSE_COLOR)) }
+        if ((r.verdict === 'early' || r.verdict === 'late') && run.inTime[k]) return { ...it, state: 'close' }
         return { ...it, state: 'wrong' }
       }
       if (solved) return { ...it, state: 'correct' }
@@ -331,7 +326,12 @@ export function PlayStepView({
 
       {/* Played in time on a short screen, the staff takes the next size down, making room to say how it went. */}
       {staffItems && staff && (
-        <StaffView s={{ ...staff, items: staffItems }} sp={pictureSp(ts.on && short ? Math.min(vh, 719) : vh, staff.clef)} className="mx-auto w-full max-w-4xl" />
+        <StaffView
+          s={{ ...staff, items: staffItems }}
+          sp={pictureSp(ts.on && short ? Math.min(vh, 719) : vh, staff.clef)}
+          judged={ts.on}
+          className="mx-auto w-full max-w-4xl"
+        />
       )}
 
       {/* shrink-0: when room runs out the page scrolls; this never gets squeezed over the keyboard. */}
