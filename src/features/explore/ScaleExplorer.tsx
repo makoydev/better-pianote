@@ -2,6 +2,7 @@ import { ArrowUpDown, Hand, Minus, Play, Plus, RotateCcw, Square, Target, Timer,
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MusicText } from '../../components/MusicText'
+import { TimingStrip } from '../../components/TimingStrip'
 import { TopBar } from '../../components/layout/TopBar'
 import { type KeyMark, Piano } from '../../components/piano/Piano'
 import type { NoteState, StaffNoteSpec } from '../../components/staff/Staff'
@@ -10,6 +11,7 @@ import { Button, IconButton } from '../../components/ui/Button'
 import { Card, Paper } from '../../components/ui/Card'
 import { Segmented, Slider, Toggle } from '../../components/ui/controls'
 import { useHandsFree } from '../../hooks/useHandsFree'
+import { type RunSummary, type TimedPlan, useTimedRun } from '../../hooks/useTimedRun'
 import { audio } from '../../lib/audio/engine'
 import { playSequence } from '../../lib/audio/play'
 import { noteColor } from '../../lib/colors'
@@ -21,10 +23,9 @@ import { getPref, setPref, usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
 import { OctavePicker } from './OctavePicker'
-import { TimedResult, TimingStrip } from './ScaleTimed'
+import { TimedResult } from './ScaleTimed'
 import { type Hands, type Octaves, runScore, scaleRun, stepOfId } from './scales'
 import { bestKey, readBests } from './scaleTiming'
-import { type RunSummary, useTimedRun } from './useTimedRun'
 
 const MAJOR_TONICS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
 const MINOR_TONICS = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B']
@@ -106,7 +107,17 @@ export function ScaleExplorer() {
     // XP like the other games: nothing for a run with nothing on the right note.
     if (s.total - s.wrong - s.missed > 0) addXp(s.clean ? 10 : 5)
   }
-  const timed = useTimedRun({ steps, hands: hand, bpm, click, strict, onDone: timedDone })
+  // In time: one note on each click, both hands' keys together when it's hands together.
+  const timedPlan = useMemo<TimedPlan>(
+    () => ({
+      targets: steps.map((s) => ({ pc: mod((s.rh ?? s.lh)!.midi, 12), midis: [s.rh?.midi, s.lh?.midi].filter((m): m is number => m !== undefined) })),
+      meter: 4,
+      hands: hand === 'both' ? 2 : 1,
+      strict,
+    }),
+    [steps, hand, strict],
+  )
+  const timed = useTimedRun({ plan: timedPlan, bpm, click, onDone: timedDone })
 
   const clearTimers = () => {
     timers.current.forEach((t) => window.clearTimeout(t))

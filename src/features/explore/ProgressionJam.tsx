@@ -47,7 +47,7 @@ import {
   romanLabel,
   sameRomans,
 } from './jam'
-import { MIC_CHORD_DELAY, heardTime } from './heard'
+import { MIC_CHORD_DELAY, heardTime } from '../../lib/audio/heard'
 import { type SavedProgression, findByRomans, freeName, newSavedId, readSaved, removeFrom, saveTo } from './jamLibrary'
 import { JamSettings } from './JamSettings'
 import { type JamPos, JamStage, type LoopScore, MicNote, ScorePill, Verdict } from './JamStage'

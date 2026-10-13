@@ -1,4 +1,4 @@
-import { audio } from '../../lib/audio/engine'
+import { audio } from './engine'
 
 /** The mic names a single note a moment after it starts (two readings 40 ms apart), as Rhythm Tap allows for. */
 export const MIC_DELAY = 0.07

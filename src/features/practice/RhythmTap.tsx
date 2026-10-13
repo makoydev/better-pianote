@@ -9,6 +9,7 @@ import { Slider, Toggle } from '../../components/ui/controls'
 import { useHandsFree } from '../../hooks/useHandsFree'
 import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
+import { MIC_DELAY, heardTime } from '../../lib/audio/heard'
 import { useNoteEvents } from '../../lib/input/bus'
 import { pauseComputerKeys } from '../../lib/input/keys'
 import { usePref } from '../../state/prefs'
@@ -46,20 +47,6 @@ interface PatternResult {
 }
 
 const average = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0)
-
-/**
- * Convert a performance.now() time to the audio clock *as heard*: getOutputTimestamp maps the moment
- * sound leaves the speakers, so output latency is already accounted for.
- */
-function perfToAudio(perfMs: number): number {
-  const ctx = audio.ctx
-  if (!ctx) return 0
-  const ts = ctx.getOutputTimestamp?.()
-  if (ts && ts.contextTime !== undefined && ts.performanceTime !== undefined && ts.performanceTime > 0) {
-    return ts.contextTime + (perfMs - ts.performanceTime) / 1000
-  }
-  return ctx.currentTime - (performance.now() - perfMs) / 1000 - (ctx.outputLatency || ctx.baseLatency || 0)
-}
 
 export function RhythmTap() {
   const [phase, setPhase] = useState<'setup' | 'play' | 'done'>('setup')
@@ -274,7 +261,7 @@ function Round({ pattern, bpm, clickOn, onDone }: { pattern: RNote[]; bpm: numbe
     let id = 0
     const tick = () => {
       const { t0, end, beatSec } = run.current
-      const now = perfToAudio(performance.now())
+      const now = heardTime(performance.now())
       if (playheadRef.current) playheadRef.current.style.left = `${Math.max(0, Math.min(1, (now - t0) / (end - t0))) * 100}%`
       const b = (now - t0) / beatSec
       let idx: number | undefined
@@ -360,7 +347,7 @@ function Round({ pattern, bpm, clickOn, onDone }: { pattern: RNote[]; bpm: numbe
       return
     }
     if (p !== 'countin' && p !== 'run') return
-    const t = perfToAudio(perfMs) - latency
+    const t = heardTime(perfMs) - latency
     const { t0, end } = run.current
     // Taps along with the count-in are fine; only the rhythm itself is graded.
     if (t < t0 - 0.25 || t > end + 0.25) return
@@ -380,7 +367,7 @@ function Round({ pattern, bpm, clickOn, onDone }: { pattern: RNote[]; bpm: numbe
   })
 
   useNoteEvents((e) => {
-    if (e.type === 'on' && e.source !== 'screen') tap(e.time, e.source === 'mic' ? 0.07 : 0)
+    if (e.type === 'on' && e.source !== 'screen') tap(e.time, e.source === 'mic' ? MIC_DELAY : 0)
   })
 
   const retry = () => void begin(false)
