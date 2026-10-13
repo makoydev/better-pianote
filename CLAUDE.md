@@ -21,6 +21,8 @@ Claude's local memory doesn't travel between machines, so everything needed live
    - `?static` (before the `#`) makes animations finish instantly and runs frames on timers. Use it for automated
      screenshots: a Chrome tab in a background window gets no animation frames and can show stale paint.
    - `#/dev` is a notation gallery, `#/dev/widgets` previews lesson widgets.
+   - To see another screen size (an iPad at 820×1180, say) without resizing the window, load the app in a fixed-size
+     iframe on the same origin, scaled down with a CSS transform: it has that viewport and shares the storage.
 4. Commit per feature with short imperative messages, only after `npm test` and `npx tsc -b` pass.
 
 ## Deploying
