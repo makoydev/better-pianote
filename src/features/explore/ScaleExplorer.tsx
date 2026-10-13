@@ -117,7 +117,7 @@ export function ScaleExplorer() {
     }),
     [steps, hand, strict],
   )
-  const timed = useTimedRun({ plan: timedPlan, bpm, click, onDone: timedDone })
+  const timed = useTimedRun({ plan: timedPlan, bpm, click, onDone: ({ summary }) => timedDone(summary) })
 
   const clearTimers = () => {
     timers.current.forEach((t) => window.clearTimeout(t))

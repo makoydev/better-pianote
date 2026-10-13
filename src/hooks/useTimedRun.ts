@@ -4,10 +4,10 @@ import { audio } from '../lib/audio/engine'
 import { MIC_DELAY, heardTime } from '../lib/audio/heard'
 import { playNotes, stopDemos } from '../lib/audio/play'
 import { useNoteEvents } from '../lib/input/bus'
-import { RunJudge, type StepResult, type Target } from '../lib/timing'
+import { RunJudge, type RunSummary, type StepResult, type Target } from '../lib/timing'
 import { useLive } from '../state/live'
 
-export type RunSummary = ReturnType<RunJudge['summary']>
+export type { RunSummary }
 
 export interface TimedNote extends Target {
   /** How long it lasts, in beats (for "Show me"; default 1). */
@@ -68,7 +68,8 @@ export function useTimedRun({
   plan: TimedPlan
   bpm: number
   click: boolean
-  onDone: (s: RunSummary, results: StepResult[]) => void
+  /** How it went: the summary, each note's result and whether it was within Rhythm Tap's window, and the tempo. */
+  onDone: (done: { summary: RunSummary; results: StepResult[]; inTime: boolean[]; bpm: number }) => void
 }) {
   const [run, setRun] = useState<TimedRun | null>(null)
   const judge = useRef<RunJudge | null>(null)
@@ -92,11 +93,12 @@ export function useTimedRun({
   }, [])
   useEffect(() => stop, [stop])
 
-  const start = ({ demo = false }: { demo?: boolean } = {}) => {
+  /** Count in and play (or `demo`: play it for you), at `tempo` when it's not the one this render has yet. */
+  const start = ({ demo = false, tempo = bpm }: { demo?: boolean; tempo?: number } = {}) => {
     stop()
     const ctx = audio.unlock()
     const { targets, meter, hands, strict } = plan
-    const beat = 60 / bpm
+    const beat = 60 / tempo
     const begin = ctx.currentTime + 0.2
     const t0 = begin + meter * beat
     const last = targets.length ? posOf(targets[targets.length - 1], targets.length - 1) : 0
@@ -152,7 +154,7 @@ export function useTimedRun({
           judge.current = null
           const summary = j.summary()
           setRun((r) => r && { ...r, phase: 'done', beat: null, step: null, ...snapshot(j), summary })
-          onDone(summary, j.results)
+          onDone({ summary, results: j.results, inTime: j.results.map((_, k) => j.inTime(k)), bpm: tempo })
         })
       },
     })

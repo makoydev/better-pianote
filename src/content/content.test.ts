@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { isBar } from '../components/staff/layout'
 import { midiOf, mod, parseChord, parseKey, parseNote, romanToChord } from '../lib/theory'
+import { stepRhythm } from '../features/learn/rhythm'
 import { ALL_LESSONS, UNITS } from './index'
 import type { KeyboardVisual, StaffVisual, Step, Visual } from './types'
 
@@ -63,6 +64,14 @@ function checkStep(step: Step, where: string) {
           expect(x >= lo && x <= hi, `${where}: target ${x} outside ${step.keyboard.from}-${step.keyboard.to}`).toBe(true)
         }
       }
+    }
+    // A staff in time spells out the melody to play, so "Show me" (and a run in time) can follow its rhythm.
+    if (t.type === 'sequence' && step.staff?.time) expect(stepRhythm(step), `${where}: staff rhythm doesn't match the notes`).not.toBeNull()
+    if (step.timed) {
+      expect(t.type, `${where}: only a sequence can be played in time`).toBe('sequence')
+      expect(!step.staff || !!step.staff.time, `${where}: a staff played in time needs a time signature`).toBe(true)
+      expect(step.timed.bpm, `${where}: tempo`).toBeGreaterThanOrEqual(40)
+      expect(step.timed.bpm, `${where}: tempo`).toBeLessThanOrEqual(160)
     }
     if (t.type === 'sequence' && step.staff) {
       const events = step.staff.items.filter((i) => !isBar(i))

@@ -47,6 +47,9 @@ Claude's local memory doesn't travel between machines, so everything needed live
   (`polyphony.ts`, harmonic summation with cancellation) while a screen calls `useMicChords()`. `micMatch.ts` holds
   the forgiving checks for mic input (a chord's perfect 5th may go unheard). `#/dev/mic` is a test page that feeds
   piano chords silently into the mic analysers; tune `POLY_DEFAULTS` against it and `polyphony.test.ts`.
+- `src/lib/timing.ts`: playing in time. `RunJudge` grades each note early or late like Rhythm Tap (notes at any beat,
+  how long keys were held); `hooks/useTimedRun.ts` counts in, clicks and runs it, or plays it as a demo. Used by
+  Scale Explorer's runs in time and lesson play steps with `timed` (`features/learn/rhythm.ts` reads their staff).
 - `src/components/piano/`: `Piano` (marks, fingers, labels, toggle mode for building chords, sparks, trails).
 - `src/components/staff/`: two engravers that share one SVG renderer (`StaffSvg.tsx`, Bravura glyphs).
   - `layout.ts` + `Staff.tsx`: one rhythm per staff, for lessons and exercises. Accidentals follow key signature +

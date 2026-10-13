@@ -142,8 +142,9 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [x] **30. Fairer stars:** one slip per attempt (a wrong chord counts 3 today), re-hearing "Show me" is free, list the
   slips on the complete screen. *Where:* `LessonPlayer.tsx`, `PlayStepView.tsx`. `S`
   *Done:* one slip per attempt (700 ms window), the first "Show me" costs a slip and replays are free, and the complete screen lists the steps you slipped on.
-- [ ] **31. Rhythm lessons that check rhythm.** "Show me" plays even notes today; play the written durations, add a
+- [x] **31. Rhythm lessons that check rhythm.** "Show me" plays even notes today; play the written durations, add a
   count-in and grade timing (reuse Rhythm Tap's `scoreTaps`). `M–L`
+  *Done:* the six play steps in Rhythm & Time are played in time. Start (or Enter, a pedal tap, the top C) counts in a bar of clicks, then every note is judged against the beat as the staff writes it (lengths, rests, ties) by the scales-in-time judge, now shared in `lib/timing.ts` with Rhythm Tap's grades and window. In time passes (green on the staff, amber when a little off); too far off, wrong or missed is a slip, with a tip; long notes let go too soon are named. Tempo −/+, click on/off, Slower after two misses, no auto-advance so the result stays. Show me counts in and plays the written rhythm with the clicks; untimed staffs in time (Ode to Joy in unit 2) now play their written lengths too. Checked in Chrome at 1440×757 (every timed step fits, before and after a run) and in an iPad-portrait frame; worth a try with the CT-S1 and through the mic.
 - [x] **32. Answer note and chord quizzes by playing them** (19 quizzes fit). `M`
   *Done:* 19 note/chord quizzes accept a played answer (MIDI, mic, computer keys); ear quizzes don't, so hunting for the sound on the keyboard stays free.
 - [x] **33. Review mode** for finished lessons (Continue always on, step strip) and a quick mixed review weighted to

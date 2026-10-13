@@ -149,7 +149,8 @@ export function StepPlayer({ steps, title, icon, color, pedal = true, browse = f
   const progress = (i + (canContinue ? 1 : 0)) / steps.length
   const onSolved = () => {
     setSolved((s) => ({ ...s, [i]: true }))
-    if (step.kind === 'play') setJustSolved(i)
+    // A step played in time stays put, so you can see how each note went (and play it again for a better run).
+    if (step.kind === 'play' && !step.timed) setJustSolved(i)
   }
 
   return (
@@ -196,6 +197,7 @@ export function StepPlayer({ steps, title, icon, color, pedal = true, browse = f
                 onSolved={onSolved}
                 onMistake={addSlips}
                 onRetry={solved[i] && justSolved !== i ? retry : undefined}
+                handsFree={!canContinue}
               />
             )}
             {step.kind === 'quiz' && <QuizStepView step={step} solved={!!solved[i]} onSolved={onSolved} onMistake={() => addSlips(1)} />}

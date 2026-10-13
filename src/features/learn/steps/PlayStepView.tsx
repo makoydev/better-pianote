@@ -6,24 +6,27 @@ import { useViewportHeight } from '../../../hooks/useViewport'
 import { MusicText } from '../../../components/MusicText'
 import { MicPrompt } from '../../../components/layout/MicPrompt'
 import { type Marks, Piano } from '../../../components/piano/Piano'
-import type { StaffItem } from '../../../components/staff/Staff'
+import type { StaffItem, StaffNoteSpec } from '../../../components/staff/Staff'
 import { Button } from '../../../components/ui/Button'
 import { RichText } from '../../../components/ui/RichText'
 import type { KeyboardVisual, PlayStep, Target } from '../../../content/types'
 import { audio } from '../../../lib/audio/engine'
-import { playNotes, playSequence } from '../../../lib/audio/play'
+import { playNotes, playSequence, playTimed } from '../../../lib/audio/play'
 import { burst } from '../../../lib/fx'
 import { type NoteSource, heldNow, useNoteEvents } from '../../../lib/input/bus'
 import { useMicChords } from '../../../lib/input/mic'
 import { micHearsNotes } from '../../../lib/input/micMatch'
-import { isBlackKey, mod } from '../../../lib/theory'
+import { type Note, isBlackKey, mod } from '../../../lib/theory'
 import { useLive } from '../../../state/live'
 import { useSettings } from '../../../state/settings'
 import { useDemoLights } from '../demoLights'
 import { chordMessage, wrongNoteMessage } from '../feedback'
 import { chordMatches, chordStatus, feedNote, inChord, initialMatch, targetMidis, wrongOctave } from '../match'
+import { stepRhythm } from '../rhythm'
 import { StaffView } from '../VisualBlock'
 import { keyboardHeight, noteMidi, pianoProps, pictureSp } from '../visual'
+import { TimedPanel } from './TimedPanel'
+import { useTimedStep } from './useTimedStep'
 
 /** As tall as the space allows (leaving room for sparks and the middle-C label), within sensible limits. */
 function pianoHeight(area: number, from: number, to: number) {
@@ -32,6 +35,14 @@ function pianoHeight(area: number, from: number, to: number) {
 }
 
 const PRAISE = ['Nice!', 'Perfect!', 'You got it!', 'Spot on!', 'Beautiful!', 'Nailed it!']
+
+/** Tempo for "Show me" on a staff with a time signature (a step not played in time). */
+const DEMO_BPM = 96
+
+/** Notes a little early or late, still in time, on the staff. */
+const CLOSE_COLOR = '#d97706'
+
+const tint = (n: string | Note | StaffNoteSpec, color: string): StaffNoteSpec => (typeof n === 'string' || 'letter' in n ? { note: n, color } : { ...n, color })
 
 /** A keyboard range that fits every target note, whole octaves C…B. */
 function defaultKeyboard(t: Target): KeyboardVisual {
@@ -51,6 +62,7 @@ export function PlayStepView({
   onSolved,
   onMistake,
   onRetry,
+  handsFree = true,
 }: {
   step: PlayStep
   solved: boolean
@@ -59,6 +71,8 @@ export function PlayStepView({
   onMistake: (n: number) => void
   /** Offered when you come back to a step you already solved. */
   onRetry?: () => void
+  /** Enter, a pedal tap or the top C can start a run in time (they don't continue the lesson right now). */
+  handsFree?: boolean
 }) {
   const t = step.target
   const uiSounds = useSettings((s) => s.uiSounds)
@@ -84,7 +98,8 @@ export function PlayStepView({
   const k = step.keyboard ?? defaultKeyboard(t)
   const p = pianoProps(k)
   const targets = useMemo(() => targetMidis(t), [t])
-  const showHint = !solved && (wrong >= 2 || hintAsked)
+  // When each note falls, from the staff's time signature and note lengths (or a note a beat, played in time).
+  const rhythm = useMemo(() => stepRhythm(step), [step])
   // "Show me" lights each key as it sounds.
   const demo = useDemoLights()
   // Through the mic, chord steps listen for whole chords.
@@ -134,6 +149,20 @@ export function PlayStepView({
     burst(kbRef.current, { count: 50 })
   }
 
+  // Rhythm steps are played in time: a run that keeps the beat solves the step, one that doesn't is a slip.
+  const ts = useTimedStep({
+    step,
+    rhythm,
+    handsFree,
+    solved,
+    onPass: succeed,
+    onFail: () => {
+      onMistake(1)
+      if (uiSounds) audio.ui('wrong')
+    },
+  })
+  const showHint = !solved && ((ts.on ? ts.fails : wrong) >= 2 || hintAsked)
+
   /** After each chord note: done, or say what's still missing (wrong notes are flagged separately). */
   const checkChord = (extra: number[]) => {
     const notes = [...extra, ...heldNow()]
@@ -144,7 +173,8 @@ export function PlayStepView({
   }
 
   useNoteEvents((e) => {
-    if (solved || e.type !== 'on') return
+    // In time, the run judges the notes (and between runs they're yours to try out).
+    if (solved || e.type !== 'on' || ts.on) return
     if (t.type === 'chord') {
       if (e.source === 'mic') {
         // The mic can miss a chord's 5th or hear a stray overtone, so be forgiving and don't count mistakes.
@@ -190,7 +220,7 @@ export function PlayStepView({
     }
     for (let m = p.from; m <= p.to; m++) if (mod(m, 12) === mod(target, 12)) marks[m] = kind
   }
-  if (step.showTargets || showHint) {
+  if (!ts.on && (step.showTargets || showHint)) {
     const kind = step.showTargets ? 'target' : 'hint'
     if (t.type === 'sequence') {
       if (!state.done) markPc(targets[state.index], kind)
@@ -204,26 +234,52 @@ export function PlayStepView({
     if (visible(m)) marks[m] = 'chord'
     else for (let x = p.from; x <= p.to; x++) if (mod(x, 12) === mod(m, 12)) marks[x] = 'chord'
   }
+  // In time: the demo's keys, a flash for each note you play, and as a hint the next note's key.
+  const run = ts.timed.run
+  if (ts.on && run) {
+    for (const m of run.lit) if (visible(m)) marks[m] = 'chord'
+    if (showHint && ts.timed.running && !run.demo) {
+      const next = run.results.findIndex((r) => r.verdict === null)
+      if (next >= 0) markPc(targets[next], 'hint')
+    }
+    if (run.hitAt !== null) marks[run.hitAt] = 'good'
+    if (run.wrongAt !== null) marks[run.wrongAt] = 'bad'
+  }
   selected.forEach((m) => (marks[m] = inChord(t, m) ? 'selected' : 'bad'))
   for (const [m, kind] of Object.entries(flash)) marks[Number(m)] = kind
   if (solved && t.type === 'chord') targets.forEach((m) => visible(m) && (marks[m] = 'good'))
 
-  // Staff: highlight where you are in a sequence, turn green when solved.
+  // Staff: highlight where you are in a sequence, turn green when solved. In time, each note shows how it went:
+  // green on the beat, amber a little off, red too far off, wrong or missed.
   const staff = step.staff
+  const timedOn = ts.on
+  const running = ts.timed.running
   const staffItems = useMemo(() => {
     if (!staff) return null
+    // Which note each event is (rests are none), when the staff spells out the rhythm.
+    const noteAt = new Map((rhythm?.notes ?? []).map((n, k) => [n.event, k]))
     let ev = 0
     return staff.items.map((it): StaffItem => {
       if ('bar' in it) return it
       const idx = ev++
+      const k = rhythm ? noteAt.get(idx) : idx
+      if (timedOn) {
+        if (k === undefined || !run) return solved && k !== undefined ? { ...it, state: 'correct' } : it
+        if (run.demo) return k === run.step ? { ...it, state: 'active' } : it
+        const r = run.results[k]
+        if (r.verdict === null) return running && k === run.step ? { ...it, state: 'active' } : it
+        if (r.verdict === 'perfect' || r.verdict === 'good') return { ...it, state: 'correct' }
+        if ((r.verdict === 'early' || r.verdict === 'late') && run.inTime[k]) return { ...it, notes: it.notes?.map((n) => tint(n, CLOSE_COLOR)) }
+        return { ...it, state: 'wrong' }
+      }
       if (solved) return { ...it, state: 'correct' }
-      if (t.type === 'sequence') {
-        if (idx < state.index) return { ...it, state: 'done' }
-        if (idx === state.index) return { ...it, state: 'active' }
+      if (t.type === 'sequence' && k !== undefined) {
+        if (k < state.index) return { ...it, state: 'done' }
+        if (k === state.index) return { ...it, state: 'active' }
       }
       return it
     })
-  }, [staff, solved, state.index, t.type])
+  }, [staff, solved, state.index, t.type, rhythm, timedOn, run, running])
 
   const hasProgress = t.type === 'set' || t.type === 'sequence'
   const count = t.type === 'set' ? state.found.length : state.index
@@ -233,12 +289,20 @@ export function PlayStepView({
     // Asking for help costs one slip; hearing it again is free.
     if (!hintAsked) onMistake(1)
     setHintAsked(true)
+    // In time: a count-in, then the notes with the clicks, the way you'll play it.
+    if (ts.on) return ts.demo()
     if (t.type === 'chord') {
       playNotes(targets, { dur: 1.6, strum: 0.04 })
       demo.show([targets], { gap: 0, dur: 1.6, strum: 0.04 })
     } else if (t.type === 'note') {
       playNotes([targets[0]], { dur: 1.4 })
       demo.show([targets[0]], { gap: 0, dur: 1.4 })
+    } else if (rhythm) {
+      // The rhythm as it's written, at an easy tempo. A key goes out just before it plays again.
+      const beat = 60 / DEMO_BPM
+      const notes = rhythm.notes.map((n) => ({ midis: [n.midi], at: n.at * beat, dur: Math.max(0.2, n.len * beat * 0.92) }))
+      playTimed(notes)
+      demo.showEvents(notes.map((n, k) => ({ midi: n.midis[0], on: n.at, off: n.at + Math.min(n.dur, ((notes[k + 1]?.at ?? Infinity) - n.at) * 0.85) })))
     } else {
       playSequence(targets, { gap: 0.45 })
       demo.show(targets, { gap: 0.45, dur: 0.45 * 1.5 })
@@ -252,7 +316,7 @@ export function PlayStepView({
   )
 
   return (
-    <div className={`flex min-h-full flex-1 flex-col ${short ? 'gap-3' : 'gap-4'}`}>
+    <div className={`flex min-h-full flex-1 flex-col ${short ? (ts.on ? 'gap-2' : 'gap-3') : 'gap-4'}`}>
       <div className="text-center">
         {step.title && <div className="mb-1 text-sm font-extrabold uppercase tracking-[0.18em] text-gold">{step.title}</div>}
         <h2
@@ -265,67 +329,80 @@ export function PlayStepView({
         {step.body && <RichText text={step.body} className={`mx-auto mt-2 text-lg text-ink-soft ${short ? 'max-w-3xl' : 'max-w-2xl'}`} />}
       </div>
 
-      {staffItems && staff && <StaffView s={{ ...staff, items: staffItems }} sp={pictureSp(vh, staff.clef)} className="mx-auto w-full max-w-4xl" />}
+      {/* Played in time on a short screen, the staff takes the next size down, making room to say how it went. */}
+      {staffItems && staff && (
+        <StaffView s={{ ...staff, items: staffItems }} sp={pictureSp(ts.on && short ? Math.min(vh, 719) : vh, staff.clef)} className="mx-auto w-full max-w-4xl" />
+      )}
 
       {/* shrink-0: when room runs out the page scrolls; this never gets squeezed over the keyboard. */}
-      <div className={`mx-auto flex min-h-14 w-full shrink-0 flex-col items-center justify-center gap-2 ${short ? 'max-w-4xl' : 'max-w-3xl'}`}>
-        <AnimatePresence mode="wait">
-          {solved ? (
-            <motion.div
-              key="ok"
-              initial={{ scale: 0.6, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 420, damping: 18 }}
-              className="flex items-center gap-2.5 rounded-2xl bg-good/15 px-5 py-3 text-xl font-extrabold text-good"
-            >
-              <CheckCircle2 size={28} /> {step.success ?? praise}
-            </motion.div>
-          ) : showHint && step.hint ? (
-            <motion.div key="hint" initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="rounded-2xl bg-gold/12 px-5 py-3 text-center text-lg font-bold text-gold">
-              <RichText text={step.hint} />
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-        {/* The progress dots stay visible when a hint appears. */}
-        {!solved && hasProgress && (
-          <div className="flex flex-wrap justify-center gap-2">
-            {targets.map((_, i) => (
-              <motion.span
-                key={i}
-                animate={{ scale: i < count ? [1, 1.4, 1] : 1 }}
-                className={`size-4 rounded-full ${i < count ? 'bg-good shadow-[0_0_12px_#3ddc97]' : 'bg-white/15'}`}
-              />
-            ))}
-          </div>
-        )}
-        {!solved && !short && feedbackLine}
-        {solved && onRetry && (
-          <Button size="md" variant="ghost" icon={RotateCcw} onClick={onRetry}>
-            Play it again
-          </Button>
-        )}
-        {!solved && (
-          <div className="flex flex-wrap items-center justify-center gap-2 text-sm font-semibold text-ink-mute">
-            {/* On a short screen what you just played shares this row too. */}
-            {short && feedbackLine}
-            {onScreenChord && (mic === 'on' ? 'Play the chord and let it ring.' : 'Hold the notes together, or tap each key on screen.')}
-            {onScreenChord && selected.length > 0 && (
-              <Button size="sm" variant="ghost" icon={Eraser} onClick={() => setSelected([])}>
-                Clear
+      <div className={`mx-auto flex w-full shrink-0 flex-col items-center justify-center gap-2 ${ts.on ? '' : 'min-h-14'} ${short ? 'max-w-4xl' : 'max-w-3xl'}`}>
+        {ts.on ? (
+          <>
+            <TimedPanel ts={ts} step={step} solved={solved} praise={praise} onShowMe={showMe} extra={short && !solved ? <MicPrompt /> : null} compact={short} />
+            {!solved && !short && <MicPrompt />}
+          </>
+        ) : (
+          <>
+            <AnimatePresence mode="wait">
+              {solved ? (
+                <motion.div
+                  key="ok"
+                  initial={{ scale: 0.6, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 18 }}
+                  className="flex items-center gap-2.5 rounded-2xl bg-good/15 px-5 py-3 text-xl font-extrabold text-good"
+                >
+                  <CheckCircle2 size={28} /> {step.success ?? praise}
+                </motion.div>
+              ) : showHint && step.hint ? (
+                <motion.div key="hint" initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="rounded-2xl bg-gold/12 px-5 py-3 text-center text-lg font-bold text-gold">
+                  <RichText text={step.hint} />
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+            {/* The progress dots stay visible when a hint appears. */}
+            {!solved && hasProgress && (
+              <div className="flex flex-wrap justify-center gap-2">
+                {targets.map((_, i) => (
+                  <motion.span
+                    key={i}
+                    animate={{ scale: i < count ? [1, 1.4, 1] : 1 }}
+                    className={`size-4 rounded-full ${i < count ? 'bg-good shadow-[0_0_12px_#3ddc97]' : 'bg-white/15'}`}
+                  />
+                ))}
+              </div>
+            )}
+            {!solved && !short && feedbackLine}
+            {solved && onRetry && (
+              <Button size="md" variant="ghost" icon={RotateCcw} onClick={onRetry}>
+                Play it again
               </Button>
             )}
-            <Button size="sm" variant="ghost" icon={HelpCircle} onClick={showMe}>
-              Show me
-            </Button>
-            {/* On a short screen the mic shares this row rather than taking one of its own. */}
-            {short && <MicPrompt />}
-          </div>
+            {!solved && (
+              <div className="flex flex-wrap items-center justify-center gap-2 text-sm font-semibold text-ink-mute">
+                {/* On a short screen what you just played shares this row too. */}
+                {short && feedbackLine}
+                {onScreenChord && (mic === 'on' ? 'Play the chord and let it ring.' : 'Hold the notes together, or tap each key on screen.')}
+                {onScreenChord && selected.length > 0 && (
+                  <Button size="sm" variant="ghost" icon={Eraser} onClick={() => setSelected([])}>
+                    Clear
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" icon={HelpCircle} onClick={showMe}>
+                  Show me
+                </Button>
+                {/* On a short screen the mic shares this row rather than taking one of its own. */}
+                {short && <MicPrompt />}
+              </div>
+            )}
+            {!solved && !short && <MicPrompt />}
+          </>
         )}
-        {!solved && !short && <MicPrompt />}
       </div>
 
       {/* The keyboard takes whatever height is left, so it's always fully on screen. */}
-      <div ref={areaRef} className={`flex flex-1 flex-col justify-end ${short ? 'min-h-[140px]' : 'min-h-[190px]'}`}>
+      {/* In time, room for the whole keyboard is kept, so a result line above it is never covered. */}
+      <div ref={areaRef} className={`flex flex-1 flex-col justify-end ${short ? (ts.on ? 'min-h-[160px]' : 'min-h-[140px]') : 'min-h-[190px]'}`}>
         <div ref={kbRef}>
           <Piano
             {...p}

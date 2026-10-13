@@ -48,17 +48,19 @@ export function useDemoLights() {
       return next
     })
 
-  const show = (steps: (number | number[])[], timing: DemoTiming) => {
+  /** Light each key from `on` to `off` (seconds from now, as playTimed and playNotes count them). */
+  const showEvents = (events: { midi: number; on: number; off: number }[]) => {
     stop()
     setLit({})
     const t0 = audio.unlock().currentTime + 0.03
-    for (const { midi, on, off } of demoSchedule(steps, timing)) {
+    for (const { midi, on, off } of events) {
       timers.current.push(
         audio.at(t0 + on, () => bump(midi, 1)),
         audio.at(t0 + off, () => bump(midi, -1)),
       )
     }
   }
+  const show = (steps: (number | number[])[], timing: DemoTiming) => showEvents(demoSchedule(steps, timing))
 
-  return { lit: Object.keys(lit).map(Number), show }
+  return { lit: Object.keys(lit).map(Number), show, showEvents }
 }

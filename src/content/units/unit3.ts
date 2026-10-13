@@ -71,6 +71,7 @@ That's why the metronome plays beat one higher. When you count while you play, l
           prompt: 'Play middle C four times, slow and steady like a clock.',
           body: 'Count out loud as you play: **one, two, three, four**.',
           target: { type: 'sequence', notes: ['C4', 'C4', 'C4', 'C4'] },
+          timed: { bpm: 60 },
           keyboard: { from: 'C4', to: 'C5', labels: 'all' },
           success: 'Steady beats are the foundation of everything else.',
         },
@@ -152,6 +153,7 @@ That's why the metronome plays beat one higher. When you count while you play, l
           prompt: 'Read and play: hold each note for its full length.',
           body: 'Half note C (count 1-2), half note D (3-4), then whole note E (1-2-3-4).',
           target: { type: 'sequence', notes: ['C4', 'D4', 'E4'] },
+          timed: { bpm: 72 },
           staff: {
             clef: 'treble',
             time: [4, 4],
@@ -284,6 +286,7 @@ So **4/4** means four quarter-note beats per bar. It's so common it's nicknamed 
           prompt: 'Read and play these two bars of 4/4 with your right hand.',
           body: 'Thumb on middle C. Count 1 2 3 4 in each bar.',
           target: { type: 'sequence', notes: ['E4', 'E4', 'F4', 'G4', 'G4', 'F4', 'E4', 'D4'] },
+          timed: { bpm: 80 },
           staff: {
             clef: 'treble',
             time: [4, 4],
@@ -323,6 +326,7 @@ It feels a bit silly at first. It's also the single best habit for steady rhythm
           kind: 'play',
           prompt: 'A little waltz in 3/4. Read it and play it, counting 1 2 3.',
           target: { type: 'sequence', notes: ['C4', 'E4', 'G4', 'E4', 'F4', 'D4', 'C4'] },
+          timed: { bpm: 80 },
           staff: {
             clef: 'treble',
             time: [3, 4],
@@ -420,6 +424,7 @@ Together with the quarter rest (the squiggle, 1 beat), it's the rest you'll see 
           prompt: 'Read and play “Hot Cross Buns”, counting the eighth notes in bar 3.',
           body: 'Bar 3 goes: **1 & 2 & 3 & 4 &**, four Cs then four Ds.',
           target: { type: 'sequence', notes: ['E4', 'D4', 'C4', 'E4', 'D4', 'C4', 'C4', 'C4', 'C4', 'C4', 'D4', 'D4', 'D4', 'D4', 'E4', 'D4', 'C4'] },
+          timed: { bpm: 72 },
           staff: {
             clef: 'treble',
             time: [4, 4],
@@ -547,6 +552,7 @@ Ties are how a note can last across a bar line.`,
           prompt: 'Read and play the whole first line of “Ode to Joy”.',
           body: 'Watch the last bar: a **dotted quarter** (count “1 (2)”), an **eighth** (“&”), then a half note.',
           target: { type: 'sequence', notes: ['E4', 'E4', 'F4', 'G4', 'G4', 'F4', 'E4', 'D4', 'C4', 'C4', 'D4', 'E4', 'E4', 'D4', 'D4'] },
+          timed: { bpm: 76 },
           staff: {
             clef: 'treble',
             time: [4, 4],

@@ -104,6 +104,12 @@ export interface PlayStep {
   /** Other notes don't count as slips (the prompt asks you to play something else first, e.g. C major, then F). */
   free?: boolean
   /**
+   * Play it in time (rhythm lessons, sequences only): Start counts in a bar of clicks at `bpm`, then every note is
+   * checked against the beat as the staff writes it (its time signature, lengths, rests and ties; a note on each
+   * beat without a staff), and long notes for being held.
+   */
+  timed?: { bpm: number }
+  /**
    * The prompt in a quick review, where the step appears on its own (for prompts that lean on the step before).
    * The `success` line is left out there too, as it usually leans on the lesson as well.
    */

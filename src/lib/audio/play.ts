@@ -46,6 +46,16 @@ export function playSequence(steps: (number | number[])[], opts: { gap?: number;
   return steps.length * gap + dur
 }
 
+/**
+ * Play notes at their own moments (seconds from now), e.g. a rhythm as it's written. Stops the previous demo first,
+ * like playSequence. Returns the seconds until the last note ends.
+ */
+export function playTimed(notes: { midis: number[]; at: number; dur: number }[]): number {
+  stopDemos()
+  notes.forEach((n) => playNotes(n.midis, { dur: n.dur, delay: n.at }))
+  return notes.reduce((end, n) => Math.max(end, n.at + n.dur), 0)
+}
+
 /** Stop every demo: the app's own sound and anything still to come from the keyboard's speakers. */
 export function stopDemos() {
   audio.stopDemos()

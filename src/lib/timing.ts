@@ -209,3 +209,5 @@ export class RunJudge {
     }
   }
 }
+
+export type RunSummary = ReturnType<RunJudge['summary']>
