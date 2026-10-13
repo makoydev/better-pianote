@@ -196,7 +196,8 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [x] **49. Better tempo control:** −/+ and % presets instead of the ~80 px slider, count-in, metronome, speed up each
   loop, tempo remembered per song. *Where:* `SongPlayer.tsx`. `S`
   *Done:* −/+ buttons in 5% steps, presets 50/60/75/90/100% ("♩ = 72 · 75%"), Count-in and Metronome toggles, Speed up each loop, tempo saved per song (bb96fec). Checked: 75% preset and the count-in.
-- [ ] **50. Play along at tempo**, with timing judged. `L`
+- [x] **50. Play along at tempo**, with timing judged. `L`
+  *Done:* a Play along mode next to Practice and Listen: a bar of clicks counts you in, the music moves at your tempo (the app can play the other hand and the chords), and each note is judged like the rhythm lessons: green on the beat, amber a little early or late, red too far off or missed, with a soft disc so the marks stand out from rainbow note colours (the rhythm lessons have it too). Live counts and an early/late needle while you play; at the end, % in time, the timing split, whether you rushed or dragged, the bars to practise, a best per hands and its own run history. Loops go round with a score per pass, 3 clean passes in a row, and Speed up after each pass with every note in time. Both hands judge each hand by its own rhythm; through the mic one note of a chord counts for it. Checked in the browser: scripted runs timed to the clicks, loops, both hands, Accompany me, Stop and Play from bar 3, iPad portrait.
 - [x] **51. Use the screen:** iPad portrait shows ~1.5 bars with a big empty gap above the keyboard (reproduced);
   multi-line score, score size option, narrower keys for wide pieces. `M`
   *Done:* the player fills the screen: up to four lines of music when there's room, S/M/L size, keys sized to fit.

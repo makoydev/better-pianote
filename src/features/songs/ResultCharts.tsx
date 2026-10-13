@@ -16,17 +16,36 @@ const SLIP_STEPS = [
 ]
 const NOT_PLAYED = { fill: '#282752', height: 0.14 }
 
-/** A column per bar: how many slips were in it. The stretch worth practising is underlined. */
-export function SlipStrip({ song, slips, played, worst }: { song: Song; slips: number[]; played: [number, number]; worst: [number, number] | null }) {
+const wrongNotes = (n: number) => `${n} wrong note${n === 1 ? '' : 's'}`
+
+/**
+ * A column per bar: how many slips were in it. The stretch worth practising is underlined. `title` and `count` say
+ * what a slip is (wrong notes in Practice; notes off the beat, missed or wrong when you play along).
+ */
+export function SlipStrip({
+  song,
+  slips,
+  played,
+  worst,
+  title = 'Wrong notes by bar',
+  count = wrongNotes,
+}: {
+  song: Song
+  slips: number[]
+  played: [number, number]
+  worst: [number, number] | null
+  title?: string
+  count?: (n: number) => string
+}) {
   const gap = slips.length > 48 ? 1 : 2
   const inPlay = (b: number) => b >= played[0] && b <= played[1]
   const summary = slips.flatMap((s, b) => (s > 0 ? [`${barTitle(song, b)}: ${s}`] : [])).join(', ')
   return (
     <div className="w-full">
-      <div className="flex h-10 items-end" style={{ gap }} role="img" aria-label={`Wrong notes by bar. ${summary || 'None.'}`}>
+      <div className="flex h-10 items-end" style={{ gap }} role="img" aria-label={`${title}. ${summary || 'None.'}`}>
         {slips.map((s, b) => {
           const step = inPlay(b) ? SLIP_STEPS[Math.min(3, s)] : NOT_PLAYED
-          const note = inPlay(b) ? `${s} wrong note${s === 1 ? '' : 's'}` : 'not played'
+          const note = inPlay(b) ? count(s) : 'not played'
           return (
             <span key={b} className="min-w-0 flex-1 rounded-t-[3px]" style={{ height: `${step.height * 100}%`, background: step.fill }} title={`${barTitle(song, b)}: ${note}`} />
           )

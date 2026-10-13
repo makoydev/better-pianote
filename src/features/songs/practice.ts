@@ -127,8 +127,11 @@ export function endPass(r: Run, earned: number): number {
   r.loops++
   r.idx = 0
   r.pass = fresh()
-  return clean ? Math.max(0, Math.min(LOOP_XP, LOOP_XP_MAX - earned)) : 0
+  return passXp(clean, earned)
 }
+
+/** XP for a pass round the loop: a little for a clean one, until this visit has earned LOOP_XP_MAX. */
+export const passXp = (clean: boolean, earned: number) => (clean ? Math.max(0, Math.min(LOOP_XP, LOOP_XP_MAX - earned)) : 0)
 
 /**
  * The bars to practise after a run: the stretch of up to `maxLen` bars with the most slips in it, starting and

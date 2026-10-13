@@ -32,12 +32,14 @@ export interface ScoreViewProps {
   loopBars: [number, number] | null
   /** Tapping a bar, or dragging across bars, picks them (first and last bar). */
   onPickBars: (bars: [number, number]) => void
+  /** Playing along: how each note went stands out from the rainbow colours. */
+  judged?: boolean
   title: string
   className?: string
 }
 
 type Band = NonNullable<StaffSvgProps['bands']>[number]
-type SvgProps = Pick<StaffSvgProps, 'colored' | 'animate' | 'title' | 'noteState' | 'eventState' | 'dim'>
+type SvgProps = Pick<StaffSvgProps, 'colored' | 'animate' | 'title' | 'noteState' | 'eventState' | 'dim' | 'judged'>
 
 /**
  * The song's music, using the room it's given: several lines filling the width when two or more fit (iPad
@@ -45,7 +47,7 @@ type SvgProps = Pick<StaffSvgProps, 'colored' | 'animate' | 'title' | 'noteState
  * paper; tap a bar or drag across bars to pick them.
  */
 export function ScoreView(props: ScoreViewProps) {
-  const { song, tl, hands, size, cursorTime, noteState, eventState, dim, loopBars, onPickBars, title, className = '' } = props
+  const { song, tl, hands, size, cursorTime, noteState, eventState, dim, loopBars, onPickBars, title, judged, className = '' } = props
   const [ref, box] = useElementSize<HTMLDivElement>()
   const labels = useSettings((s) => s.staffLabels)
   const naming = useSettings((s) => s.naming)
@@ -125,7 +127,7 @@ export function ScoreView(props: ScoreViewProps) {
     return out
   }
 
-  const svg: SvgProps = { colored, animate: false, title, noteState, eventState, dim }
+  const svg: SvgProps = { colored, animate: false, title, noteState, eventState, dim, judged }
   return (
     <div
       ref={ref}

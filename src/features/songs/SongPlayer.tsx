@@ -1,4 +1,4 @@
-import { ALargeSmall, Check, Ear, Flame, Hand, ListMusic, Pause, Play, RotateCcw, SkipBack, SkipForward, Type, Volume2, X } from 'lucide-react'
+import { ALargeSmall, Check, Ear, Flame, Hand, ListMusic, Music, Pause, Play, RotateCcw, SkipBack, SkipForward, Square, Type, Volume2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MicPrompt } from '../../components/layout/MicPrompt'
@@ -13,6 +13,7 @@ import { useElementSize } from '../../hooks/useElementSize'
 import { useHandsFree } from '../../hooks/useHandsFree'
 import { Clock } from '../../lib/audio/clock'
 import { audio } from '../../lib/audio/engine'
+import { MIC_DELAY, heardTime } from '../../lib/audio/heard'
 import { playNotes } from '../../lib/audio/play'
 import { isButtonTarget, isPlainKey, isTypingTarget } from '../../lib/focus'
 import { burst, celebrate, toast } from '../../lib/fx'
@@ -28,24 +29,32 @@ import { useLibrary } from '../../state/library'
 import { getPref, usePref } from '../../state/prefs'
 import { useProgress } from '../../state/progress'
 import { useSettings } from '../../state/settings'
+import { AlongStatus } from './AlongStatus'
 import { LoopControls, LoopPasses } from './LoopControls'
 import { ScoreView } from './ScoreView'
 import { type SongResult, SongResults } from './SongResults'
 import { TempoPresets, TempoStepper } from './TempoControl'
 import { LISTEN_PARTS, type ListenPart, accompaniment, handFilter, listenHand, otherHand } from './accompany'
+import { AlongSession, alongScore, alongStars } from './along'
 import { barName, barTitle, countedStraight } from './bars'
 import { handSpans, judgeKey, micChordHeard, otherHandKey } from './hearing'
 import { useSongRuns } from './history'
 import { type LoopMemory, continueBar, rememberBar, rememberedLoop, songPref } from './memory'
-import { type CountIn, type Cue, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
-import { CLEAN_GOAL, type Run, aroundBar, carryOn, endPass, firstStepIn, newRun, runFrom, stepAt, stepsInBars, tally, worstStretch } from './practice'
-import { HANDS, type Hands, accuracyOf, handsBest, recordSongRun, songKey, starsOf } from './results'
+import { type CountIn, type Cue, type NoteFilter, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
+import { CLEAN_GOAL, type Run, aroundBar, carryOn, endPass, firstStepIn, newRun, passXp, runFrom, stepAt, stepsInBars, tally, worstStretch } from './practice'
+import { HANDS, type Hands, accuracyOf, alongKey, handsBest, recordAlongRun, recordSongRun, songKey, starsOf } from './results'
 import { MIN_KEY_WIDTH, SCORE_SIZES, type ScoreSize, keyboardHeight } from './systems'
 import { clampTempo, loopSpeedUp, tempoPct } from './tempo'
 import { type Step, type TimedNote, barAt, buildSteps, buildTimeline, keyboardRange, plays } from './timeline'
 
 const TICK = 0.25 // listen mode wakes up every sixteenth note (and plays what's due inside it at exact times)
 const EPS = 1e-6
+
+/** Practice waits for each note; Play along keeps going at your tempo and judges your timing; Listen plays it all. */
+type Mode = 'wait' | 'along' | 'listen'
+
+/** Playing along with nobody accompanying you, the app plays none of the notes (just clicks and chords). */
+const NO_NOTES: NoteFilter = () => false
 
 export function SongPlayer({ songId }: { songId: string }) {
   const builtIn = useMemo(() => findSong(songId), [songId])
@@ -89,7 +98,7 @@ function Player({ song }: { song: Song }) {
   const tl = useMemo(() => buildTimeline(song), [song])
   const firstFullBar = song.pickup ? 1 : 0
 
-  const [mode, setMode] = useState<'wait' | 'listen'>('wait')
+  const [mode, setMode] = useState<Mode>('wait')
   // Each song remembers its hands, loop, backing and accompaniment (and tempo). The first time, your own imports
   // open with both hands (that's why you imported them); built-in songs start with the melody.
   const [savedHands, setHands] = usePref<Hands>(
@@ -116,6 +125,8 @@ function Player({ song }: { song: Song }) {
   const [countInOn, setCountInOn] = usePref('songs:count-in', true)
   const [metronome, setMetronome] = usePref('songs:metronome', false)
   const [speedUp, setSpeedUp] = usePref('songs:speed-up', false)
+  // Playing along, the clicks go on by default (they're how you keep in time).
+  const [alongClick, setAlongClick] = usePref('songs:along-click', true)
 
   /** The part that plays: the whole song, or the looped bars. */
   const rangeOf = (on: boolean, bars: [number, number]): [number, number] => {
@@ -191,10 +202,24 @@ function Player({ song }: { song: Song }) {
     bpmRef.current = bpm
   }, [bpm])
   /** Read on every tick, so these apply while it plays. */
-  const live = useRef({ metronome, speedUp })
+  const live = useRef({ metronome, speedUp, alongClick })
   useEffect(() => {
-    live.current = { metronome, speedUp }
+    live.current = { metronome, speedUp, alongClick }
   })
+
+  // Play along: the music moves at your tempo while your notes are judged early or late. The run lives in a ref
+  // for the playback and your notes, and in state for drawing it.
+  const along = useRef<AlongSession | null>(null)
+  const [shownRun, setShownRun] = useState<AlongSession | null>(null)
+  const setAlong = (s: AlongSession | null) => {
+    along.current = s
+    setShownRun(s)
+  }
+  /** Bumped when how your notes went changes (the run changes in place), so it's redrawn. */
+  const [, setAlongRev] = useState(0)
+  const bumpAlong = () => setAlongRev((v) => v + 1)
+  /** You played a note before pressing Play. */
+  const [alongNudge, setAlongNudge] = useState(false)
 
   const mic = useLive((s) => s.mic)
   const staffLabels = useSettings((s) => s.staffLabels)
@@ -202,6 +227,7 @@ function Player({ song }: { song: Song }) {
   const uiSounds = useSettings((s) => s.uiSounds)
   const setSettings = useSettings((s) => s.set)
   const best = useProgress((s) => handsBest(s.games, song.id, hands))
+  const alongBest = useProgress((s) => s.games[alongKey(song.id, hands)]?.best ?? 0)
 
   const vh = useViewportHeight()
   const [kbRef, kb] = useElementSize<HTMLDivElement>()
@@ -219,6 +245,11 @@ function Player({ song }: { song: Song }) {
     setPlaying(false)
     setSounding({})
     setCounting(null)
+    // A run played along stops too: how it went so far stays on the music.
+    if (along.current && !along.current.over) {
+      along.current.stop(heardTime(performance.now()))
+      setAlongRev((v) => v + 1)
+    }
   }, [])
   useEffect(() => stopPlayback, [stopPlayback])
 
@@ -249,10 +280,14 @@ function Player({ song }: { song: Song }) {
   const reset = (from = listenRange()[0]) => {
     stopPlayback()
     resetRun()
+    clearAlong()
     setResumeBar(null)
     listenEnded.current = false
     setListenAt(from)
   }
+
+  /** Clear how the last run played along went off the music. */
+  const clearAlong = () => setAlong(null)
 
   /** Carry on from step i of `list` after switching modes or hands (see carryOn for what counts as the same run). */
   const moveTo = (i: number, h: Hands, list: Step[]) => {
@@ -430,6 +465,27 @@ function Player({ song }: { song: Song }) {
   useEffect(() => () => window.clearTimeout(octaveTimer.current), [])
 
   useNoteEvents((e) => {
+    if (mode === 'along') {
+      if (e.type !== 'on') return
+      const session = along.current
+      if (!playing || !session) {
+        // Not started yet: say how to (the results being up counts as finished).
+        if (!playing && !result) setAlongNudge(true)
+        return
+      }
+      // Practising one hand, the other hand's part is yours to play along with or leave out.
+      if (hands !== 'both' && otherHandKey(spans, hands, barAt(tl, listenAt), e.midi)) return
+      const viaMic = e.source === 'mic'
+      // The written octave from a keyboard, as in Practice; the mic can't be sure of octaves (and hears a little late).
+      const exact = e.source === 'midi' || e.source === 'screen' || (e.source === 'keys' && useSettings.getState().strictOctave)
+      const k = session.play(e.midi, heardTime(e.time) - (viaMic ? MIC_DELAY : 0), { mic: viaMic, exact }, (pos) => barAt(tl, pos))
+      if (k === null) return
+      if (k === 'wrong') {
+        if (!viaMic) flashKey(e.midi, 'bad')
+      } else flashKey(e.midi, session.mark(k) === 'off' ? 'bad' : 'good')
+      bumpAlong()
+      return
+    }
     const r = run.current
     if (e.type !== 'on' || mode !== 'wait' || r.done) return
     const cur = steps[r.idx]
@@ -492,18 +548,41 @@ function Player({ song }: { song: Song }) {
   /**
    * Play [lo, hi) from `from`. Listen plays the part you chose (both hands, one, or the one you're not practising),
    * moves the playhead and can count in, click along and speed up each loop; a bar heard in Practice plays only the
-   * hands you're practising. `part` and `withHands` stand in for a choice just made (state catches up next render).
+   * hands you're practising. Playing along (`along`), the app plays only the other hand if you've asked it to
+   * accompany you, and keeps the run's judge in step with the tempo. `part` and `withHands` stand in for a choice just
+   * made (state catches up next render).
    */
-  const startPlayback = (opts: { from: number; lo: number; hi: number; looping: boolean; bar: boolean; count?: CountIn; part?: ListenPart; withHands?: Hands }) => {
-    const { from, lo, hi, looping, bar, count } = opts
+  const startPlayback = (opts: {
+    from: number
+    lo: number
+    hi: number
+    looping: boolean
+    bar: boolean
+    count?: CountIn
+    part?: ListenPart
+    withHands?: Hands
+    along?: AlongSession
+  }) => {
+    const { from, lo, hi, looping, bar, count, along: session } = opts
     const h = opts.withHands ?? hands
     stopPlayback()
     stopAccompaniment()
+    // Through the mic, the app plays none of it while you play along (the mic would take the app's notes for yours).
+    const quiet = !!session && mic === 'on'
+    const partner = otherHand(h)
     // One hand leaves the other out before shared notes merge (so none go missing); Listen keeps its clicks.
-    const only = handFilter(bar ? (h === 'both' ? 'all' : h) : listenHand(opts.part ?? listenPart, h))
+    const only = session
+      ? accompany && partner && !quiet
+        ? handFilter(partner)
+        : NO_NOTES
+      : handFilter(bar ? (h === 'both' ? 'all' : h) : listenHand(opts.part ?? listenPart, h))
     const list = only ? buildCues(tl, bar ? [] : clicks, only) : cues
     const head: Playhead = { pos: from, next: firstCueAt(list, from) }
-    const withChords = backing && !bar
+    const withChords = backing && !bar && !quiet
+    if (session) setAlong(session)
+    /** Playing along: beats since the music started (they keep counting round a loop), and the time round it is. */
+    let beatsIn = 0
+    let pass = 0
     prevPad.current = null
     let first = true
     let ended = false
@@ -532,8 +611,12 @@ function Player({ song }: { song: Song }) {
     const play = (c: Cue, when: number) => {
       for (const n of c.notes) sound(n, when, Math.min(n.dur, hi - c.t))
       if (c.chord && withChords) pad(c.chord.chord, when, Math.min(c.chord.dur, hi - c.t))
-      if (c.click && !bar && live.current.metronome) audio.click(c.click === 'bar', when)
-      if (c.col && !bar) later(when, () => setListenAt(c.t))
+      if (c.click && !bar && (session ? live.current.alongClick : live.current.metronome)) audio.click(c.click === 'bar', when)
+      if (c.col && !bar)
+        later(when, () => {
+          setListenAt(c.t)
+          if (session) judgeDue(session)
+        })
     }
     const clock = new Clock({
       interval: () => spb * TICK,
@@ -557,6 +640,11 @@ function Player({ song }: { song: Song }) {
           later(time + off * spb, () => setCounting(null))
         }
         const start = time + off * spb
+        if (session) {
+          // The judge follows the music's tempo (− and + work while you play along).
+          if (!session.tempo) session.begin(start, spb)
+          else session.tempo.set(start, beatsIn, spb)
+        }
         if (first) {
           first = false
           // Starting in the middle: bring in what's still ringing there (a held bass note, the chord).
@@ -566,16 +654,32 @@ function Player({ song }: { song: Song }) {
         }
         const { due, end, wraps } = advance(list, head, TICK - off, lo, hi, looping)
         for (const d of due) play(d.cue, start + d.offset * spb)
+        // Playing along, only a pass with every note in time so far speeds up (it's decided as the pass ends).
+        const clean = !session || !wraps.length || session.cleanSoFar(pass)
+        if (session) {
+          for (const w of wraps) {
+            // Round again: the pass after this one gets its notes now, and the music shows the new pass as it starts.
+            session.addPass()
+            const p = ++pass
+            later(start + w * spb, () => {
+              if (along.current !== session) return
+              session.show(p)
+              bumpAlong()
+            })
+          }
+          beatsIn += TICK - off
+        }
         // Speed up each loop: 5 % faster from the tick after each pass, up to the song's tempo (and remembered).
-        const faster = wraps.length && !bar && live.current.speedUp ? loopSpeedUp(bpmRef.current, song.bpm) : bpmRef.current
+        const faster = wraps.length && !bar && live.current.speedUp && clean ? loopSpeedUp(bpmRef.current, song.bpm) : bpmRef.current
         if (faster !== bpmRef.current) {
           bpmRef.current = faster
           setBpm(faster)
         }
         if (end !== undefined) {
-          // The end: stop, and (in Listen) rewind so Play starts from the top next time.
+          // The end: stop, and (in Listen) rewind so Play starts from the top next time. Playing along, the last
+          // notes get a beat to come in late before the results.
           ended = true
-          later(start + end * spb + 0.5, () => {
+          later(start + end * spb + (session ? Math.max(0.5, spb) : 0.5), () => {
             clock.stop()
             clockRef.current = null
             timers.current = []
@@ -584,6 +688,7 @@ function Player({ song }: { song: Song }) {
             if (bar) return
             setListenAt(lo)
             listenEnded.current = true
+            if (session && along.current === session) finishAlong(session)
           })
         }
       },
@@ -620,6 +725,109 @@ function Player({ song }: { song: Song }) {
   /** Paused somewhere after the start, so Play carries on from there. */
   const pausedMidway = mode === 'listen' && !playing && listenAt > listenRange()[0] + EPS
 
+  // ---- Play along: the music keeps going at your tempo, and your notes are judged early or late ----
+  /**
+   * Where Play along starts: the loop's first bar when looping, otherwise the start of the bar the cursor is in
+   * (where you stopped, or where you were in Practice), and the top once it's at the end.
+   */
+  const alongStartAt = () => {
+    const [lo, hi] = listenRange()
+    if (loop) return lo
+    const at = tl.bars[barAt(tl, listenAt)]?.start ?? lo
+    return at < lo - EPS || at >= hi - EPS ? lo : at
+  }
+
+  /** Count in and play along from `from` (a bar's start): round the loop, or to the end (`noLoop`: Start from this bar). */
+  const startAlong = (opts: { from?: number; noLoop?: boolean } = {}) => {
+    const looping = loop && !opts.noLoop
+    const [lo, hi] = rangeOf(looping, loopBars)
+    const from = opts.from ?? alongStartAt()
+    setResult(null)
+    setAlongNudge(false)
+    setResumeBar(null)
+    const session = new AlongSession(allSteps, { from, lo, hi, looping })
+    startPlayback({ from, lo, hi, looping, bar: false, count: countIn(song, tl, from), along: session })
+    bumpAlong()
+  }
+  const toggleAlong = () => (playing ? stopPlayback() : startAlong())
+  const alongFromStart = () => startAlong({ from: listenRange()[0] })
+
+  /** Notes it's now too late to play are missed, and each pass round the loop is scored once the music leaves it. */
+  const judgeDue = (session: AlongSession) => {
+    if (along.current !== session) return
+    session.close(heardTime(performance.now()))
+    for (const p of session.finishedPasses()) {
+      if (!p.clean) continue
+      const xp = passXp(true, loopXp.current)
+      if (xp) {
+        loopXp.current += xp
+        useProgress.getState().addXp(xp)
+      }
+      if (p.inARow === CLEAN_GOAL) {
+        celebrate()
+        // Not through the mic: it would go deaf for a moment, in the middle of your playing.
+        if (uiSounds && mic !== 'on') audio.ui('complete')
+        toast({ kind: 'info', title: `${CLEAN_GOAL} clean passes in a row!`, detail: 'Every note in time. Try it a little faster, or loop the next bars.' })
+      } else burst(paperRef.current, { count: 30 })
+    }
+  }
+
+  /** The end of a run played along: XP, your best, the run's history and the results. */
+  const finishAlong = (session: AlongSession) => {
+    session.end()
+    const st = session.stats()
+    const score = alongScore(st)
+    const stars = alongStars(score)
+    const { from, hi } = session.range
+    // Only a run from the top counts as a best (as in Practice).
+    const whole = from < EPS
+    const fromBar = whole ? undefined : barAt(tl, from)
+    // Nothing played at all (the keyboard or mic wasn't heard, say): the results show it, but it's not a run to keep.
+    const played = st.judged > st.missed || st.wrong > 0
+    const prog = useProgress.getState()
+    const first = whole && played && !prog.games[alongKey(song.id, hands)]
+    // As in Practice, XP goes with the notes you played (in time); ones a run didn't reach earn nothing.
+    const total = allSteps.reduce((n, x) => n + x.notes.length, 0)
+    const share = total ? Math.min(1, st.inTime / total) : 1
+    const xp = Math.round(((first ? 20 : 6) + stars * (first ? 5 : 2) + (hands === 'both' ? 10 : 0)) * share)
+    prog.addXp(xp)
+    const isBest = whole && played && recordAlongRun(song.id, hands, Math.round(score * 100))
+    const tempo = bpmRef.current
+    const pct = tempoPct(tempo, song.bpm)
+    if (played)
+      useSongRuns.getState().addRun(song.id, {
+        at: Date.now(),
+        hands,
+        accuracy: Math.round(score * 100),
+        bpm: Math.round(tempo),
+        pct,
+        mode: 'along',
+        ...(fromBar === undefined ? {} : { from: fromBar }),
+      })
+    const slips = session.slipsByBar()
+    setResult({
+      stars,
+      accuracy: score,
+      mistakes: st.wrong,
+      seconds: session.tempo ? Math.max(0, heardTime(performance.now()) - session.tempo.time(0)) : 0,
+      xp,
+      isBest,
+      bestCombo: session.bestStreak(),
+      hands,
+      whole,
+      from: fromBar === undefined ? undefined : barName(song, fromBar),
+      slips: tl.bars.map((_, b) => slips[b] ?? 0),
+      played: [barAt(tl, from), barAt(tl, hi - EPS)],
+      worst: worstStretch(slips),
+      pct,
+      along: { onBeat: st.onBeat, close: st.early + st.late, off: st.off, missed: st.missed, total: st.total, mean: session.drift(Infinity) },
+    })
+    bumpAlong()
+    if (uiSounds) audio.ui('complete')
+    if (stars === 3) celebrate()
+    else burst(paperRef.current)
+  }
+
   /** Hear this bar: the bar you're on, at your tempo, with the hands you're practising. */
   const hearBar = () => {
     const r = run.current
@@ -629,10 +837,20 @@ function Player({ song }: { song: Song }) {
     startPlayback({ from: b.start, lo: b.start, hi: b.start + b.dur, looping: false, bar: true })
   }
 
-  /** Start again (R): Practice starts a fresh run; Listen goes back to the beginning (still playing if it was). */
+  /**
+   * Start again (R): Practice starts a fresh run; Listen goes back to the beginning (still playing if it was), and so
+   * does Play along (counting in again), clearing the last run off the music.
+   */
   const restart = () => {
     if (mode === 'wait') reset()
-    else if (playing) listenFromStart()
+    else if (mode === 'along') {
+      if (playing) alongFromStart()
+      else {
+        clearAlong()
+        listenEnded.current = false
+        setListenAt(listenRange()[0])
+      }
+    } else if (playing) listenFromStart()
     else {
       listenEnded.current = false
       setListenAt(listenRange()[0])
@@ -648,6 +866,7 @@ function Player({ song }: { song: Song }) {
         if (isButtonTarget(e.target)) return
         e.preventDefault()
         if (mode === 'listen') toggleListen()
+        else if (mode === 'along') toggleAlong()
         else hearBar()
       } else if (e.code === 'KeyR') restart()
     }
@@ -669,6 +888,16 @@ function Player({ song }: { song: Song }) {
       const heard = listenH === 'all' || n.hand === listenH
       return heard && playing && listenAt >= n.start - EPS && listenAt < n.start + n.dur - EPS ? 'active' : undefined
     }
+    if (mode === 'along') {
+      // How each of your notes went this time round: green on the beat, amber a little off, red too far off or
+      // missed. The ones due now glow until you play them.
+      const session = shownRun
+      const k = session && plays(hands, n.hand) && !n.cont ? session.noteFor(n) : undefined
+      if (k === undefined) return undefined
+      const m = session!.mark(k)
+      if (m) return m === 'onBeat' ? 'correct' : m === 'close' ? 'close' : 'wrong'
+      return playing && Math.abs(n.start - listenAt) < EPS ? 'active' : undefined
+    }
     if (finished) return 'done'
     if (!cur) return undefined
     // A note two voices share is one key in the step, so both noteheads light up together.
@@ -681,7 +910,7 @@ function Player({ song }: { song: Song }) {
     return undefined
   }
   const eventState = (e: LaidEvent): NoteState | undefined => {
-    if (mode === 'listen' || e.start === undefined) return undefined
+    if (mode !== 'wait' || e.start === undefined) return undefined
     if (finished) return 'done'
     if (!cur) return undefined
     if (e.start < cur.start - EPS) return e.start < loopFrom - EPS ? undefined : 'done'
@@ -711,6 +940,24 @@ function Player({ song }: { song: Song }) {
       if (n.finger) fingers[n.midi] = n.finger
     }
   }
+  // Playing along: the keys of the notes due now light up until you play them, the next ones faintly.
+  if (mode === 'along' && playing && shownRun) {
+    const session = shownRun
+    const i = steps.findIndex((x) => x.start >= listenAt - EPS)
+    const at = i >= 0 ? i : loop ? 0 : -1
+    const due = at >= 0 && Math.abs(steps[at].start - listenAt) < EPS ? steps[at] : undefined
+    const next = due ? (steps[at + 1] ?? (loop ? steps[0] : undefined)) : at >= 0 ? steps[at] : undefined
+    for (const n of next?.notes ?? []) {
+      marks[n.midi] = 'hint'
+      if (n.finger) fingers[n.midi] = n.finger
+    }
+    for (const n of due?.notes ?? []) {
+      const k = session.noteFor(n)
+      if (k !== undefined && session.judged(k)) continue
+      marks[n.midi] = n.hand === 'rh' ? 'target' : { kind: 'root', label: 'L' }
+      if (n.finger) fingers[n.midi] = n.finger
+    }
+  }
   for (const [m, hand] of Object.entries(sounding)) marks[Number(m)] = hand === 'rh' ? 'chord' : 'root'
   for (const [m, f] of Object.entries(flash)) marks[Number(m)] = f
   const pianoHeight = keyboardHeight(kb.width, whiteKeys, vh, showBass)
@@ -727,16 +974,19 @@ function Player({ song }: { song: Song }) {
     if (finished) rememberBar(song, 0)
   }, [finished, song])
   const offerResume = resumeBar !== null && mode === 'wait' && !started && !loop
+  const alongFrom = mode === 'along' ? alongStartAt() : 0
   const progress = mode === 'wait' ? (finished ? 1 : stepIdx / Math.max(1, steps.length)) : tl.total ? Math.min(1, listenAt / tl.total) : 0
 
   // Switching modes or hands keeps your place in the piece.
-  const changeMode = (m: 'wait' | 'listen') => {
+  const changeMode = (m: Mode) => {
     if (m === mode) return
     stopPlayback()
     stopAccompaniment()
     setResumeBar(null)
-    if (m === 'listen') {
-      // Listen starts from the step you're on; the practice clock stops meanwhile.
+    clearAlong()
+    setAlongNudge(false)
+    if (mode === 'wait') {
+      // Listen and Play along start from the step you're on; the practice clock stops meanwhile.
       const r = run.current
       if (startedAt.current !== null) {
         r.ms += performance.now() - startedAt.current
@@ -745,7 +995,7 @@ function Player({ song }: { song: Song }) {
       practiceAt.current = !r.done && r.idx > 0 ? (steps[r.idx]?.start ?? 0) : listenRange()[0]
       listenEnded.current = false
       setListenAt(practiceAt.current)
-    } else {
+    } else if (m === 'wait') {
       // Practice carries on from the first step at or after where Listen paused (or where it was, if Listen just
       // played to the end and rewound).
       moveTo(stepAt(steps, listenEnded.current ? practiceAt.current : listenAt, loop), hands, steps)
@@ -763,6 +1013,10 @@ function Player({ song }: { song: Song }) {
       const at = r.done || r.idx === 0 ? listenRange()[0] : (steps[r.idx]?.start ?? 0)
       const next = stepsInBars(buildSteps(tl, h), loop ? loopBars : null)
       moveTo(stepAt(next, at, loop), h, next)
+    } else if (mode === 'along') {
+      // Other hands, other notes to play: the run stops.
+      stopPlayback()
+      clearAlong()
     } else if (listenPart === 'other') replayWith({ withHands: h })
     setHands(h)
   }
@@ -794,13 +1048,23 @@ function Player({ song }: { song: Song }) {
       setListenAt(from)
       return
     }
+    if (mode === 'along') return startAlong({ from, noLoop: true })
     startPlayback({ from, lo: 0, hi: tl.total, looping: false, bar: false, count: countInOn ? countIn(song, tl, from) : undefined })
   }
 
   // Hands-free (Enter, a deliberate pedal tap or the top C): Play again once you've finished (from the results or
-  // after closing them), or Continue while that's offered. Enter on a focused button just clicks it, and the
-  // note or pedal that finished the run can't also restart it.
-  useHandsFree(mode === 'wait' && finished ? () => reset() : offerResume ? () => startFrom(resumeBar) : null)
+  // after closing them), Continue while that's offered, or Play along (not while it plays: the pedal is yours
+  // then). Enter on a focused button just clicks it, and the note or pedal that finished the run can't also
+  // restart it.
+  useHandsFree(
+    mode === 'wait' && finished
+      ? () => reset()
+      : offerResume
+        ? () => startFrom(resumeBar)
+        : mode === 'along' && !playing
+          ? () => startAlong()
+          : null,
+  )
 
   return (
     // The screen's height, shared out: controls, the music (whatever's left), the keyboard. It only scrolls when
@@ -827,9 +1091,11 @@ function Player({ song }: { song: Song }) {
           <Segmented
             value={mode}
             onChange={changeMode}
+            // The icons only where there's room: on an iPad the hands still fit beside the three modes without them.
             options={[
-              { value: 'wait', label: <span className="inline-flex items-center gap-1.5"><Hand size={18} /> Practice</span> },
-              { value: 'listen', label: <span className="inline-flex items-center gap-1.5"><Ear size={18} /> Listen</span> },
+              { value: 'wait', label: <span className="inline-flex items-center gap-1.5"><Hand size={18} className="hidden xl:block" /> Practice</span> },
+              { value: 'along', label: <span className="inline-flex items-center gap-1.5"><Music size={18} className="hidden xl:block" /> Play along</span> },
+              { value: 'listen', label: <span className="inline-flex items-center gap-1.5"><Ear size={18} className="hidden xl:block" /> Listen</span> },
             ]}
           />
           {song.lh && (
@@ -844,11 +1110,11 @@ function Player({ song }: { song: Song }) {
             />
           )}
           {tl.chords.length > 0 && (
-            <TogglePill checked={backing && !(mode === 'wait' && mic === 'on')} onChange={setBacking} label="Backing chords">
+            <TogglePill checked={backing && !(mode !== 'listen' && mic === 'on')} onChange={setBacking} label="Backing chords">
               Chords
             </TogglePill>
           )}
-          {song.lh && mode === 'wait' && hands !== 'both' && (
+          {song.lh && mode !== 'listen' && hands !== 'both' && (
             <TogglePill
               checked={accompany && mic !== 'on'}
               onChange={setAccompany}
@@ -895,6 +1161,13 @@ function Player({ song }: { song: Song }) {
                 Skip
               </Button>
             </div>
+          ) : mode === 'along' ? (
+            <div className="flex items-center gap-2">
+              <IconButton icon={SkipBack} size={56} label="Play along from the beginning" onClick={alongFromStart} />
+              <Button icon={playing ? Square : Play} onClick={toggleAlong} variant={playing ? 'secondary' : 'primary'} className="min-w-38" title="Space">
+                {playing ? 'Stop' : alongFrom > listenRange()[0] + EPS ? `Play from ${barName(song, barAt(tl, alongFrom))}` : 'Play along'}
+              </Button>
+            </div>
           ) : (
             <div className="flex items-center gap-2">
               <IconButton icon={SkipBack} size={56} label="Restart: play from the beginning" onClick={listenFromStart} />
@@ -916,6 +1189,21 @@ function Player({ song }: { song: Song }) {
                 </Chip>
                 {loop && (
                   <Chip on={speedUp} onChange={setSpeedUp} label="Speed up each loop: 5% faster each time round, up to the song's tempo">
+                    Speed up
+                  </Chip>
+                )}
+              </span>
+            </>
+          )}
+          {mode === 'along' && (
+            <>
+              <TempoPresets bpm={bpm} songBpm={song.bpm} onChange={setBpm} />
+              <span className="flex flex-wrap items-center gap-2">
+                <Chip on={alongClick} onChange={setAlongClick} label="Metronome: clicks while you play along (a bar of them always counts you in)">
+                  Metronome
+                </Chip>
+                {loop && (
+                  <Chip on={speedUp} onChange={setSpeedUp} label="Speed up: 5% faster after each pass with every note in time, up to the song's tempo">
                     Speed up
                   </Chip>
                 )}
@@ -946,6 +1234,7 @@ function Player({ song }: { song: Song }) {
             dim={hands === 'lh' ? 'treble' : undefined}
             loopBars={loop ? loopBars : null}
             onPickBars={pickBars}
+            judged={mode === 'along'}
             title={hands === 'both' || !song.lh ? song.title : `${song.title}, ${hands === 'rh' ? 'right' : 'left'} hand`}
             className="paper flex-1 rounded-3xl"
           />
@@ -1020,6 +1309,8 @@ function Player({ song }: { song: Song }) {
                 Play again
               </Button>
             </motion.div>
+          ) : mode === 'along' ? (
+            <AlongStatus session={shownRun} playing={playing} nudge={alongNudge} loop={loop} />
           ) : mode === 'listen' ? (
             <span className="text-base font-semibold text-ink-soft">
               {playing
@@ -1031,7 +1322,7 @@ function Player({ song }: { song: Song }) {
           ) : null}
           {mode === 'wait' && octaveHint && <span className="text-sm font-bold text-coral">Right note, wrong octave: play the key that’s lit.</span>}
           {/* No USB keyboard: offer the mic (on an iPad it's how the app hears you), then show what it hears */}
-          {mode === 'wait' && <MicPrompt />}
+          {mode !== 'listen' && <MicPrompt />}
           <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1">
             {mode === 'wait' && (
               <AnimatePresence>
@@ -1049,6 +1340,9 @@ function Player({ song }: { song: Song }) {
               </AnimatePresence>
             )}
             {mode === 'wait' && loop && loops > 0 && <LoopPasses loops={loops} passes={passes} clean={cleanInARow} />}
+            {mode === 'along' && loop && shownRun && shownRun.shown > 0 && (
+              <LoopPasses loops={shownRun.shown} passes={shownRun.passScores} clean={shownRun.cleanInARow} />
+            )}
             <span className="text-sm font-extrabold text-ink-soft">
               {/* As printed on the score: "Bar 14 (2nd time)" for an imported piece whose repeats are written out. */}
               {straight && curBar >= firstFullBar ? `Bar ${curBar - firstFullBar + 1} of ${fullBars}` : barTitle(song, curBar)}
@@ -1058,7 +1352,9 @@ function Player({ song }: { song: Song }) {
                 <X size={16} strokeWidth={3} /> {mistakes}
               </span>
             )}
-            {best > 0 && <span className="text-sm font-bold text-ink-mute">Best {best}%</span>}
+            {mode === 'along'
+              ? alongBest > 0 && <span className="text-sm font-bold text-ink-mute">Best {alongBest}% in time</span>
+              : best > 0 && <span className="text-sm font-bold text-ink-mute">Best {best}%</span>}
           </div>
         </div>
 
@@ -1079,7 +1375,7 @@ function Player({ song }: { song: Song }) {
       <SongResults
         song={song}
         result={result}
-        onAgain={() => reset()}
+        onAgain={() => (result?.along ? alongFromStart() : reset())}
         onClose={() => setResult(null)}
         onSongs={() => go('/songs')}
         onPractise={pickBars}

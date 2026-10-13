@@ -19,7 +19,13 @@ describe('run history', () => {
   it('draws a trend from runs with the same hands', () => {
     const runs = [run(70), run(80, 'both'), run(85), run(95)]
     expect(trendRuns(runs, 'rh').map((r) => r.accuracy)).toEqual([70, 85, 95])
-    expect(trendRuns(runs, 'rh', 2).map((r) => r.accuracy)).toEqual([85, 95])
+    expect(trendRuns(runs, 'rh', undefined, 2).map((r) => r.accuracy)).toEqual([85, 95])
     expect(trendRuns(undefined, 'both')).toEqual([])
+  })
+
+  it('keeps runs played along apart from Practice ones', () => {
+    const runs = [run(70), { ...run(60), mode: 'along' as const }, run(85), { ...run(75), mode: 'along' as const }]
+    expect(trendRuns(runs, 'rh').map((r) => r.accuracy)).toEqual([70, 85])
+    expect(trendRuns(runs, 'rh', 'along').map((r) => r.accuracy)).toEqual([60, 75])
   })
 })

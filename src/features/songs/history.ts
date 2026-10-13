@@ -15,6 +15,8 @@ export interface RunRecord {
   pct: number
   /** The bar it started from (by index), when it didn't start at the beginning. */
   from?: number
+  /** Played along at tempo (accuracy = notes in time); a Practice run when it's left out. */
+  mode?: 'along'
 }
 
 /** How many runs each song keeps. */
@@ -35,5 +37,6 @@ export const useSongRuns = create<SongRuns>()(
   ),
 )
 
-/** The runs to draw a trend from: the latest ones with the same hands (so they compare), oldest first. */
-export const trendRuns = (runs: RunRecord[] | undefined, hands: Hands, max = 12) => (runs ?? []).filter((r) => r.hands === hands).slice(-max)
+/** The runs to draw a trend from: the latest ones with the same hands and mode (so they compare), oldest first. */
+export const trendRuns = (runs: RunRecord[] | undefined, hands: Hands, mode?: 'along', max = 12) =>
+  (runs ?? []).filter((r) => r.hands === hands && r.mode === mode).slice(-max)

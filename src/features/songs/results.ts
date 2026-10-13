@@ -46,6 +46,14 @@ export function bestText(games: Record<string, GameRecord>, id: string): string 
   return best > 0 ? `Best ${best}%` : null
 }
 
+/** Progress key for your best played along at tempo (score = notes in time), per hands. */
+export const alongKey = (id: string, hands: Hands) => `song-${id}:along:${hands}`
+
+/** Save a run played along to the end (score = notes in time, %). Returns true when it beats your best with these hands. */
+export function recordAlongRun(id: string, hands: Hands, score: number): boolean {
+  return useProgress.getState().recordGame(alongKey(id, hands), score).isBest
+}
+
 /** Save a finished run (score = accuracy %). Returns true when it beats your best with these hands. */
 export function recordSongRun(id: string, hands: Hands, score: number): boolean {
   const prog = useProgress.getState()
