@@ -29,6 +29,7 @@ import {
 } from './logic/rhythm'
 import { GameMain, Hud, ResultsCard, type ResultsAction, SetupCard } from './shared/GameParts'
 import { type FinishResult, finishGame, remember, sfx, starsFor, store } from './shared/finish'
+import type { WorkoutPart } from './shared/workout'
 
 const PATTERNS = 5
 const MIN_BPM = 50
@@ -48,15 +49,18 @@ interface PatternResult {
 
 const average = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0)
 
-export function RhythmTap() {
-  const [phase, setPhase] = useState<'setup' | 'play' | 'done'>('setup')
+/** The game, or (`workout`) a few rhythms of it at your level as a part of the daily workout. */
+export function RhythmTap({ workout }: { workout?: WorkoutPart } = {}) {
+  const size = workout?.size ?? PATTERNS
+  // In the workout the rhythms start straight away, at the level and tempo you last played.
+  const [phase, setPhase] = useState<'setup' | 'play' | 'done'>(workout ? 'play' : 'setup')
   const [levelId, setLevelId] = useState(() => remember('rhythm-level', 'l1', LEVEL_IDS))
   const level = RHYTHM_LEVELS.find((l) => l.id === levelId) ?? RHYTHM_LEVELS[0]
   // Tempo and click are remembered. Until you pick a tempo yourself (0 = never), each level uses its own.
   const [savedBpm, setBpm] = usePref('rhythm:bpm', 0)
   const bpm = savedBpm ? Math.min(MAX_BPM, Math.max(MIN_BPM, savedBpm)) : level.bpm
   const [clickOn, setClickOn] = usePref('rhythm:click', true)
-  const [patterns, setPatterns] = useState<RNote[][]>([])
+  const [patterns, setPatterns] = useState<RNote[][]>(() => (workout ? Array.from({ length: size }, () => makePattern(level, BARS)) : []))
   const [done, setDone] = useState<PatternResult[]>([])
   const [finish, setFinish] = useState<FinishResult | null>(null)
 
@@ -65,7 +69,7 @@ export function RhythmTap() {
 
   const start = (lv: RhythmLevel = level) => {
     store('rhythm-level', lv.id)
-    setPatterns(Array.from({ length: PATTERNS }, () => makePattern(lv, BARS)))
+    setPatterns(Array.from({ length: size }, () => makePattern(lv, BARS)))
     setDone([])
     setFinish(null)
     setPhase('play')
@@ -84,8 +88,15 @@ export function RhythmTap() {
   const onDone = (r: PatternResult) => {
     const all = [...done, r]
     setDone(all)
-    if (all.length >= PATTERNS) {
+    if (all.length >= size) {
       const final = average(all.map((d) => d.best))
+      if (workout) {
+        return workout.onDone({
+          score: final / 100,
+          stars: starsFor(final / 100, 0.85, 0.65),
+          detail: `${all.length} rhythm${all.length === 1 ? '' : 's'} at ${bpm} BPM`,
+        })
+      }
       setFinish(finishGame('rhythm', bandKey, final, starsFor(final / 100, 0.85, 0.65), { accuracy: final, bpm }))
       // The level's best at any tempo, which the level cards show (records from before tempo bands live here too).
       useProgress.getState().recordGame(`rhythm:${level.id}`, final)
@@ -111,8 +122,12 @@ export function RhythmTap() {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <TopBar back="/practice" title="Rhythm Tap" subtitle={phase === 'setup' ? 'Read it, tap it' : `${level.name} · ${bpm} BPM`} />
-      {phase === 'setup' && (
+      <TopBar
+        back="/practice"
+        title={workout ? 'Daily workout' : 'Rhythm Tap'}
+        subtitle={workout ? `${workout.step} · Rhythm Tap · ${level.name} · ${bpm} BPM` : phase === 'setup' ? 'Read it, tap it' : `${level.name} · ${bpm} BPM`}
+      />
+      {phase === 'setup' && !workout && (
         <GameMain>
           <SetupCard
             icon={Drum}
@@ -138,7 +153,7 @@ export function RhythmTap() {
       )}
       {phase === 'play' && patterns[done.length] && (
         <GameMain wide>
-          <Hud step={done.length} total={PATTERNS} score={avg} streak={0} label="Rhythm" />
+          <Hud step={done.length} total={size} score={avg} streak={0} label="Rhythm" />
           <Round key={done.length} pattern={patterns[done.length]} bpm={bpm} clickOn={clickOn} onDone={onDone} />
         </GameMain>
       )}

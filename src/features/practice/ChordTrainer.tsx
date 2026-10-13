@@ -22,6 +22,7 @@ import { DrillButton, FeedbackLine, GameMain, Hud, KeysCard, ResultsCard, SetupC
 import { type FinishResult, finishGame, remember, sfx, starsFor, store } from './shared/finish'
 import { useItemStats, usePracticeStats, weigher } from './shared/stats'
 import { drillRound, weakest } from './shared/weak'
+import type { WorkoutPart } from './shared/workout'
 
 const ROUND = 10
 const LEVEL_IDS = TRAINER_LEVELS.map((l) => l.id)
@@ -37,11 +38,21 @@ interface ChordResult {
 
 const isClean = (r: ChordResult) => r.mistakes === 0 && !r.hinted && !r.skipped
 
-export function ChordTrainer() {
-  const [phase, setPhase] = useState<'setup' | 'play' | 'done'>('setup')
+/** A round of `size` chords from a level, with the ones you miss or are slow on coming up more often. */
+function freshRound(lv: TrainerLevel, size: number): Chord[] {
+  const pool = lv.pool()
+  const weak = weigher('chord-trainer', pool.map(chordSymbol))
+  return pickRound(pool, size, Math.random, (c) => weak(chordSymbol(c)))
+}
+
+/** The game, or (`workout`) a short round of it at your level as a part of the daily workout. */
+export function ChordTrainer({ workout }: { workout?: WorkoutPart } = {}) {
+  const size = workout?.size ?? ROUND
+  // In the workout the round starts straight away, at the level you last played.
+  const [phase, setPhase] = useState<'setup' | 'play' | 'done'>(workout ? 'play' : 'setup')
   const [levelId, setLevelId] = useState(() => remember('chord-trainer-level', 'white', LEVEL_IDS))
   const level = TRAINER_LEVELS.find((l) => l.id === levelId) ?? TRAINER_LEVELS[0]
-  const [round, setRound] = useState<Chord[]>([])
+  const [round, setRound] = useState<Chord[]>(() => (workout ? freshRound(level, size) : []))
   const [results, setResults] = useState<ChordResult[]>([])
   const [finish, setFinish] = useState<FinishResult | null>(null)
   // A drill of chords you missed (not a level record).
@@ -50,11 +61,12 @@ export function ChordTrainer() {
 
   const start = (missed?: Chord[], lv: TrainerLevel = level) => {
     store('chord-trainer-level', lv.id)
-    const pool = lv.pool()
     // Chords you miss or are slow on come up more often; a drill is mostly the ones you just missed.
-    const weak = weigher('chord-trainer', pool.map(chordSymbol))
-    const weight = (c: Chord) => weak(chordSymbol(c))
-    setRound(missed ? drillRound(missed, pool, ROUND, weight, chordSymbol) : pickRound(pool, ROUND, Math.random, weight))
+    if (missed) {
+      const pool = lv.pool()
+      const weak = weigher('chord-trainer', pool.map(chordSymbol))
+      setRound(drillRound(missed, pool, size, (c: Chord) => weak(chordSymbol(c)), chordSymbol))
+    } else setRound(freshRound(lv, size))
     setDrill(!!missed)
     setResults([])
     setFinish(null)
@@ -68,28 +80,33 @@ export function ChordTrainer() {
   const onDone = (r: ChordResult) => {
     const all = [...results, r]
     setResults(all)
-    if (all.length >= ROUND) {
+    if (all.length >= size) {
       const total = all.reduce((s, x) => s + x.points, 0)
       const clean = all.filter(isClean).length
       const stars = starsFor(clean / all.length)
-      setFinish(finishGame('chord-trainer', drill ? null : level.id, total, stars, { accuracy: (clean / all.length) * 100 }))
       usePracticeStats
         .getState()
         .recordAnswers('chord-trainer', all.map((x) => ({ id: chordSymbol(x.chord), missed: !isClean(x), ms: isClean(x) ? x.seconds * 1000 : undefined })))
+      if (workout) return workout.onDone({ score: clean / all.length, stars, detail: `${clean} of ${all.length} chords clean` })
+      setFinish(finishGame('chord-trainer', drill ? null : level.id, total, stars, { accuracy: (clean / all.length) * 100 }))
       setPhase('done')
     }
   }
 
   const missed = results.filter((r) => !isClean(r)).map((r) => r.chord)
-  const stars = starsFor(results.filter(isClean).length / ROUND)
+  const stars = starsFor(results.filter(isClean).length / size)
   const nextLevel = TRAINER_LEVELS[TRAINER_LEVELS.indexOf(level) + 1]
 
   return (
     <div className="flex h-dvh flex-col">
-      <TopBar back="/practice" title="Chord Trainer" subtitle={phase === 'setup' ? 'See it, play it' : drill ? `Drill · ${level.name}` : level.name} />
+      <TopBar
+        back="/practice"
+        title={workout ? 'Daily workout' : 'Chord Trainer'}
+        subtitle={workout ? <MusicText text={`${workout.step} · Chord Trainer · ${level.name}`} /> : phase === 'setup' ? 'See it, play it' : drill ? `Drill · ${level.name}` : level.name}
+      />
       {/* The keyboard takes the height that's left, so the page only scrolls on very short screens. */}
       <div className="relative min-h-0 flex-1 overflow-y-auto">
-        {phase === 'setup' && (
+        {phase === 'setup' && !workout && (
           <GameMain>
             <SetupCard
               icon={Layers}
@@ -113,7 +130,7 @@ export function ChordTrainer() {
         )}
         {phase === 'play' && round[results.length] && (
           <GameMain wide fill>
-            <Hud step={results.length} total={ROUND} score={score} streak={streak} label="Chord" />
+            <Hud step={results.length} total={size} score={score} streak={streak} label="Chord" />
             <Challenge key={results.length} chord={round[results.length]} onDone={onDone} />
           </GameMain>
         )}
@@ -138,8 +155,8 @@ export function ChordTrainer() {
                   : undefined
               }
               stats={[
-                { label: 'Clean', value: `${results.filter(isClean).length}/${ROUND}` },
-                { label: 'Avg time', value: `${(results.reduce((s, r) => s + r.seconds, 0) / ROUND).toFixed(1)}s` },
+                { label: 'Clean', value: `${results.filter(isClean).length}/${size}` },
+                { label: 'Avg time', value: `${(results.reduce((s, r) => s + r.seconds, 0) / size).toFixed(1)}s` },
                 { label: 'Hints', value: results.filter((r) => r.hinted).length },
               ]}
               onAgain={() => start()}

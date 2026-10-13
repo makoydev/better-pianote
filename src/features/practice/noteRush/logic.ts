@@ -125,6 +125,12 @@ export function rushStars(correct: number, wrong: number): number {
   return accuracy >= 95 && correct >= 25 ? 3 : accuracy >= 85 && correct >= 15 ? 2 : correct > 0 ? 1 : 0
 }
 
+/** How much of a three-star round a minute was (0–1): the accuracy, scaled down below the 25 notes three stars need. */
+export function rushShare(correct: number, wrong: number): number {
+  const total = correct + wrong
+  return total ? (correct / total) * Math.min(1, correct / 25) : 0
+}
+
 export function isCorrect(note: RushNote, midi: number, strictOctave: boolean) {
   return strictOctave ? midi === note.midi : mod(midi, 12) === mod(note.midi, 12)
 }

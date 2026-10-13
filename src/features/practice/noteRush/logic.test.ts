@@ -16,6 +16,7 @@ import {
   poolFor,
   rushChoices,
   rushGroup,
+  rushShare,
   rushStars,
 } from './logic'
 import { tapeLayout } from './tape'
@@ -78,6 +79,14 @@ describe('note rush', () => {
     expect(rushStars(1, 20)).toBe(1)
     expect(rushStars(0, 3)).toBe(0)
     expect(rushStars(0, 0)).toBe(0)
+  })
+
+  it('says how much of a three-star minute a round was', () => {
+    expect(rushShare(25, 0)).toBe(1)
+    expect(rushShare(30, 10)).toBeCloseTo(0.75)
+    // Clean but few: scaled by the 25 notes three stars need.
+    expect(rushShare(20, 0)).toBeCloseTo(0.8)
+    expect(rushShare(0, 0)).toBe(0)
   })
 
   it('weights notes when asked, and still never repeats one', () => {

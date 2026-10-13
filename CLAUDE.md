@@ -75,6 +75,9 @@ Claude's local memory doesn't travel between machines, so everything needed live
   `songScoreInput` (what the score engraver needs). The player has three modes: Practice (waits for each note),
   Play along (keeps going at your tempo, judged by `along.ts`) and Listen.
 - `src/features/`: screens. Routes are in `src/App.tsx` (hash router in `src/router.ts`).
+- `features/practice/`: the games share `shared/` (setup and results cards, `finishGame`, weak spots). The daily
+  workout (`DailyWorkout.tsx`, `shared/workout.ts`) plays Note Rush, Chord Trainer, Rhythm Tap and Ear Training in a
+  row: each game takes an optional `workout` part (start at your level, a short round, hand back how it went).
 - `src/state/`: Zustand stores. `settings` and `progress` persist to localStorage; `live` is runtime only.
 
 ## Conventions

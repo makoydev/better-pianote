@@ -34,6 +34,7 @@ const ScaleExplorer = lazy(() => import('./features/explore/ScaleExplorer').then
 const LessonPlayer = lazy(() => import('./features/learn/LessonPlayer').then((m) => ({ default: m.LessonPlayer })))
 const FreePlay = lazy(() => import('./features/play/FreePlay').then((m) => ({ default: m.FreePlay })))
 const ChordTrainer = lazy(() => import('./features/practice/ChordTrainer').then((m) => ({ default: m.ChordTrainer })))
+const DailyWorkout = lazy(() => import('./features/practice/DailyWorkout').then((m) => ({ default: m.DailyWorkout })))
 const EarTraining = lazy(() => import('./features/practice/EarTraining').then((m) => ({ default: m.EarTraining })))
 const KeyQuiz = lazy(() => import('./features/practice/KeyQuiz').then((m) => ({ default: m.KeyQuiz })))
 const NoteRush = lazy(() => import('./features/practice/NoteRush').then((m) => ({ default: m.NoteRush })))
@@ -57,6 +58,7 @@ const ROUTES: Route[] = [
   { pattern: '/learn', page: LearnPath, tab: 'learn' },
   { pattern: '/learn/:lessonId', page: LessonPlayer, tab: 'learn', focus: true },
   { pattern: '/practice', page: PracticeHub, tab: 'practice' },
+  { pattern: '/practice/workout', page: DailyWorkout, tab: 'practice', focus: true },
   { pattern: '/practice/note-rush', page: NoteRush, tab: 'practice', focus: true },
   { pattern: '/practice/chord-trainer', page: ChordTrainer, tab: 'practice', focus: true },
   { pattern: '/practice/rhythm', page: RhythmTap, tab: 'practice', focus: true },

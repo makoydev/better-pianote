@@ -177,7 +177,8 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
 - [x] **43. Rhythm Tap insights:** "you rush by ~25 ms", first-try score, bests per tempo, bigger Next/Try again
   buttons. `S`
   *Done:* results say "You rush/drag by about N ms" or "Right on time", show the first-try score next to the best-of-retries one, bests are kept per tempo band, and Next/Try again are large buttons (8bc72a9).
-- [ ] **44. A chained 5-minute "Daily workout".** `L`
+- [x] **44. A chained 5-minute "Daily workout".** `L`
+  *Done:* a Daily workout leads the Practice screen: Note Rush for 60 seconds, 5 chords, 3 rhythms and 5 ear questions, one after another, each at the level (and mode) you last played. Between parts a card shows how the last one went and starts the next by itself after 5 seconds (Hold on stops it; Enter, a pedal tap or the top C go now). One summary at the end: the parts' average, stars, XP (more per star, a bonus for finishing) and the day's goal; the Practice card then says Done today with the score. The parts keep your weak spots but aren't saved as the games' own rounds. Checked in the browser: a whole workout from start to summary, and iPad portrait.
 
 ## Songs
 

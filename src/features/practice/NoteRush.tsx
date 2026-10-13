@@ -39,6 +39,7 @@ import {
   rushChoices,
   rushGroup,
   rushItemId,
+  rushShare,
   rushStars,
 } from './noteRush/logic'
 import { tapeLayout } from './noteRush/tape'
@@ -46,6 +47,7 @@ import { DrillButton, GameMain, ResultsCard, type ResultsAction, SetupCard } fro
 import { type FinishResult, finishGame } from './shared/finish'
 import { useItemStats, usePracticeStats, weigher } from './shared/stats'
 import { type ItemAnswer, drillWeight, weakest } from './shared/weak'
+import type { WorkoutPart } from './shared/workout'
 
 type Phase = 'setup' | 'countdown' | 'play' | 'results'
 type Mode = 'play' | 'name'
@@ -76,8 +78,9 @@ interface Result {
 const ROUND_MS = 60_000
 const SP = 20
 
-export function NoteRush() {
-  const [phase, setPhase] = useState<Phase>('setup')
+/** The game, or (`workout`) a round of it at your level as a part of the daily workout, straight after the count. */
+export function NoteRush({ workout }: { workout?: WorkoutPart } = {}) {
+  const [phase, setPhase] = useState<Phase>(workout ? 'countdown' : 'setup')
   // Clef, level, how you answer and the key signature are remembered between visits.
   const [clef, setClef] = usePref<RushClef>('note-rush:clef', 'treble', ['treble', 'bass', 'grand'])
   const [level, setLevel] = usePref<RushLevel>('note-rush:level', 1, [1, 2, 3, 4, 5])
@@ -103,7 +106,11 @@ export function NoteRush() {
 
   return (
     <div className="flex h-dvh flex-col">
-      <TopBar back="/practice" title="Note Rush" subtitle={phase === 'setup' ? 'Sight-reading sprint' : <MusicText text={where} />} />
+      <TopBar
+        back="/practice"
+        title={workout ? 'Daily workout' : 'Note Rush'}
+        subtitle={<MusicText text={workout ? `${workout.step} · Note Rush · ${where}` : phase === 'setup' ? 'Sight-reading sprint' : where} />}
+      />
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         {phase === 'setup' && (
           <GameMain>
@@ -131,7 +138,10 @@ export function NoteRush() {
             key={runId}
             config={config}
             drill={drill}
+            ms={workout ? workout.size * 1000 : ROUND_MS}
+            save={!workout}
             onFinish={(r) => {
+              if (workout) return workout.onDone({ score: rushShare(r.correct, r.wrong), stars: r.stars, detail: `${r.correct} notes right` })
               setResult(r)
               setPhase('results')
             }}
@@ -275,7 +285,8 @@ function Countdown({ onDone }: { onDone: () => void }) {
   )
 }
 
-function Round({ config, drill, onFinish }: { config: Config; drill: string[] | null; onFinish: (r: Result) => void }) {
+/** One round of `ms`; `save` keeps it as a round of the game (not in the workout, which has its own summary). */
+function Round({ config, drill, ms, save, onFinish }: { config: Config; drill: string[] | null; ms: number; save: boolean; onFinish: (r: Result) => void }) {
   const strict = useSettings((s) => s.strictOctave)
   const uiSounds = useSettings((s) => s.uiSounds)
   const round = useMemo(() => {
@@ -296,7 +307,7 @@ function Round({ config, drill, onFinish }: { config: Config; drill: string[] | 
   const [flash, setFlash] = useState<Record<number, 'good' | 'bad'>>({})
   const [pop, setPop] = useState<{ id: number; text: string } | null>(null)
   const [acc, setAcc] = useState(0)
-  const [left, setLeft] = useState(ROUND_MS)
+  const [left, setLeft] = useState(ms)
   // Notes you skipped, drawn as missed once they slide past.
   const [skipped, setSkipped] = useState<number[]>([])
   const [paused, setPaused] = useState(false)
@@ -310,8 +321,8 @@ function Round({ config, drill, onFinish }: { config: Config; drill: string[] | 
   const endAt = useRef(Infinity)
   useEffect(() => {
     shownAt.current = performance.now()
-    endAt.current = performance.now() + ROUND_MS
-  }, [])
+    endAt.current = performance.now() + ms
+  }, [ms])
   const finished = useRef(false)
   const staffRef = useRef<HTMLDivElement>(null)
   const [lo, hi] = keyboardRange(config.clef, config.level, config.key)
@@ -325,10 +336,10 @@ function Round({ config, drill, onFinish }: { config: Config; drill: string[] | 
     const stars = rushStars(correct, wrong)
     // A round with nothing right isn't saved: no best or last score, no XP (so no streak either), no weak spots.
     // Otherwise it records "note-rush" and "note-rush:<clef>[:<key>]:<level>" (a drill only the first), with XP on
-    // the same scale as the other games.
+    // the same scale as the other games. In the workout only the weak spots are kept (its summary has the rest).
     const accuracy = (correct / Math.max(1, correct + wrong)) * 100
-    const saved = correct > 0 ? finishGame('note-rush', drill ? null : `${rushGroup(config.clef, config.key)}:${config.level}`, score, stars, { accuracy }) : null
-    if (saved) {
+    const saved = correct > 0 && save ? finishGame('note-rush', drill ? null : `${rushGroup(config.clef, config.key)}:${config.level}`, score, stars, { accuracy }) : null
+    if (correct > 0) {
       // The note on screen when time ran out counts too if you'd already missed it.
       if (slipped.current && current) answers.current.push({ id: rushItemId(current), missed: true })
       usePracticeStats.getState().recordAnswers('note-rush', answers.current)
@@ -495,7 +506,7 @@ function Round({ config, drill, onFinish }: { config: Config; drill: string[] | 
 
   const [kbArea, { height: kbH }] = useElementSize<HTMLDivElement>()
   const kbHeight = Math.round(Math.max(120, Math.min(hi - lo > 30 ? 180 : 220, kbH - 30)))
-  const timeFrac = left / ROUND_MS
+  const timeFrac = left / ms
   const mult = multiplier(combo)
 
   return (

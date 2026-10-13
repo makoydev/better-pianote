@@ -49,6 +49,7 @@ import { FeedbackLine, GameMain, Hud, KeysCard, type Miss, MissList, ResultsCard
 import { type FinishResult, finishGame, remember, sfx, starsFor } from './shared/finish'
 import { useItemStats, usePracticeStats, weigher } from './shared/stats'
 import { drillRound, msSince, weakest } from './shared/weak'
+import type { WorkoutPart } from './shared/workout'
 
 const ROUND = 10
 
@@ -67,6 +68,18 @@ function levelsFor(mode: EarMode) {
 function firstLevel(mode: EarMode): string {
   const ids = levelsFor(mode).map((l) => l.id)
   return remember('ear-level', ids[0], ids)
+}
+
+/**
+ * A question at a level: the one a drill planned, otherwise a new one (weak spots more often), not the same as the
+ * question before.
+ */
+function questionFor(mode: EarMode, levelId: string, prev: EarQuestion | null, planned?: string | EchoQ): EarQuestion {
+  const { quality, interval, echo, itemIds } = levelParts(mode, levelId)
+  if (mode === 'echo') return typeof planned === 'object' ? planned : makeEcho(echo)
+  const weight = typeof planned === 'string' ? (id: string) => (id === planned ? 1 : 0) : weigher('ear', itemIds)
+  if (mode === 'quality') return makeQuality(quality, prev?.kind === 'quality' ? prev : null, Math.random, weight)
+  return makeInterval(interval, prev?.kind === 'interval' ? prev : null, Math.random, weight)
 }
 
 /** A level's question settings per mode, and the items it keeps weak spots on. */
@@ -139,8 +152,11 @@ function toMiss(o: EarOutcome): Miss {
   }
 }
 
-export function EarTraining() {
-  const [phase, setPhase] = useState<'setup' | 'play' | 'done'>('setup')
+/** The game, or (`workout`) a few questions of it, in the mode and level you last played, as a part of the daily workout. */
+export function EarTraining({ workout }: { workout?: WorkoutPart } = {}) {
+  const size = workout?.size ?? ROUND
+  // In the workout the questions start straight away, in the mode and at the level you last played.
+  const [phase, setPhase] = useState<'setup' | 'play' | 'done'>(workout ? 'play' : 'setup')
   const [mode, setMode] = usePref<EarMode>('ear-mode', 'quality', ['quality', 'interval', 'echo'])
   const levels = levelsFor(mode)
   // Each mode remembers its own level, so switching modes doesn't reset it.
@@ -148,7 +164,7 @@ export function EarTraining() {
   const level = levels.find((l) => l.id === levelId) ?? levels[0]
   // Answer on the keys instead of tapping (Echo always is).
   const [byPlaying, setByPlaying] = usePref('ear:play', false)
-  const [question, setQuestion] = useState<EarQuestion | null>(null)
+  const [question, setQuestion] = useState<EarQuestion | null>(() => (workout ? questionFor(mode, level.id, null) : null))
   // Which question we're on (changes on "next", so answering doesn't remount the question).
   const [qIndex, setQIndex] = useState(0)
   const [outcomes, setOutcomes] = useState<EarOutcome[]>([])
@@ -165,15 +181,7 @@ export function EarTraining() {
 
   const parts = levelParts(mode, level.id)
 
-  const makeQuestion = (prev: EarQuestion | null, i: number, levelId = level.id): EarQuestion => {
-    const { quality, interval, echo, itemIds } = levelParts(mode, levelId)
-    const planned = plan.current?.[i]
-    if (mode === 'echo') return typeof planned === 'object' ? planned : makeEcho(echo)
-    // A drill asks what it planned; otherwise weak spots come up more often.
-    const weight = typeof planned === 'string' ? (id: string) => (id === planned ? 1 : 0) : weigher('ear', itemIds)
-    if (mode === 'quality') return makeQuality(quality, prev?.kind === 'quality' ? prev : null, Math.random, weight)
-    return makeInterval(interval, prev?.kind === 'interval' ? prev : null, Math.random, weight)
-  }
+  const makeQuestion = (prev: EarQuestion | null, i: number, levelId = level.id) => questionFor(mode, levelId, prev, plan.current?.[i])
 
   const start = (drillPlan: (string | EchoQ)[] | null = null, levelId = level.id) => {
     plan.current = drillPlan
@@ -193,12 +201,12 @@ export function EarTraining() {
   const drillMissed = () => {
     const missed = outcomes.filter((o) => !o.clean).map((o) => o.question)
     if (mode === 'echo') {
-      const fresh = Array.from({ length: ROUND }, () => makeEcho(parts.echo))
-      return start(drillRound(missed as EchoQ[], fresh, ROUND, () => 1, (q) => q.notes.join('-')))
+      const fresh = Array.from({ length: size }, () => makeEcho(parts.echo))
+      return start(drillRound(missed as EchoQ[], fresh, size, () => 1, (q) => q.notes.join('-')))
     }
     const ids = missed.flatMap((q) => earItemId(q) ?? [])
     // With two or four answers, a strict back-and-forth would give it away, so repeats are allowed.
-    start(drillRound(ids, parts.itemIds, ROUND, weigher('ear', parts.itemIds), (id) => id, Math.random, mode === 'quality'))
+    start(drillRound(ids, parts.itemIds, size, weigher('ear', parts.itemIds), (id) => id, Math.random, mode === 'quality'))
   }
 
   const answered = (o: EarOutcome) => {
@@ -215,9 +223,8 @@ export function EarTraining() {
 
   const next = () => {
     const t = tally.current
-    if (t.outcomes.length >= ROUND) {
+    if (t.outcomes.length >= size) {
       const clean = t.outcomes.filter((o) => o.clean).length
-      setFinish(finishGame('ear', drill ? null : level.id, t.score, starsFor(clean / ROUND, 0.9, 0.7), { accuracy: (clean / ROUND) * 100 }))
       usePracticeStats.getState().recordAnswers(
         'ear',
         t.outcomes.flatMap((o) => {
@@ -225,6 +232,8 @@ export function EarTraining() {
           return id ? [{ id, missed: !o.clean, ms: o.clean ? o.ms : undefined }] : []
         }),
       )
+      if (workout) return workout.onDone({ score: clean / size, stars: starsFor(clean / size, 0.9, 0.7), detail: `${clean} of ${size} right first time` })
+      setFinish(finishGame('ear', drill ? null : level.id, t.score, starsFor(clean / size, 0.9, 0.7), { accuracy: (clean / size) * 100 }))
       setPhase('done')
       return
     }
@@ -235,19 +244,25 @@ export function EarTraining() {
   const modeInfo = MODES.find((m) => m.id === mode)!
   const qualityOptions = parts.quality.types.map((t) => t.id)
   const clean = outcomes.filter((o) => o.clean).length
-  const stars = starsFor(clean / ROUND, 0.9, 0.7)
+  const stars = starsFor(clean / size, 0.9, 0.7)
   const nextLevel = levels[levels.findIndex((l) => l.id === level.id) + 1]
 
   return (
     <div className="flex h-dvh flex-col">
       <TopBar
         back="/practice"
-        title="Ear Training"
-        subtitle={phase === 'setup' ? 'Train the ear you already have' : `${drill ? 'Drill · ' : ''}${modeInfo.title} · ${level.name}`}
+        title={workout ? 'Daily workout' : 'Ear Training'}
+        subtitle={
+          workout
+            ? `${workout.step} · ${modeInfo.title} · ${level.name}`
+            : phase === 'setup'
+              ? 'Train the ear you already have'
+              : `${drill ? 'Drill · ' : ''}${modeInfo.title} · ${level.name}`
+        }
       />
       {/* A keyboard takes the height that's left, so the page only scrolls on very short screens. */}
       <div className="relative min-h-0 flex-1 overflow-y-auto">
-        {phase === 'setup' && (
+        {phase === 'setup' && !workout && (
           <GameMain>
             <SetupCard
               icon={Ear}
@@ -304,7 +319,7 @@ export function EarTraining() {
         )}
         {phase === 'play' && question && (
           <GameMain wide={mode === 'echo'} fill>
-            <Hud step={qIndex} total={ROUND} score={score} streak={streak} />
+            <Hud step={qIndex} total={size} score={score} streak={streak} />
             {question.kind === 'quality' && (
               <ChoiceQuestion
                 key={qIndex}
@@ -374,8 +389,8 @@ export function EarTraining() {
               stars={stars}
               result={finish}
               stats={[
-                { label: 'First try', value: `${clean}/${ROUND}` },
-                { label: 'Correct', value: `${outcomes.filter((o) => o.correct).length}/${ROUND}` },
+                { label: 'First try', value: `${clean}/${size}` },
+                { label: 'Correct', value: `${outcomes.filter((o) => o.correct).length}/${size}` },
                 { label: 'Best streak', value: bestStreak },
               ]}
               historyKey={drill ? undefined : `ear:${level.id}`}
