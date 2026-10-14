@@ -62,9 +62,14 @@ export function IdeasSheet({ open, onClose }: { open: boolean; onClose: () => vo
   useEffect(() => {
     if (!open) stop()
   }, [open, stop])
+  // The Undo of a delete goes when the sheet closes, so it isn't still there next time.
+  const close = () => {
+    setDeleted(null)
+    onClose()
+  }
 
   return (
-    <Modal open={open} onClose={onClose} title={`Your ideas (${ideas.length})`} wide>
+    <Modal open={open} onClose={close} title={`Your ideas (${ideas.length})`} wide>
       {ideas.length === 0 ? (
         <div className="flex items-start gap-3 text-ink-soft">
           <Lightbulb className="mt-0.5 shrink-0 text-gold" size={22} />
