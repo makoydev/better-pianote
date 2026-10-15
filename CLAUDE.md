@@ -73,7 +73,8 @@ Claude's local memory doesn't travel between machines, so everything needed live
   original file, and re-reads them when `IMPORTER_VERSION` goes up. Settings export/import includes them.
 - `features/songs/timeline.ts`: a song in time (all voices, ties merged, practice steps, columns) and
   `songScoreInput` (what the score engraver needs). The player has three modes: Practice (waits for each note),
-  Play along (keeps going at your tempo, judged by `along.ts`) and Listen.
+  Play along (keeps going at your tempo, judged by `along.ts`) and Listen. Focus view (`songs:focus` pref) folds the
+  header and controls into one slim bar and a panel, and shortens the keyboard, so the music gets the screen.
 - `src/features/`: screens. Routes are in `src/App.tsx` (hash router in `src/router.ts`).
 - `features/play/`: Free Play. `ideas.ts` keeps the last two minutes of playing in memory (`recorder`) so "Save that!"
   can keep it afterwards as an idea (notes and pedal, key, chords) in the `tonic-ideas` store, which backups carry and

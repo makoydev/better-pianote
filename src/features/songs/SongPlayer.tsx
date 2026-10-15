@@ -1,6 +1,30 @@
-import { ALargeSmall, Check, Ear, Flame, Hand, ListMusic, Music, Pause, Play, RotateCcw, SkipBack, SkipForward, Square, Type, Volume2, X } from 'lucide-react'
+import {
+  ALargeSmall,
+  ArrowLeft,
+  Check,
+  Ear,
+  Expand,
+  Flame,
+  Hand,
+  ListMusic,
+  Maximize2,
+  Minimize2,
+  Music,
+  Pause,
+  Play,
+  RotateCcw,
+  Shrink,
+  SkipBack,
+  SkipForward,
+  SlidersHorizontal,
+  Square,
+  Type,
+  Volume2,
+  X,
+} from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ConnectionPill } from '../../components/layout/ConnectionPill'
 import { MicPrompt } from '../../components/layout/MicPrompt'
 import { TopBar } from '../../components/layout/TopBar'
 import { MusicText } from '../../components/MusicText'
@@ -23,7 +47,7 @@ import { micHearsNotes } from '../../lib/input/micMatch'
 import { letterColor } from '../../lib/colors'
 import { nameNote } from '../../lib/naming'
 import { type Chord, bassFor, isBlackKey, mod, parseNote, voiceLead } from '../../lib/theory'
-import { go } from '../../router'
+import { go, goBack } from '../../router'
 import { useLive } from '../../state/live'
 import { useLibrary } from '../../state/library'
 import { getPref, usePref } from '../../state/prefs'
@@ -38,6 +62,7 @@ import { LISTEN_PARTS, type ListenPart, accompaniment, handFilter, listenHand, o
 import { AlongSession, alongScore, alongStars } from './along'
 import { barName, barTitle, countedStraight } from './bars'
 import { handSpans, judgeKey, micChordHeard, otherHandKey } from './hearing'
+import { isAppleTouch } from './files'
 import { useSongRuns } from './history'
 import { type LoopMemory, continueBar, rememberBar, rememberedLoop, songPref } from './memory'
 import { type CountIn, type Cue, type NoteFilter, type Playhead, advance, beatClicks, buildCues, countIn, firstCueAt, ringingAt } from './listen'
@@ -92,6 +117,23 @@ function useViewportHeight() {
     return () => window.removeEventListener('resize', on)
   }, [])
   return h
+}
+
+/** The browser's full screen (on a computer it hides the tabs and address bar); null where there isn't one (iPad). */
+function useFullscreen() {
+  const [on, setOn] = useState(() => !!document.fullscreenElement)
+  useEffect(() => {
+    const change = () => setOn(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', change)
+    return () => {
+      document.removeEventListener('fullscreenchange', change)
+      // Leaving the song leaves full screen too.
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
+    }
+  }, [])
+  if (!document.fullscreenEnabled || isAppleTouch()) return null
+  const toggle = () => void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {})
+  return { on, toggle }
 }
 
 function Player({ song }: { song: Song }) {
@@ -233,6 +275,10 @@ function Player({ song }: { song: Song }) {
   const [kbRef, kb] = useElementSize<HTMLDivElement>()
   const paperRef = useRef<HTMLDivElement>(null)
   const [scoreSize, setScoreSize] = usePref<ScoreSize>('songs:score-size', 'M', SCORE_SIZES)
+  // Focus view: the title and controls fold away (a panel brings them back), so the music gets the screen.
+  const [focus, setFocus] = usePref<boolean>('songs:focus', false)
+  const [panel, setPanel] = useState(false)
+  const fullscreen = useFullscreen()
 
   const step = mode === 'wait' && !finished ? steps[stepIdx] : undefined
   const cursorTime = mode === 'wait' ? (steps[stepIdx]?.start ?? tl.total) : listenAt
@@ -465,6 +511,8 @@ function Player({ song }: { song: Song }) {
   useEffect(() => () => window.clearTimeout(octaveTimer.current), [])
 
   useNoteEvents((e) => {
+    // Playing folds Focus view's controls panel away.
+    if (e.type === 'on') setPanel(false)
     if (mode === 'along') {
       if (e.type !== 'on') return
       const session = along.current
@@ -869,6 +917,7 @@ function Player({ song }: { song: Song }) {
         else if (mode === 'along') toggleAlong()
         else hearBar()
       } else if (e.code === 'KeyR') restart()
+      else if (e.key === 'Escape') setPanel(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -960,7 +1009,7 @@ function Player({ song }: { song: Song }) {
   }
   for (const [m, hand] of Object.entries(sounding)) marks[Number(m)] = hand === 'rh' ? 'chord' : 'root'
   for (const [m, f] of Object.entries(flash)) marks[Number(m)] = f
-  const pianoHeight = keyboardHeight(kb.width, whiteKeys, vh, showBass)
+  const pianoHeight = keyboardHeight(kb.width, whiteKeys, vh, showBass, focus)
 
   const straight = useMemo(() => countedStraight(song), [song])
   const fullBars = song.rh.length - firstFullBar
@@ -1066,160 +1115,258 @@ function Player({ song }: { song: Song }) {
           : null,
   )
 
+  // Focus view's panel folds away again once the music plays.
+  const [panelPlaying, setPanelPlaying] = useState(playing)
+  if (playing !== panelPlaying) {
+    setPanelPlaying(playing)
+    if (playing) setPanel(false)
+  }
+  const leaveFocus = () => {
+    setPanel(false)
+    setFocus(false)
+    if (fullscreen?.on) fullscreen.toggle()
+  }
+
+  const topActions = (
+    <>
+      <IconButton icon={RotateCcw} label="Start again (R)" onClick={restart} />
+      <ScoreSizeButton size={scoreSize} onChange={setScoreSize} />
+      <IconButton
+        icon={Type}
+        label={staffLabels ? 'Hide note names' : 'Show note names'}
+        onClick={() => setSettings({ staffLabels: !staffLabels })}
+        className={staffLabels ? '!border-gold/40 !text-gold' : ''}
+      />
+    </>
+  )
+
+  // How you practise (mode, hands, chords), then playing, tempo and the loop: above the music, or in Focus view's panel.
+  const controls = (
+    <>
+      {/* Controls: how you practise, then playing and tempo */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
+        <Segmented
+          value={mode}
+          onChange={changeMode}
+          // The icons only where there's room: on an iPad the hands still fit beside the three modes without them.
+          options={[
+            { value: 'wait', label: <span className="inline-flex items-center gap-1.5"><Hand size={18} className="hidden xl:block" /> Practice</span> },
+            { value: 'along', label: <span className="inline-flex items-center gap-1.5"><Music size={18} className="hidden xl:block" /> Play along</span> },
+            { value: 'listen', label: <span className="inline-flex items-center gap-1.5"><Ear size={18} className="hidden xl:block" /> Listen</span> },
+          ]}
+        />
+        {song.lh && (
+          <Segmented
+            value={hands}
+            onChange={changeHands}
+            options={[
+              { value: 'rh', label: 'Right hand' },
+              { value: 'lh', label: 'Left hand' },
+              { value: 'both', label: 'Both hands' },
+            ]}
+          />
+        )}
+        {tl.chords.length > 0 && (
+          <TogglePill checked={backing && !(mode !== 'listen' && mic === 'on')} onChange={setBacking} label="Backing chords">
+            Chords
+          </TogglePill>
+        )}
+        {song.lh && mode !== 'listen' && hands !== 'both' && (
+          <TogglePill
+            checked={accompany && mic !== 'on'}
+            onChange={setAccompany}
+            label={
+              mic === 'on'
+                ? 'Accompany me: off while the mic listens (it would hear the app)'
+                : `Accompany me: the app plays the ${hands === 'rh' ? 'left' : 'right'} hand along with you`
+            }
+          >
+            Accompany me
+          </TogglePill>
+        )}
+        {song.lh && mode === 'listen' && (
+          <label
+            className="flex h-[3.25rem] items-center gap-2 rounded-2xl border border-white/8 bg-night-850 px-3 text-sm font-extrabold"
+            title="What Listen plays (the other hand: the one you're not practising)"
+          >
+            <Volume2 size={18} className="text-ink-mute" aria-hidden />
+            <span className="text-ink-mute">Plays</span>
+            <select
+              value={listenPart === 'other' && hands === 'both' ? 'all' : listenPart}
+              // Let go of focus, so Space plays and pauses again straight away.
+              onChange={(e) => {
+                changeListenPart(e.target.value as ListenPart)
+                e.currentTarget.blur()
+              }}
+              className="min-h-11 cursor-pointer rounded-lg bg-night-850 pr-1 text-ink outline-none"
+            >
+              <option value="all">both hands</option>
+              <option value="rh">the right hand</option>
+              <option value="lh">the left hand</option>
+              {hands !== 'both' && <option value="other">the other hand</option>}
+            </select>
+          </label>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
+        {mode === 'wait' ? (
+          <div className="flex items-center gap-2">
+            <Button size="lg" variant="secondary" icon={Volume2} onClick={hearBar} disabled={!step} title="Hear this bar at your tempo (Space)">
+              Hear this bar
+            </Button>
+            <Button size="lg" variant="secondary" icon={SkipForward} onClick={skip} disabled={!step} title="Skip this note (counts as a wrong note)">
+              Skip
+            </Button>
+          </div>
+        ) : mode === 'along' ? (
+          <div className="flex items-center gap-2">
+            <IconButton icon={SkipBack} size={56} label="Play along from the beginning" onClick={alongFromStart} />
+            <Button icon={playing ? Square : Play} onClick={toggleAlong} variant={playing ? 'secondary' : 'primary'} className="min-w-38" title="Space">
+              {playing ? 'Stop' : alongFrom > listenRange()[0] + EPS ? `Play from ${barName(song, barAt(tl, alongFrom))}` : 'Play along'}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <IconButton icon={SkipBack} size={56} label="Restart: play from the beginning" onClick={listenFromStart} />
+            <Button icon={playing ? Pause : Play} onClick={toggleListen} variant={playing ? 'secondary' : 'primary'} className="min-w-38">
+              {playing ? 'Pause' : pausedMidway ? 'Resume' : 'Play'}
+            </Button>
+          </div>
+        )}
+        <TempoStepper bpm={bpm} songBpm={song.bpm} onChange={setBpm} />
+        {mode === 'listen' && (
+          <>
+            <TempoPresets bpm={bpm} songBpm={song.bpm} onChange={setBpm} />
+            <span className="flex flex-wrap items-center gap-2">
+              <Chip on={countInOn} onChange={setCountInOn} label="Count-in: a bar of clicks before the music starts">
+                Count-in
+              </Chip>
+              <Chip on={metronome} onChange={setMetronome} label="Metronome: clicks while it plays">
+                Metronome
+              </Chip>
+              {loop && (
+                <Chip on={speedUp} onChange={setSpeedUp} label="Speed up each loop: 5% faster each time round, up to the song's tempo">
+                  Speed up
+                </Chip>
+              )}
+            </span>
+          </>
+        )}
+        {mode === 'along' && (
+          <>
+            <TempoPresets bpm={bpm} songBpm={song.bpm} onChange={setBpm} />
+            <span className="flex flex-wrap items-center gap-2">
+              <Chip on={alongClick} onChange={setAlongClick} label="Metronome: clicks while you play along (a bar of them always counts you in)">
+                Metronome
+              </Chip>
+              {loop && (
+                <Chip on={speedUp} onChange={setSpeedUp} label="Speed up: 5% faster after each pass with every note in time, up to the song's tempo">
+                  Speed up
+                </Chip>
+              )}
+            </span>
+          </>
+        )}
+        <LoopControls
+          song={song}
+          loop={loop}
+          bars={loopBars}
+          onLoop={changeLoop}
+          onBars={changeLoopBars}
+          onAround={() => pickBars(aroundBar(curBar, song.rh.length))}
+          onStartFrom={startFrom}
+        />
+      </div>
+    </>
+  )
+
   return (
     // The screen's height, shared out: controls, the music (whatever's left), the keyboard. It only scrolls when
     // the controls alone don't fit (a phone).
     <div className="flex h-dvh flex-col overflow-y-auto">
-      <TopBar
-        back="/songs"
-        title={song.title}
-        subtitle={`${song.composer} · ${song.keyName} · ${song.time[0]}/${song.time[1]}`}
-      >
-        <IconButton icon={RotateCcw} label="Start again (R)" onClick={restart} />
-        <ScoreSizeButton size={scoreSize} onChange={setScoreSize} />
-        <IconButton
-          icon={Type}
-          label={staffLabels ? 'Hide note names' : 'Show note names'}
-          onClick={() => setSettings({ staffLabels: !staffLabels })}
-          className={staffLabels ? '!border-gold/40 !text-gold' : ''}
-        />
-      </TopBar>
-
-      <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-2.5 px-3 pb-3 pt-3 sm:px-5">
-        {/* Controls: how you practise, then playing and tempo */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
-          <Segmented
-            value={mode}
-            onChange={changeMode}
-            // The icons only where there's room: on an iPad the hands still fit beside the three modes without them.
-            options={[
-              { value: 'wait', label: <span className="inline-flex items-center gap-1.5"><Hand size={18} className="hidden xl:block" /> Practice</span> },
-              { value: 'along', label: <span className="inline-flex items-center gap-1.5"><Music size={18} className="hidden xl:block" /> Play along</span> },
-              { value: 'listen', label: <span className="inline-flex items-center gap-1.5"><Ear size={18} className="hidden xl:block" /> Listen</span> },
-            ]}
-          />
-          {song.lh && (
-            <Segmented
-              value={hands}
-              onChange={changeHands}
-              options={[
-                { value: 'rh', label: 'Right hand' },
-                { value: 'lh', label: 'Left hand' },
-                { value: 'both', label: 'Both hands' },
-              ]}
-            />
-          )}
-          {tl.chords.length > 0 && (
-            <TogglePill checked={backing && !(mode !== 'listen' && mic === 'on')} onChange={setBacking} label="Backing chords">
-              Chords
-            </TogglePill>
-          )}
-          {song.lh && mode !== 'listen' && hands !== 'both' && (
-            <TogglePill
-              checked={accompany && mic !== 'on'}
-              onChange={setAccompany}
-              label={
-                mic === 'on'
-                  ? 'Accompany me: off while the mic listens (it would hear the app)'
-                  : `Accompany me: the app plays the ${hands === 'rh' ? 'left' : 'right'} hand along with you`
-              }
-            >
-              Accompany me
-            </TogglePill>
-          )}
-          {song.lh && mode === 'listen' && (
-            <label
-              className="flex h-[3.25rem] items-center gap-2 rounded-2xl border border-white/8 bg-night-850 px-3 text-sm font-extrabold"
-              title="What Listen plays (the other hand: the one you're not practising)"
-            >
-              <Volume2 size={18} className="text-ink-mute" aria-hidden />
-              <span className="text-ink-mute">Plays</span>
-              <select
-                value={listenPart === 'other' && hands === 'both' ? 'all' : listenPart}
-                // Let go of focus, so Space plays and pauses again straight away.
-                onChange={(e) => {
-                  changeListenPart(e.target.value as ListenPart)
-                  e.currentTarget.blur()
-                }}
-                className="min-h-11 cursor-pointer rounded-lg bg-night-850 pr-1 text-ink outline-none"
+      {focus ? (
+        // Focus view: one slim bar (back, the title, the main button, the controls panel, full screen, leave).
+        <header className="sticky top-0 z-30 border-b border-white/6 bg-night-900/85 pt-[env(safe-area-inset-top)]">
+          <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-2 px-3 sm:px-5">
+            <IconButton icon={ArrowLeft} label="Back" size={44} onClick={() => goBack('/songs')} />
+            <h1 className="min-w-0 flex-1 truncate font-display text-lg font-bold">{song.title}</h1>
+            {mode === 'wait' ? (
+              <Button size="sm" variant="secondary" icon={Volume2} onClick={hearBar} disabled={!step} title="Hear this bar at your tempo (Space)">
+                Hear bar
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                icon={playing ? (mode === 'along' ? Square : Pause) : Play}
+                variant={playing ? 'secondary' : 'primary'}
+                onClick={mode === 'along' ? toggleAlong : toggleListen}
+                title="Space"
               >
-                <option value="all">both hands</option>
-                <option value="rh">the right hand</option>
-                <option value="lh">the left hand</option>
-                {hands !== 'both' && <option value="other">the other hand</option>}
-              </select>
-            </label>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
-          {mode === 'wait' ? (
-            <div className="flex items-center gap-2">
-              <Button size="lg" variant="secondary" icon={Volume2} onClick={hearBar} disabled={!step} title="Hear this bar at your tempo (Space)">
-                Hear this bar
+                {playing ? (mode === 'along' ? 'Stop' : 'Pause') : mode === 'along' ? 'Play along' : 'Play'}
               </Button>
-              <Button size="lg" variant="secondary" icon={SkipForward} onClick={skip} disabled={!step} title="Skip this note (counts as a wrong note)">
-                Skip
-              </Button>
-            </div>
-          ) : mode === 'along' ? (
-            <div className="flex items-center gap-2">
-              <IconButton icon={SkipBack} size={56} label="Play along from the beginning" onClick={alongFromStart} />
-              <Button icon={playing ? Square : Play} onClick={toggleAlong} variant={playing ? 'secondary' : 'primary'} className="min-w-38" title="Space">
-                {playing ? 'Stop' : alongFrom > listenRange()[0] + EPS ? `Play from ${barName(song, barAt(tl, alongFrom))}` : 'Play along'}
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <IconButton icon={SkipBack} size={56} label="Restart: play from the beginning" onClick={listenFromStart} />
-              <Button icon={playing ? Pause : Play} onClick={toggleListen} variant={playing ? 'secondary' : 'primary'} className="min-w-38">
-                {playing ? 'Pause' : pausedMidway ? 'Resume' : 'Play'}
-              </Button>
-            </div>
-          )}
-          <TempoStepper bpm={bpm} songBpm={song.bpm} onChange={setBpm} />
-          {mode === 'listen' && (
+            )}
+            <Button
+              size="sm"
+              variant={panel ? 'primary' : 'secondary'}
+              icon={SlidersHorizontal}
+              onClick={() => setPanel(!panel)}
+              aria-expanded={panel}
+              title="Mode, hands, tempo, loop and the rest"
+            >
+              Controls
+            </Button>
+            {fullscreen && (
+              <IconButton
+                icon={fullscreen.on ? Shrink : Expand}
+                label={fullscreen.on ? 'Leave full screen' : 'Full screen (hides the browser’s bars)'}
+                size={44}
+                onClick={fullscreen.toggle}
+                className={fullscreen.on ? '!border-gold/40 !text-gold' : ''}
+              />
+            )}
+            <IconButton icon={Minimize2} label="Leave Focus view (show all the controls)" size={44} onClick={leaveFocus} />
+          </div>
+        </header>
+      ) : (
+        <TopBar back="/songs" title={song.title} subtitle={`${song.composer} · ${song.keyName} · ${song.time[0]}/${song.time[1]}`}>
+          <IconButton icon={Maximize2} label="Focus view: fold the controls away, bigger music" onClick={() => setFocus(true)} />
+          {topActions}
+        </TopBar>
+      )}
+
+      <main className="relative mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-2.5 px-3 pb-3 pt-3 sm:px-5">
+        {!focus && controls}
+        {/* Focus view: the controls in a panel over the music, until you play or tap outside it */}
+        <AnimatePresence>
+          {focus && panel && (
             <>
-              <TempoPresets bpm={bpm} songBpm={song.bpm} onChange={setBpm} />
-              <span className="flex flex-wrap items-center gap-2">
-                <Chip on={countInOn} onChange={setCountInOn} label="Count-in: a bar of clicks before the music starts">
-                  Count-in
-                </Chip>
-                <Chip on={metronome} onChange={setMetronome} label="Metronome: clicks while it plays">
-                  Metronome
-                </Chip>
-                {loop && (
-                  <Chip on={speedUp} onChange={setSpeedUp} label="Speed up each loop: 5% faster each time round, up to the song's tempo">
-                    Speed up
-                  </Chip>
-                )}
-              </span>
+              <motion.div
+                key="shade"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-20 bg-night-900/50"
+                onClick={() => setPanel(false)}
+              />
+              <motion.div
+                key="panel"
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.16 }}
+                className="absolute inset-x-3 top-3 z-20 flex flex-col gap-3 rounded-3xl border border-white/10 bg-night-800 p-3 shadow-2xl sm:inset-x-5 sm:p-4"
+              >
+                {controls}
+                <div className="flex flex-wrap items-center gap-2 border-t border-white/8 pt-3">
+                  {topActions}
+                  <span className="ml-auto">
+                    <ConnectionPill />
+                  </span>
+                </div>
+              </motion.div>
             </>
           )}
-          {mode === 'along' && (
-            <>
-              <TempoPresets bpm={bpm} songBpm={song.bpm} onChange={setBpm} />
-              <span className="flex flex-wrap items-center gap-2">
-                <Chip on={alongClick} onChange={setAlongClick} label="Metronome: clicks while you play along (a bar of them always counts you in)">
-                  Metronome
-                </Chip>
-                {loop && (
-                  <Chip on={speedUp} onChange={setSpeedUp} label="Speed up: 5% faster after each pass with every note in time, up to the song's tempo">
-                    Speed up
-                  </Chip>
-                )}
-              </span>
-            </>
-          )}
-          <LoopControls
-            song={song}
-            loop={loop}
-            bars={loopBars}
-            onLoop={changeLoop}
-            onBars={changeLoopBars}
-            onAround={() => pickBars(aroundBar(curBar, song.rh.length))}
-            onStartFrom={startFrom}
-          />
-        </div>
+        </AnimatePresence>
 
         {/* The music: the room left between the controls and the keyboard (lines when two or more fit) */}
         <div ref={paperRef} className="relative flex min-h-[6.5rem] flex-1 flex-col">

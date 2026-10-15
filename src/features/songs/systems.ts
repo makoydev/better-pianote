@@ -90,8 +90,12 @@ export function topLine(top: number, cur: number, shown: number, total: number):
 /** Below this width per white key the keyboard scrolls sideways (wide pieces get narrower keys first). */
 export const MIN_KEY_WIDTH = 22
 
-/** A keyboard height that suits its keys (about 6½ times as long as they're wide), in at most a fifth of the screen. */
-export function keyboardHeight(width: number, whiteKeys: number, vh: number, grand: boolean): number {
+/**
+ * A keyboard height that suits its keys (about 6½ times as long as they're wide), in at most a fifth of the screen.
+ * `compact` (Focus view, where the music comes first): shorter keys, in about an eighth of the screen.
+ */
+export function keyboardHeight(width: number, whiteKeys: number, vh: number, grand: boolean, compact = false): number {
   const keyW = Math.max(MIN_KEY_WIDTH, whiteKeys > 0 && width > 0 ? width / whiteKeys : 40)
+  if (compact) return Math.round(Math.max(80, Math.min(130, vh * 0.13, keyW * 4.5)))
   return Math.round(Math.max(110, Math.min(210, vh * (grand ? 0.18 : 0.21), keyW * 6.5)))
 }

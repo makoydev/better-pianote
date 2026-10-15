@@ -74,4 +74,11 @@ describe('keyboard size', () => {
     expect(keyboardHeight(366, 36, 700, false)).toBe(143)
     expect(keyboardHeight(1000, 15, 400, false)).toBe(110)
   })
+
+  it('is shorter in Focus view, so the music gets the room', () => {
+    expect(keyboardHeight(1395, 29, 757, true, true)).toBe(98)
+    expect(keyboardHeight(775, 29, 1180, true, true)).toBe(120)
+    // A small window: the keys stay big enough to play on.
+    expect(keyboardHeight(1000, 29, 550, true, true)).toBe(80)
+  })
 })

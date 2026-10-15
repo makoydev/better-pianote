@@ -68,8 +68,9 @@ export function ScoreView(props: ScoreViewProps) {
   )
   const shown = linesThatFit(lines, height)
 
-  // One line: as big as the size you chose, smaller when the height is short, a little bigger when there's room.
-  const tapeSp = height > 0 ? Math.round(Math.min(opts.sp * 1.25, Math.max(7, (opts.sp * height * 0.97) / full.height)) * 2) / 2 : opts.sp
+  // One line: as big as the size you chose, smaller when the height is short (all of it shows, never cut off at the
+  // top or bottom), a little bigger when there's room.
+  const tapeSp = height > 0 ? Math.round(Math.min(opts.sp * 1.25, Math.max(4, (opts.sp * height * 0.97) / full.height)) * 2) / 2 : opts.sp
   const tape = useMemo(() => (shown > 1 ? null : tapeSp === opts.sp ? full : layoutScore(input, { ...opts, sp: tapeSp })), [shown, tapeSp, full, input, opts])
 
   // ---- Picking bars: press on a bar, drag to another, let go ----

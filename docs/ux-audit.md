@@ -218,6 +218,13 @@ Suggested order: #1–4, then #5, #19, #6, #7, #10, then #20 and #45–46.
   *Done:* printed bar numbers ("Bar 14 (2nd time)") and the next notes shown faintly; IMPORTER_VERSION bumped to 2 so older imports get them.
 - [x] **57. Two-hand versions of the Advanced built-ins** (Minuet, Für Elise and the Prelude are right hand only). `M`
   *Done:* Minuet in G gets its left hand, Für Elise its left-hand broken chords, and the Prelude in C both hands as Bach wrote them (half-note bass plus the held second voice), transcribed bar by bar from Mutopia (Bach-Gesellschaft, Breitkopf & Härtel 1888) and checked against the Humdrum Bach-Gesellschaft encoding; every built-in song now passes the importer's song check (345b742). Checked: the Prelude's grand staff.
+- [x] **74. Focus view: the music first** (added 2026-10-15, after the audit). An imported piece in Practice on a
+  MacBook window showed more buttons than music, and the one long line was cut off at the top. `M`
+  *Done:* a Focus view button in the song player's header folds the title and both rows of controls into one slim
+  bar (Back, the title, Hear bar / Play, Controls, full screen on a computer, leave), the controls open as a panel
+  over the music that folds away when you play, tap outside or press Escape, the keyboard is shorter (about an eighth
+  of the screen), and it's remembered. A single line too tall for its room now shrinks to fit instead of being cut
+  off. Checked: a 1000×547 window (the music went from about 115 px to 275 px tall) and iPad portrait (two lines).
 
 ## Free Play & Explore
 
