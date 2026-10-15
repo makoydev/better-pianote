@@ -1,0 +1,1 @@
+import{$ as e,Q as t,ot as n}from"./theory-BuLtf7Sz.js";function r(r,i,a={}){let o=i===`solfege`?t[r.letter]+e(r.acc):n(r,{octave:!1});return a.octave?o+r.oct:o}export{r as t};

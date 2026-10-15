@@ -1,0 +1,1 @@
+import{g as e}from"./MusicText-BXJK5a3C.js";var t=.07,n=.25;function r(t){let n=e.ctx;if(!n)return 0;let r=n.getOutputTimestamp?.();return r&&r.contextTime!==void 0&&r.performanceTime!==void 0&&r.performanceTime>0?r.contextTime+(t-r.performanceTime)/1e3:n.currentTime-(performance.now()-t)/1e3-(n.outputLatency||n.baseLatency||0)}export{t as n,r,n as t};

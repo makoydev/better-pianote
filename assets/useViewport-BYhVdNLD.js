@@ -1,0 +1,1 @@
+import{Ct as e,bt as t}from"./MusicText-BXJK5a3C.js";var n=e(t(),1),r=e=>(window.addEventListener(`resize`,e),()=>window.removeEventListener(`resize`,e));function i(){return(0,n.useSyncExternalStore)(r,()=>window.innerHeight,()=>900)}export{i as t};

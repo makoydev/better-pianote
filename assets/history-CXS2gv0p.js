@@ -1,0 +1,1 @@
+import{b as e,y as t}from"./MusicText-BXJK5a3C.js";var n=e()(t(e=>({runs:{},addRun:(t,n)=>e(e=>({runs:{...e.runs,[t]:[...e.runs[t]??[],n].slice(-20)}}))}),{name:`tonic-song-runs`,version:1,partialize:e=>({runs:e.runs})})),r=(e,t,n,r=12)=>(e??[]).filter(e=>e.hands===t&&e.mode===n).slice(-r);export{n,r as t};
